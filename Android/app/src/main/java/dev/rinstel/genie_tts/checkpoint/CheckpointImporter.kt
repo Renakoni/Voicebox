@@ -1,0 +1,237 @@
+package dev.rinstel.genie_tts.checkpoint
+
+import dev.rinstel.genie_tts.inference.HalfPrecision
+import org.json.JSONObject
+import java.io.File
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.RandomAccessFile
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.file.Files
+import java.security.MessageDigest
+import java.util.UUID
+
+/** Installs standard V2ProPlus checkpoints using the same graph/weight layout as Genie. */
+class CheckpointImporter(
+    private val filesRoot: File,
+    private val openAsset: (String) -> InputStream,
+) {
+    data class Result(val characterId: String, val displayName: String)
+    data class Reference(val audioFile: File, val text: String, val language: String = "auto")
+
+    fun import(
+        name: String,
+        openGpt: () -> InputStream,
+        openSovits: () -> InputStream,
+        progress: (String) -> Unit = {},
+        checkCancelled: () -> Unit = {},
+        reference: Reference? = null,
+        replaceCharacterId: String? = null,
+        gptFilename: String = "",
+        sovitsFilename: String = "",
+    ): Result {
+        require(name.isNotBlank() && name.length <= 80) { "请填写 1 至 80 字的音色名称。" }
+        reference?.let {
+            require(it.text.isNotBlank()) { "请填写参考音频对应的原文。" }
+            require(it.audioFile.isFile && it.audioFile.length() in 1..32L * 1024 * 1024) { "请选择有效的参考音频，文件不能超过 32 MB。" }
+            require(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { "参考音频缺少有效的文件扩展名。" }
+        }
+        require(filesRoot.isDirectory || filesRoot.mkdirs()) { "无法创建模型目录。" }
+        val existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it) }
+        require(filesRoot.usableSpace >= 2L * 1024 * 1024 * 1024) { "请至少留出 2 GB 空间后再导入。" }
+        val staging = File(filesRoot, ".genie-checkpoint-${UUID.randomUUID()}")
+        require(staging.mkdir())
+        try {
+            val manifest = JSONObject(openAsset("manifest.json").use { it.reader().readText() })
+            require(manifest.getInt("schema_version") == 1 && manifest.getString("architecture") == "v2ProPlus")
+            progress("读取 GPT 权重")
+            val gptFile = File(staging, "source.ckpt")
+            val gptHash = copyCheckpoint(openGpt, gptFile, checkCancelled)
+            progress("读取 SoVITS 权重")
+            val sovitsFile = File(staging, "source.pth")
+            val sovitsHash = copyCheckpoint(openSovits, sovitsFile, checkCancelled)
+            val characterId = replaceCharacterId ?: ("imported-" + UUID.randomUUID().toString())
+            val character = File(staging, characterId).apply { mkdirs() }
+            val models = File(character, "tts_models").apply { mkdirs() }
+            TorchCheckpoint(gptFile).use { gpt ->
+                TorchCheckpoint(sovitsFile).use { sovits ->
+                    progress("校验 V2ProPlus 模型")
+                    validateArchitecture(gpt, sovits)
+                    val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
+                    val groups = manifest.getJSONArray("groups")
+                    // Validate the complete pair before producing any installed weight file.
+                    for (g in 0 until groups.length()) {
+                        val entries = groups.getJSONObject(g).getJSONArray("tensors")
+                        for (i in 0 until entries.length()) {
+                            checkCancelled()
+                            val entry = entries.getJSONObject(i)
+                            val tensor = checkpoints.getValue(entry.getString("checkpoint")).tensor(entry.getString("key"))
+                            val expected = entry.getJSONArray("shape").let { array -> List(array.length()) { array.getLong(it) } }
+                            require(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
+                                "权重结构与 V2ProPlus 不匹配：${entry.getString("key")}。请确认选择了配套的完整模型。"
+                            }
+                        }
+                    }
+                    for (g in 0 until groups.length()) {
+                        val group = groups.getJSONObject(g)
+                        val half = group.getString("precision") == "fp16"
+                        progress("转换权重 ${g + 1}/${groups.length()}")
+                        File(models, group.getString("file")).outputStream().buffered(1024 * 1024).use { output ->
+                            val entries = group.getJSONArray("tensors")
+                            for (i in 0 until entries.length()) {
+                                checkCancelled()
+                                val entry = entries.getJSONObject(i)
+                                val checkpoint = checkpoints.getValue(entry.getString("checkpoint"))
+                                val tensor = checkpoint.tensor(entry.getString("key"))
+                                checkpoint.open(tensor).use { input -> writeTensor(input, output, tensor, half, checkCancelled) }
+                            }
+                        }
+                    }
+                }
+            }
+            progress("安装优化模型")
+            val templates = manifest.getJSONObject("files")
+            for (filename in templates.keys()) {
+                checkCancelled()
+                val digest = MessageDigest.getInstance("SHA-256")
+                openAsset(filename).use { input -> File(models, filename).outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer); if (count < 0) break
+                        digest.update(buffer, 0, count); output.write(buffer, 0, count)
+                    }
+                } }
+                require(hex(digest.digest()) == templates.getString(filename)) { "内置模型模板损坏，请重新安装应用。" }
+            }
+            File(character, "checkpoint-import.json").writeText(JSONObject().put("schema_version", 1)
+                .put("architecture", "v2ProPlus").put("display_name", name.trim())
+                .put("gpt_sha256", gptHash).put("sovits_sha256", sovitsHash)
+                .put("gpt_filename", gptFilename).put("sovits_filename", sovitsFilename)
+                .put("template_sha256", hex(MessageDigest.getInstance("SHA-256").digest(
+                    openAsset("manifest.json").use { it.readBytes() }))).toString(2))
+            reference?.let {
+                progress("保存音色参考")
+                val audioDirectory = File(character, "prompt_wav").apply { mkdirs() }
+                val filename = "reference.${it.audioFile.extension.lowercase()}"
+                it.audioFile.copyTo(File(audioDirectory, filename))
+                File(character, "prompt_wav.json").writeText(JSONObject().put("Normal",
+                    JSONObject().put("wav", filename).put("text", it.text.trim()).put("language", it.language)).toString(2))
+            }
+            checkCancelled()
+            val parent = File(filesRoot, "CharacterModels/v2ProPlus").apply { mkdirs() }
+            if (existing == null) Files.move(character.toPath(), File(parent, characterId).toPath())
+            else CharacterVoiceEditor.replaceDirectory(character, existing)
+            return Result(characterId, name.trim())
+        } finally {
+            // A failed rollback must never erase the last working weights.
+            if (!File(staging, ".previous").exists()) staging.deleteRecursively()
+        }
+    }
+
+    private fun copyCheckpoint(open: () -> InputStream, target: File, checkCancelled: () -> Unit): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        var total = 0L
+        open().use { input -> target.outputStream().use { output ->
+            val buffer = ByteArray(1024 * 1024)
+            while (true) {
+                checkCancelled()
+                val count = input.read(buffer); if (count < 0) break
+                total += count
+                require(total <= 2L * 1024 * 1024 * 1024) { "单个权重文件不能超过 2 GB。请选择导出的模型权重。" }
+                digest.update(buffer, 0, count); output.write(buffer, 0, count)
+            }
+        } }
+        RandomAccessFile(target, "rw").use { file ->
+            require(file.length() >= 4) { "权重文件为空或已损坏。" }
+            val first = file.readUnsignedByte(); val second = file.readUnsignedByte()
+            require(file.readUnsignedByte() == 3 && file.readUnsignedByte() == 4) { "请选择 PyTorch ZIP 格式的 .ckpt / .pth 权重。" }
+            if (first != 80 || second != 75) {
+                // GPT-SoVITS may replace PK with a two-digit model-version marker.
+                require(first in 48..57 && second in 48..57) { "不支持此权重文件格式。" }
+                file.seek(0); file.write(byteArrayOf(80, 75))
+            }
+        }
+        return hex(digest.digest())
+    }
+
+    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint) {
+        fun config(checkpoint: TorchCheckpoint, key: String) =
+            ((checkpoint.root["config"] as? Map<*, *>)?.get(key) as? Map<*, *>)
+                ?: error("模型缺少结构配置，请选择 GPT-SoVITS 导出的完整权重。")
+        val g = config(gpt, "model")
+        val s = config(sovits, "model")
+        val d = config(sovits, "data")
+        val expectedG = mapOf("vocab_size" to 1025L, "phoneme_vocab_size" to 732L, "embedding_dim" to 512L,
+            "hidden_dim" to 512L, "head" to 16L, "linear_units" to 2048L, "n_layer" to 24L, "EOS" to 1024L)
+        val expectedS = mapOf("inter_channels" to 192L, "hidden_channels" to 192L, "filter_channels" to 768L,
+            "n_heads" to 2L, "n_layers" to 6L, "kernel_size" to 3L, "gin_channels" to 1024L,
+            "upsample_initial_channel" to 768L)
+        require(expectedG.all { (k, v) -> g[k] == v } && expectedS.all { (k, v) -> s[k] == v } &&
+            s["semantic_frame_rate"] == "25hz" && s["resblock"] == "1" &&
+            s["upsample_rates"] == listOf(10L, 8L, 2L, 2L, 2L) &&
+            s["upsample_kernel_sizes"] == listOf(20L, 16L, 8L, 2L, 2L) &&
+            s["resblock_kernel_sizes"] == listOf(3L, 7L, 11L) &&
+            s["resblock_dilation_sizes"] == List(3) { listOf(1L, 3L, 5L) } &&
+            d["sampling_rate"] == 32000L && d["filter_length"] == 2048L && d["hop_length"] == 640L) {
+            "当前只支持标准 V2ProPlus 完整模型；V2、V2Pro、V3/V4 和 LoRA 暂不支持。"
+        }
+    }
+
+    private fun writeTensor(input: InputStream, output: OutputStream, tensor: TorchTensor, half: Boolean, checkCancelled: () -> Unit) {
+        val width = tensor.storage.bytesPerElement
+        val buffer = ByteArray(64 * 1024)
+        val converted = ByteBuffer.allocate(128 * 1024).order(ByteOrder.LITTLE_ENDIAN)
+        var remaining = Math.multiplyExact(tensor.elements, width.toLong())
+        while (remaining > 0) {
+            checkCancelled()
+            val count = minOf(remaining, buffer.size.toLong()).toInt()
+            var read = 0
+            while (read < count) { val n = input.read(buffer, read, count - read); require(n > 0) { "权重文件已截断。" }; read += n }
+            if (half && tensor.storage.type == "HalfStorage") {
+                for (index in 1 until count step 2) {
+                    require(buffer[index].toInt() and 0x7c != 0x7c) { "权重包含 NaN 或无穷大，请检查模型文件。" }
+                }
+                output.write(buffer, 0, count)
+                remaining -= count
+                continue
+            }
+            val bytes = ByteBuffer.wrap(buffer, 0, count).order(ByteOrder.LITTLE_ENDIAN)
+            converted.clear()
+            repeat(count / width) {
+                val value = when (tensor.storage.type) {
+                    "HalfStorage" -> HalfPrecision.fp16BitsToFloat(bytes.short.toInt() and 65535)
+                    "BFloat16Storage" -> Float.fromBits((bytes.short.toInt() and 65535) shl 16)
+                    else -> bytes.float
+                }
+                require(value.isFinite()) { "权重包含 NaN 或无穷大，请检查模型文件。" }
+                if (half) {
+                    val bits = floatToHalf(value)
+                    require(bits and 0x7c00 != 0x7c00) { "权重超出 FP16 范围，无法使用当前部署格式。" }
+                    converted.putShort(bits.toShort())
+                } else converted.putFloat(value)
+            }
+            output.write(converted.array(), 0, converted.position())
+            remaining -= count
+        }
+    }
+
+    companion object {
+        const val ASSET_DIRECTORY = "checkpoint-v2proplus"
+        internal fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+
+        /** IEEE binary16 round-to-nearest, ties-to-even, matching torch.float16. */
+        internal fun floatToHalf(value: Float): Int {
+            val bits = value.toRawBits()
+            val sign = (bits ushr 16) and 0x8000
+            val exponent = ((bits ushr 23) and 255) - 127
+            val fraction = bits and 0x7fffff
+            if (exponent > 15) return sign or 0x7c00
+            if (exponent < -25) return sign
+            val shift = if (exponent < -14) -exponent - 1 else 13
+            val mantissa = if (exponent < -14) fraction or 0x800000 else fraction
+            val rounded = (mantissa + (1 shl (shift - 1)) - 1 + ((mantissa ushr shift) and 1)) ushr shift
+            return sign or (if (exponent < -14) rounded else ((exponent + 15) shl 10) + rounded)
+        }
+    }
+}

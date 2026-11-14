@@ -1,0 +1,7 @@
+StudioButton.kt adapts the layout and interaction structure of Microsoft Fluent UI Android's Compose Button.
+Source: https://github.com/microsoft/fluentui-android
+Revision: 7e86a0a55782e38c870be91e2f31f7cbb95fa28a
+Files: fluentui_controls/src/main/java/com/microsoft/fluentui/tokenized/controls/Button.kt
+       fluentui_core/src/main/java/com/microsoft/fluentui/theme/token/controlTokens/ButtonTokens.kt
+License: MIT, see fluentui-LICENSE.txt.
+Local changes: Material3 color tokens, neutral primary/secondary/quiet styles, compact layout with Android minimum touch sizing, current ripple API, and regular button accessibility semantics.

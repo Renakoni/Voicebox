@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Voicebox</string>
+    <string name="prototype_idle_status">待命</string>
+    <string name="prototype_backend_unavailable">%1$s 后端不可用。</string>
+    <string name="prototype_generation_busy">正在生成，请稍候。</string>
+    <string name="prototype_generation_error">生成失败：%1$s</string>
+    <string name="prototype_service_notification_title">Voicebox 后台服务</string>
+    <string name="prototype_service_notification_description">保持推理服务常驻并显示当前状态。</string>
+    <string name="prototype_cache_cleared">缓存已清理：删除 %1$d 个生成音频文件和 %2$d 个运行时缓存文件。</string>
+    <string name="prototype_cache_clear_failed">缓存清理失败：%1$s</string>
+    <string name="prototype_stage_inspecting_resources">正在检查资源。</string>
+    <string name="prototype_stage_installing_model">正在准备模型。</string>
+    <string name="prototype_stage_initializing_backend">正在初始化 %1$s。</string>
+    <string name="prototype_stage_preparing_runtime">正在准备运行时。</string>
+    <string name="prototype_stage_preparing_features">正在提取特征。</string>
+    <string name="prototype_stage_running_inference">正在推理。</string>
+    <string name="prototype_stage_writing_output">正在写入结果。</string>
+    <string name="prototype_service_completed">生成完成，音频长度 %1$s。</string>
+    <string name="prototype_service_api_invalid_request">API 请求参数不完整或角色不存在。</string>
+</resources>

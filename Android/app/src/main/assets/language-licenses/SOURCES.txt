@@ -1,0 +1,13 @@
+Japanese frontend: r9y9/open_jtalk, commit 462fc38e7520aa89e4d32b2611749208528c901e (BSD).
+Dictionary: open_jtalk_dic_utf_8-1.11.tar.gz (license in OpenJTalk-dictionary.txt).
+Label pipeline adapted from pyopenjtalk 0.4.1 (MIT).
+Phoneme/prosody logic adapted from High-Logic/Genie-TTS (MIT).
+
+English frontend: Genie-TTS CMU/name dictionaries, hot dictionary, NLTK averaged
+perceptron POS model, and g2p_en checkpoint20 GRU, from High-Logic/Genie resources
+revision 52b17272e0b7032415e85ad37b551db2386b1810.
+The GRU weights are exported to ONNX without quantization; phoneme vocabulary
+and recurrent computation follow Genie-TTS CleanG2p. POS inference is ported
+from NLTK; normalization uses an Android implementation for ordinary prose.
+CMU dictionary (BSD), NLTK and g2p_en (Apache-2.0) licenses are included here.
+Resource hashes and provenance are in language_frontends/*/manifest.json.

@@ -1,0 +1,26 @@
+QQ voice feature third-party notices
+
+LibADB Android 3.1.1, Copyright 2021 Muntashir Al-Islam.
+https://github.com/MuntashirAkon/libadb-android/tree/3.1.1
+Used under its Apache-2.0 option. BSD/MIT notices for its bundled components are also included.
+
+SPAKE2-Android 2.2.1 and spake2-c, Copyright 2021 Muntashir Al-Islam.
+https://github.com/MuntashirAkon/spake2-java/tree/2.2.1
+https://github.com/MuntashirAkon/spake2-c/tree/0d15933e5ba3e662cb01245a7ac0dc9fca3eac31
+LGPL-3.0; LGPL and incorporated GPL text included. Libraries are unmodified.
+Their corresponding source and build scripts are provided with the APK artifact.
+Genie source/build scripts permit rebuilding with a modified library. No restriction
+on reverse engineering for debugging such modifications is imposed by this project.
+
+Conscrypt Android 2.5.3, The Android Open Source Project. Apache-2.0.
+https://github.com/google/conscrypt/tree/2.5.3
+See conscrypt-LICENSE.txt and conscrypt-NOTICE.txt.
+
+Bouncy Castle 1.81 (bcprov, bcpkix, bcutil), The Legion of the Bouncy Castle Inc.
+https://github.com/bcgit/bc-java/tree/r1rv81
+See bouncycastle-LICENSE.html.
+
+SILK fixed-point SDK, Copyright 2006-2012 Skype Limited.
+Source copied unmodified from QAuxiliary c4fb9fa80edd99a6afd6c441a1d820f31600fcd2,
+libs/silk/silk-v3-decoder/silk/{src,interface}. See silk-Skype.txt and
+silk-wrapper-MIT.txt. JNI adapter is provided by Genie. No QAuxiliary hooks copied.

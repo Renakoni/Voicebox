@@ -1,0 +1,179 @@
+diff --git a/onnxruntime/core/providers/cpu/math/matmul.cc b/onnxruntime/core/providers/cpu/math/matmul.cc
+index ca91f46..d52e580 100644
+--- a/onnxruntime/core/providers/cpu/math/matmul.cc
++++ b/onnxruntime/core/providers/cpu/math/matmul.cc
+@@ -7,6 +7,10 @@
+ #include "core/util/math.h"
+ #include "core/util/math_cpuonly.h"
+ 
++#if defined(__aarch64__) && defined(__linux__)
++#include <arm_neon.h>
++#endif
++
+ namespace onnxruntime {
+ 
+ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+@@ -186,6 +190,79 @@ Status MatMul<double>::Compute(OpKernelContext* ctx) const {
+ }
+ 
+ #if defined(__aarch64__) && defined(__linux__)
++// Experimental opt-in: exact half storage, FP32 arithmetic. Pack N in blocks
++// of 16 and retain MLAS's 256-element K reduction boundaries and FMA order.
++static bool PackExactHalfWeights(const Tensor& tensor, bool transpose, AllocatorPtr alloc,
++                                 IAllocatorUniquePtr<void>& packed) {
++  const auto& shape = tensor.Shape();
++  if (shape.NumDimensions() != 2) return false;
++  const size_t k = static_cast<size_t>(shape[transpose ? 1 : 0]);
++  const size_t n = static_cast<size_t>(shape[transpose ? 0 : 1]);
++  if (n == 0 || n % 16 != 0 || k == 0 || tensor.Shape().Size() < 32768) return false;
++  packed = IAllocator::MakeUniquePtr<void>(alloc, SafeInt<size_t>(tensor.Shape().Size()) * sizeof(MLFloat16), true);
++  auto* destination = static_cast<MLFloat16*>(packed.get());
++  const auto* source = tensor.Data<float>();
++  for (size_t column = 0; column < n; column += 16) {
++    for (size_t inner = 0; inner < k; ++inner) {
++      for (size_t lane = 0; lane < 16; ++lane) {
++        const float value = source[transpose ? (column + lane) * k + inner : inner * n + column + lane];
++        const MLFloat16 half(value);
++        if (!std::isfinite(value) || half.ToFloat() != value) {
++          packed.reset();
++          return false;
++        }
++        *destination++ = half;
++      }
++    }
++  }
++  return true;
++}
++
++static void ComputeExactHalfWeights(const float* a, const MLFloat16* b, float* y,
++                                    const MatMulComputeHelper& helper, float alpha,
++                                    concurrency::ThreadPool* thread_pool) {
++  const size_t m = helper.M(), n = helper.N(), k = helper.K();
++  const size_t blocks = n / 16;
++  const size_t tasks = helper.OutputOffsets().size() * m * blocks;
++  concurrency::ThreadPool::TryParallelFor(
++      thread_pool, static_cast<ptrdiff_t>(tasks),
++      {static_cast<double>(k * 16 * sizeof(MLFloat16)), 16 * sizeof(float), static_cast<double>(k * 32)},
++      [&](ptrdiff_t begin, ptrdiff_t end) {
++        for (size_t task = static_cast<size_t>(begin); task < static_cast<size_t>(end); ++task) {
++          const size_t block = task % blocks;
++          const size_t row = task / blocks % m;
++          const size_t batch = task / blocks / m;
++          const float* input = a + helper.LeftOffsets()[batch] + row * k;
++          float* output = y + helper.OutputOffsets()[batch] + row * n + block * 16;
++          const auto* weights = reinterpret_cast<const float16_t*>(b + block * k * 16);
++          for (size_t base = 0; base < k; base += 256) {
++            float32x4_t s0 = vdupq_n_f32(0), s1 = s0, s2 = s0, s3 = s0;
++            const size_t limit = std::min(k, base + 256);
++            for (size_t inner = base; inner < limit; ++inner) {
++              const float16x8_t w0 = vld1q_f16(weights + inner * 16);
++              const float16x8_t w1 = vld1q_f16(weights + inner * 16 + 8);
++              const float value = input[inner];
++              s0 = vfmaq_n_f32(s0, vcvt_f32_f16(vget_low_f16(w0)), value);
++              s1 = vfmaq_n_f32(s1, vcvt_high_f32_f16(w0), value);
++              s2 = vfmaq_n_f32(s2, vcvt_f32_f16(vget_low_f16(w1)), value);
++              s3 = vfmaq_n_f32(s3, vcvt_high_f32_f16(w1), value);
++            }
++            if (base == 0) {
++              vst1q_f32(output, vmulq_n_f32(s0, alpha));
++              vst1q_f32(output + 4, vmulq_n_f32(s1, alpha));
++              vst1q_f32(output + 8, vmulq_n_f32(s2, alpha));
++              vst1q_f32(output + 12, vmulq_n_f32(s3, alpha));
++            } else {
++              vst1q_f32(output, vfmaq_n_f32(vld1q_f32(output), s0, alpha));
++              vst1q_f32(output + 4, vfmaq_n_f32(vld1q_f32(output + 4), s1, alpha));
++              vst1q_f32(output + 8, vfmaq_n_f32(vld1q_f32(output + 8), s2, alpha));
++              vst1q_f32(output + 12, vfmaq_n_f32(vld1q_f32(output + 12), s3, alpha));
++            }
++          }
++        }
++      });
++}
++
+ bool GemmPackBBfloat16(AllocatorPtr& alloc,
+                        const Tensor& tensor_b,
+                        bool trans_a,
+@@ -242,6 +319,20 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
+ 
+   // only pack Matrix B
+   if (input_idx == 1) {
++#if defined(__aarch64__) && defined(__linux__)
++    if (use_half_weight_storage_ && !use_fastmath_mode_ &&
++        !trans_a_attr_ && !trans_batch_a_ && !trans_batch_b_ &&
++        PackExactHalfWeights(tensor, trans_b_attr_ != 0, alloc, half_b_)) {
++      b_shape_ = tensor.Shape();
++      half_b_active_ = true;
++      is_packed = true;
++      if (prepacked_weights) {
++        prepacked_weights->buffers_.push_back(std::move(half_b_));
++        prepacked_weights->buffer_sizes_.push_back(SafeInt<size_t>(tensor.Shape().Size()) * sizeof(MLFloat16));
++      }
++      return Status::OK();
++    }
++#endif
+     size_t packed_b_size;
+ #if defined(__aarch64__) && defined(__linux__)
+     size_t dim1 = 0;
+@@ -278,6 +369,12 @@ Status MatMul<float>::UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& pr
+ 
+   if (input_idx == 1) {
+     used_shared_buffers = true;
++#if defined(__aarch64__) && defined(__linux__)
++    if (half_b_active_) {
++      half_b_ = std::move(prepacked_buffers[0]);
++      return Status::OK();
++    }
++#endif
+     packed_b_ = std::move(prepacked_buffers[0]);
+   }
+ 
+@@ -288,7 +385,11 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
+   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
+ 
+   const Tensor* a = ctx->Input<Tensor>(0);
+-  const Tensor* b = packed_b_ ? nullptr : ctx->Input<Tensor>(1);
++  bool packed = bool(packed_b_);
++#if defined(__aarch64__) && defined(__linux__)
++  packed = packed || bool(half_b_);
++#endif
++  const Tensor* b = packed ? nullptr : ctx->Input<Tensor>(1);
+   const auto& b_shape = b ? b->Shape() : b_shape_;
+ 
+   // match CUDA kernel implementation, ignore transpose for vectors
+@@ -316,6 +417,14 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
+   const auto* b_data = b ? b->Data<float>() : nullptr;
+   auto* y_data = y->MutableData<float>();
+ 
++#if defined(__aarch64__) && defined(__linux__)
++  if (half_b_) {
++    ComputeExactHalfWeights(a_data, static_cast<const MLFloat16*>(half_b_.get()), y_data,
++                            helper, alpha_attr_, thread_pool);
++    return Status::OK();
++  }
++#endif
++
+   const size_t max_len = helper.OutputOffsets().size();
+   const size_t M = static_cast<size_t>(helper.M());
+   const size_t N = static_cast<size_t>(helper.N());
+diff --git a/onnxruntime/core/providers/cpu/math/matmul.h b/onnxruntime/core/providers/cpu/math/matmul.h
+index d1c0df1..cfd3a1b 100644
+--- a/onnxruntime/core/providers/cpu/math/matmul.h
++++ b/onnxruntime/core/providers/cpu/math/matmul.h
+@@ -68,6 +68,7 @@ class MatMul<float> final : public OpKernel {
+ #if defined(__aarch64__) && defined(__linux__)
+     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
+     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
++    use_half_weight_storage_ = info.GetConfigOptions().GetConfigEntry("session.genie_fp16_weight_storage") == "1";
+ #endif
+ 
+     SetupMlasBackendKernelSelectorFromConfigOptions(mlas_backend_kernel_selector_config_, info.GetConfigOptions());
+@@ -100,6 +101,9 @@ class MatMul<float> final : public OpKernel {
+ #if defined(__aarch64__) && defined(__linux__)
+   // fastmath mode state
+   bool use_fastmath_mode_;
++  bool use_half_weight_storage_;
++  bool half_b_active_ = false;
++  IAllocatorUniquePtr<void> half_b_;
+   // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
+   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
+   const size_t kFastMathModeKernelsizeThreshold = 32;

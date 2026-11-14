@@ -1,0 +1,81 @@
+package dev.rinstel.genie_tts.studio
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.interaction.DragInteraction
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpSize
+import java.util.Locale
+
+@Composable
+internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Boolean,
+    onToggle: () -> Unit, onSeek: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        FilledIconButton(onClick = onToggle, enabled = enabled && !preview.preparing,
+            shape = StudioControlShape,
+            colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
+                contentColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.size(48.dp).padding(4.dp).testTag("play_output")) {
+            if (preview.preparing) CircularProgressIndicator(Modifier.size(24.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
+            else if (preview.playing) PauseIcon()
+            else Icon(Icons.Default.PlayArrow, "播放生成语音")
+        }
+        PlaybackTimeline(preview, durationMs, Modifier.weight(1f), onSeek)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: Modifier, onSeek: (Int) -> Unit) {
+    val duration = (if (preview.durationMs > 0) preview.durationMs.toLong() else durationMs).coerceAtLeast(1)
+    var draggedPosition by remember(preview.path) { mutableStateOf<Float?>(null) }
+    val interactions = remember { MutableInteractionSource() }
+    LaunchedEffect(interactions) {
+        interactions.interactions.collect { if (it is DragInteraction.Cancel) draggedPosition = null }
+    }
+    val position = draggedPosition ?: preview.positionMs.toFloat().coerceIn(0f, duration.toFloat())
+    val seekEnabled = preview.path.isNotBlank() && !preview.preparing
+    Column(modifier) {
+        Slider(value = position, onValueChange = { draggedPosition = it },
+            onValueChangeFinished = {
+                draggedPosition?.let { onSeek(it.toInt()) }
+                draggedPosition = null
+            },
+            valueRange = 0f..duration.toFloat(), interactionSource = interactions,
+            enabled = seekEnabled,
+            thumb = { SliderDefaults.Thumb(interactions, Modifier.clip(CircleShape), enabled = seekEnabled,
+                thumbSize = DpSize(14.dp, 14.dp)) },
+            track = { SliderDefaults.Track(it, Modifier.height(4.dp), enabled = seekEnabled,
+                thumbTrackGapSize = 0.dp, drawStopIndicator = null) },
+            modifier = Modifier.heightIn(min = 48.dp).testTag("playback_seek").semantics { contentDescription = "播放进度" })
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(playbackTime(position.toLong()), style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.testTag("playback_position"))
+            Text(playbackTime(duration), style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+@Composable
+private fun PauseIcon() {
+    val color = LocalContentColor.current
+    Canvas(Modifier.size(24.dp).semantics { contentDescription = "暂停播放" }) {
+        drawLine(color, Offset(size.width * .35f, size.height * .22f), Offset(size.width * .35f, size.height * .78f), 4.dp.toPx())
+        drawLine(color, Offset(size.width * .65f, size.height * .22f), Offset(size.width * .65f, size.height * .78f), 4.dp.toPx())
+    }
+}
+
+private fun playbackTime(ms: Long) = String.format(Locale.ROOT, "%d:%02d", ms / 60_000, ms / 1000 % 60)

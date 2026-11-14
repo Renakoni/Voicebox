@@ -1,0 +1,5 @@
+Zip4j 2.11.5
+Copyright Srikanth Lingala
+https://github.com/srikanth-lingala/zip4j
+Apache License 2.0
+Used to read PyTorch ZIP64 checkpoint files on Android.
