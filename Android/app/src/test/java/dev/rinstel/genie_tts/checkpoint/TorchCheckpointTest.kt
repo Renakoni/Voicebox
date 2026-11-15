@@ -57,7 +57,7 @@ class TorchCheckpointTest {
         try {
             val sentinel = File(root, "CharacterModels/v2ProPlus/kept/tts_models/keep.txt")
             requireNotNull(sentinel.parentFile).mkdirs(); sentinel.writeText("keep")
-            val assets = File("src/main/assets/checkpoint-v2proplus")
+            val assets = File("src/main/assets")
             val importer = CheckpointImporter(root) { File(assets, it).inputStream() }
             assertThrows(IllegalStateException::class.java) {
                 importer.import("cancelled", { byteArrayOf().inputStream() }, { byteArrayOf().inputStream() },

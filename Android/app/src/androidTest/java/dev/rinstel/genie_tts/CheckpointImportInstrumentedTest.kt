@@ -19,6 +19,12 @@ import androidx.lifecycle.ViewModelStore
 import dev.rinstel.genie_tts.inference.ModelAssetRepository
 import dev.rinstel.genie_tts.inference.OptimizedDecoderAssets
 import dev.rinstel.genie_tts.inference.SplitVocoderAssets
+import dev.rinstel.genie_tts.inference.OrtSessionRuntime
+import dev.rinstel.genie_tts.inference.OrtRuntimeFeatureExtractor
+import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
+import dev.rinstel.genie_tts.inference.GenerationRequest
+import dev.rinstel.genie_tts.inference.GenerationStage
+import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
 import dev.rinstel.genie_tts.studio.StudioViewModel
 import org.json.JSONObject
@@ -31,14 +37,18 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-/** Import only: no synthesis, playback, messaging, or performance benchmark. */
+/** Real checkpoint import; an optional case supplies reference audio for synthesis. */
 @RunWith(AndroidJUnit4::class)
 class CheckpointImportInstrumentedTest {
     @Test fun importsOfficialPairAndLoadsOptimizedGraphs() {
         val context = ApplicationProvider.getApplicationContext<Context>()
-        val source = File(context.getExternalFilesDir(null), "checkpoint-test-source")
+        val sourcePath = InstrumentationRegistry.getArguments().getString("checkpointSource", "checkpoint-test-source")!!
+        val source = if (sourcePath.startsWith("/")) File(sourcePath) else File(context.getExternalFilesDir(null), sourcePath)
+        val case = File(source, "import-case.json").takeIf { it.isFile }?.let { JSONObject(it.readText()) }
         val gpt = File(source, "s1v3.ckpt")
-        val sovits = File(source, "s2Gv2ProPlus.pth")
+        val sovits = File(source, case?.getString("sovits_file") ?: "s2Gv2ProPlus.pth")
+        val reference = case?.let { CheckpointImporter.Reference(File(source, it.getString("reference_file")),
+            it.getString("reference_text"), it.optString("reference_language", "zh")) }
         assertTrue("Push the official test pair first", gpt.isFile && sovits.isFile)
         val start = System.nanoTime()
         val connected = CountDownLatch(1)
@@ -57,15 +67,39 @@ class CheckpointImportInstrumentedTest {
         try {
             assertTrue("Service connection timeout", connected.await(30, TimeUnit.SECONDS))
             Handler(Looper.getMainLooper()).post {
-                val accepted = service.get().importCheckpointPair("官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
+                val accepted = service.get().importCheckpointPair(case?.getString("name") ?: "官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
                     onProgress = { android.util.Log.i("CheckpointImportTest", it) },
-                    onComplete = { imported.set(it); finished.countDown() })
+                    onComplete = { imported.set(it); finished.countDown() }, reference = reference)
                 if (!accepted) { imported.set(Result.failure(IllegalStateException("Import refused"))); finished.countDown() }
             }
             assertTrue("Import timeout", finished.await(180, TimeUnit.SECONDS))
         } finally { context.unbindService(connection) }
         val result = imported.get().getOrThrow()
         verifyImportedModel(context, result, source, start)
+        if (reference != null) {
+            val repository = ModelAssetRepository(context)
+            val runtimeAssets = RuntimeAssetRepository(context)
+            val model = repository.discoverCharacterModels().single { it.id == result.characterId }
+            assertEquals(case.getString("architecture"), result.architecture)
+            val runtime = OrtSessionRuntime(repository, runtimeAssets) { backend ->
+                OrtRuntimeFeatureExtractor(context, runtimeAssets, backend)
+            }
+            try {
+                val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = case.getString("text"),
+                    referenceAudioPath = reference.audioFile.absolutePath, referenceText = reference.text,
+                    promptLanguage = reference.language),
+                    object : BackendRuntimeCallbacks {
+                        override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
+                            android.util.Log.i("CheckpointImportTest", "$stage: $message")
+                        }
+                    })
+                assertTrue(generated.audioSamples > 32000)
+                val reportFile = File(source, "android-import-result.json")
+                reportFile.writeText(JSONObject(reportFile.readText()).put("architecture", result.architecture)
+                    .put("synthesis_performed", true).put("audio_samples", generated.audioSamples)
+                    .put("output", generated.file.absolutePath).toString(2))
+            } finally { runtime.close() }
+        }
     }
 
     @Test fun importsCommunityVoiceThroughStudioAndKeepsItReadyAfterRecreation() {

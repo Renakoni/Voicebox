@@ -9,7 +9,7 @@ import java.util.UUID
 /** Edits a voice while the service owns and has closed its model sessions. */
 class CharacterVoiceEditor(private val filesRoot: File) {
     fun character(id: String, version: String = "v2ProPlus"): File {
-        require(version in setOf("v2", "v2ProPlus")) { "不支持此音色版本。" }
+        require(version in setOf("v2", "v2Pro", "v2ProPlus")) { "不支持此音色版本。" }
         val root = File(filesRoot, "CharacterModels/$version").canonicalFile
         val target = File(root, id).canonicalFile
         require(target.parentFile == root && id == target.name && !id.startsWith('.')) { "无效的音色目录。" }

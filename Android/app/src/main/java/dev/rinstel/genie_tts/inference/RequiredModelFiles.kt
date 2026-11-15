@@ -69,6 +69,11 @@ data class RequiredModelFiles(
             maxAuxiliaryReferenceCount = 7,
         )
 
+        fun v2ProCharacter(characterId: String): RequiredModelFiles = v2ProPlusCharacter(characterId).copy(
+            variantName = "${characterId.replaceFirstChar { it.uppercase() }} (V2Pro)",
+            assetSubdirectory = "v2Pro/$characterId/tts_models",
+        )
+
         fun v2Character(characterId: String): RequiredModelFiles = RequiredModelFiles(
             variantName = "${characterId.replaceFirstChar { it.uppercase() }} (V2)",
             assetSubdirectory = "v2/$characterId/tts_models",

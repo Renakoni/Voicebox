@@ -12,12 +12,12 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Installs standard V2ProPlus checkpoints using the same graph/weight layout as Genie. */
+/** Installs standard V2Pro/Plus checkpoints using the Genie graph/weight layout. */
 class CheckpointImporter(
     private val filesRoot: File,
     private val openAsset: (String) -> InputStream,
 ) {
-    data class Result(val characterId: String, val displayName: String)
+    data class Result(val characterId: String, val displayName: String, val architecture: String = "v2ProPlus")
     data class Reference(val audioFile: File, val text: String, val language: String = "auto")
 
     fun import(
@@ -38,13 +38,14 @@ class CheckpointImporter(
             require(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { "参考音频缺少有效的文件扩展名。" }
         }
         require(filesRoot.isDirectory || filesRoot.mkdirs()) { "无法创建模型目录。" }
-        val existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it) }
         require(filesRoot.usableSpace >= 2L * 1024 * 1024 * 1024) { "请至少留出 2 GB 空间后再导入。" }
         val staging = File(filesRoot, ".genie-checkpoint-${UUID.randomUUID()}")
         require(staging.mkdir())
         try {
-            val manifest = JSONObject(openAsset("manifest.json").use { it.reader().readText() })
-            require(manifest.getInt("schema_version") == 1 && manifest.getString("architecture") == "v2ProPlus")
+            lateinit var architecture: String
+            lateinit var manifestBytes: ByteArray
+            lateinit var manifest: JSONObject
+            var existing: File? = null
             progress("读取 GPT 权重")
             val gptFile = File(staging, "source.ckpt")
             val gptHash = copyCheckpoint(openGpt, gptFile, checkCancelled)
@@ -56,8 +57,11 @@ class CheckpointImporter(
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
                 TorchCheckpoint(sovitsFile).use { sovits ->
-                    progress("校验 V2ProPlus 模型")
-                    validateArchitecture(gpt, sovits)
+                    architecture = validateArchitecture(gpt, sovits)
+                    existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it, architecture) }
+                    progress("读取 $architecture 模型")
+                    manifestBytes = openAsset("${assetDirectory(architecture)}/manifest.json").use { it.readBytes() }
+                    manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
                     val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
                     val groups = manifest.getJSONArray("groups")
                     // Validate the complete pair before producing any installed weight file.
@@ -69,7 +73,7 @@ class CheckpointImporter(
                             val tensor = checkpoints.getValue(entry.getString("checkpoint")).tensor(entry.getString("key"))
                             val expected = entry.getJSONArray("shape").let { array -> List(array.length()) { array.getLong(it) } }
                             require(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
-                                "权重结构与 V2ProPlus 不匹配：${entry.getString("key")}。请确认选择了配套的完整模型。"
+                                "权重结构与 $architecture 不匹配：${entry.getString("key")}。请确认选择了配套的完整模型。"
                             }
                         }
                     }
@@ -95,7 +99,7 @@ class CheckpointImporter(
             for (filename in templates.keys()) {
                 checkCancelled()
                 val digest = MessageDigest.getInstance("SHA-256")
-                openAsset(filename).use { input -> File(models, filename).outputStream().use { output ->
+                openAsset("${assetDirectory(architecture)}/$filename").use { input -> File(models, filename).outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     while (true) {
                         val count = input.read(buffer); if (count < 0) break
@@ -105,11 +109,11 @@ class CheckpointImporter(
                 require(hex(digest.digest()) == templates.getString(filename)) { "内置模型模板损坏，请重新安装应用。" }
             }
             File(character, "checkpoint-import.json").writeText(JSONObject().put("schema_version", 1)
-                .put("architecture", "v2ProPlus").put("display_name", name.trim())
+                .put("architecture", architecture).put("display_name", name.trim())
                 .put("gpt_sha256", gptHash).put("sovits_sha256", sovitsHash)
                 .put("gpt_filename", gptFilename).put("sovits_filename", sovitsFilename)
                 .put("template_sha256", hex(MessageDigest.getInstance("SHA-256").digest(
-                    openAsset("manifest.json").use { it.readBytes() }))).toString(2))
+                    manifestBytes))).toString(2))
             reference?.let {
                 progress("保存音色参考")
                 val audioDirectory = File(character, "prompt_wav").apply { mkdirs() }
@@ -119,10 +123,10 @@ class CheckpointImporter(
                     JSONObject().put("wav", filename).put("text", it.text.trim()).put("language", it.language)).toString(2))
             }
             checkCancelled()
-            val parent = File(filesRoot, "CharacterModels/v2ProPlus").apply { mkdirs() }
+            val parent = File(filesRoot, "CharacterModels/$architecture").apply { mkdirs() }
             if (existing == null) Files.move(character.toPath(), File(parent, characterId).toPath())
-            else CharacterVoiceEditor.replaceDirectory(character, existing)
-            return Result(characterId, name.trim())
+            else CharacterVoiceEditor.replaceDirectory(character, requireNotNull(existing))
+            return Result(characterId, name.trim(), architecture)
         } finally {
             // A failed rollback must never erase the last working weights.
             if (!File(staging, ".previous").exists()) staging.deleteRecursively()
@@ -155,27 +159,29 @@ class CheckpointImporter(
         return hex(digest.digest())
     }
 
-    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint) {
+    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint): String {
         fun config(checkpoint: TorchCheckpoint, key: String) =
             ((checkpoint.root["config"] as? Map<*, *>)?.get(key) as? Map<*, *>)
                 ?: error("模型缺少结构配置，请选择 GPT-SoVITS 导出的完整权重。")
         val g = config(gpt, "model")
         val s = config(sovits, "model")
         val d = config(sovits, "data")
+        val pro = s["upsample_initial_channel"] == 512L
         val expectedG = mapOf("vocab_size" to 1025L, "phoneme_vocab_size" to 732L, "embedding_dim" to 512L,
             "hidden_dim" to 512L, "head" to 16L, "linear_units" to 2048L, "n_layer" to 24L, "EOS" to 1024L)
         val expectedS = mapOf("inter_channels" to 192L, "hidden_channels" to 192L, "filter_channels" to 768L,
             "n_heads" to 2L, "n_layers" to 6L, "kernel_size" to 3L, "gin_channels" to 1024L,
-            "upsample_initial_channel" to 768L)
+            "upsample_initial_channel" to if (pro) 512L else 768L)
         require(expectedG.all { (k, v) -> g[k] == v } && expectedS.all { (k, v) -> s[k] == v } &&
             s["semantic_frame_rate"] == "25hz" && s["resblock"] == "1" &&
             s["upsample_rates"] == listOf(10L, 8L, 2L, 2L, 2L) &&
-            s["upsample_kernel_sizes"] == listOf(20L, 16L, 8L, 2L, 2L) &&
+            s["upsample_kernel_sizes"] == listOf(if (pro) 16L else 20L, 16L, 8L, 2L, 2L) &&
             s["resblock_kernel_sizes"] == listOf(3L, 7L, 11L) &&
             s["resblock_dilation_sizes"] == List(3) { listOf(1L, 3L, 5L) } &&
             d["sampling_rate"] == 32000L && d["filter_length"] == 2048L && d["hop_length"] == 640L) {
-            "当前只支持标准 V2ProPlus 完整模型；V2、V2Pro、V3/V4 和 LoRA 暂不支持。"
+            "当前支持标准 V2Pro / V2ProPlus 完整模型；普通 V2、扩散模型和 LoRA 暂不支持。"
         }
+        return if (pro) "v2Pro" else "v2ProPlus"
     }
 
     private fun writeTensor(input: InputStream, output: OutputStream, tensor: TorchTensor, half: Boolean, checkCancelled: () -> Unit) {
@@ -217,7 +223,7 @@ class CheckpointImporter(
     }
 
     companion object {
-        const val ASSET_DIRECTORY = "checkpoint-v2proplus"
+        private fun assetDirectory(architecture: String) = "checkpoint-${architecture.lowercase()}"
         internal fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
 
         /** IEEE binary16 round-to-nearest, ties-to-even, matching torch.float16. */

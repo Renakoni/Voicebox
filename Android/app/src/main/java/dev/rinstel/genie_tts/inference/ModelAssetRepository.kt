@@ -27,6 +27,9 @@ class ModelAssetRepository private constructor(
             .orEmpty()
         result += CharacterModelCatalog.v2ProPlusFromCharacterIds(v2ProPlusIds)
 
+        result += CharacterModelCatalog.v2ProFromCharacterIds(File(modelRoot, "v2Pro").listFiles()
+            ?.filter { File(it, "tts_models").isDirectory }?.map { it.name }.orEmpty())
+
         val v2Root = File(modelRoot, "v2")
         val v2Ids = v2Root
             .listFiles()

@@ -350,7 +350,7 @@ class GenieBackendService : Service() {
         sovitsFilename: String = "",
     ): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
         CheckpointImporter(requireNotNull(getExternalFilesDir(null))) { file ->
-            assets.open("${CheckpointImporter.ASSET_DIRECTORY}/$file")
+            assets.open(file)
         }.import(name,
             openGpt = { contentResolver.openInputStream(gpt) ?: error("无法读取 GPT 权重，请重新选择。") },
             openSovits = { contentResolver.openInputStream(sovits) ?: error("无法读取 SoVITS 权重，请重新选择。") },
@@ -362,7 +362,7 @@ class GenieBackendService : Service() {
         version: String,
         onComplete: (Result<CheckpointImporter.Result>) -> Unit): Boolean = importOnWorker(onComplete) { _, _ ->
         CharacterVoiceEditor(requireNotNull(getExternalFilesDir(null))).updateReference(id, name, reference, version)
-        CheckpointImporter.Result(id, name.trim())
+        CheckpointImporter.Result(id, name.trim(), version)
     }
 
     private fun <T> importOnWorker(

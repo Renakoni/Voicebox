@@ -66,6 +66,7 @@ tests/parity/.tmp/
 # Local models, generated audio, device captures and credentials
 *.onnx
 !Android/app/src/main/assets/checkpoint-v2proplus/*.onnx
+!Android/app/src/main/assets/checkpoint-v2pro/*.onnx
 *.bin
 *.ckpt
 *.pth
@@ -105,3 +106,6 @@ tests/parity/.tmp/
 !/tools/build_ort_webgpu.ps1
 !/tools/package_ort_runtime.py
 !/tools/ort-build-requirements.txt
+!/tools/build_v2pro_templates.py
+!/tools/split_vits_acoustic.py
+!/tools/subpixel_hifigan.py

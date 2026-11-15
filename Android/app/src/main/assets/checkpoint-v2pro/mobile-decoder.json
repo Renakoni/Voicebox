@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "format": "genie_t2s_head_cache_fp32_v1",
+  "sources": {
+    "t2s_first_stage_decoder_fp32.onnx": "b7ad92eba4c5299c478afc8b0e3751204b14b47412e9ea8d9ef06c918e01b8a7",
+    "t2s_stage_decoder_fp32.onnx": "6eadca00317c0f3b0ed10225bdf348a3a5e377b443735d12c7f1d0b7186b76cd"
+  },
+  "graphs": {
+    "mobile-prefill.onnx": "98c137a1e94fe50b218caad3f7b15bb540e66a7421ba4dee776d809ee78f6564",
+    "mobile-decoder.onnx": "5dc30a0bd2f40d756f5514268629656842e21227b614043443a919294c61a3ce"
+  },
+  "shared_cache": {
+    "format": "genie_t2s_shared_cache_fp32_v1",
+    "sha256": "8f819d2ec14d53bf63778b0ded41e00c1651b956abf249f1eb593c07f5c8bfd6"
+  }
+}
