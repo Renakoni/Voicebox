@@ -2,8 +2,6 @@ package dev.rinstel.genie_tts.inference
 
 import android.content.Context
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 class RuntimeAssetRepository {
     private val filesRoot: File
@@ -27,19 +25,8 @@ class RuntimeAssetRepository {
 
     fun inspect(): ModelInspectionResult {
         val root = runtimeRoot()
-        val allPresent = if (root.isDirectory) {
-            root.walkTopDown()
-                .filter(File::isFile)
-                .map { it.relativeTo(root).path.replace(File.separatorChar, '/') }
-                .toSet()
-        } else {
-            emptySet()
-        }
-        val missing = requiredFiles.filterNot(allPresent::contains)
-
         return ModelInspectionResult(
-            presentFiles = allPresent.toSet(),
-            missingFiles = missing,
+            missingFiles = requiredFiles.filterNot { File(root, it).isFile },
         )
     }
 
@@ -54,20 +41,7 @@ class RuntimeAssetRepository {
         // Kotlin FloatArrays and OnnxTensors on the 256 MiB app heap.
         if (target.isFile && target.length() == source.length() * 2L) return
 
-        val temporary = File(target.parentFile, ".${target.name}.${System.nanoTime()}.tmp")
-        try {
-            HalfPrecisionFileConverter.convertFp16FileToFp32File(source, temporary, progress)
-            require(temporary.length() == source.length() * 2L) {
-                "Invalid converted HuBERT weight length."
-            }
-            Files.move(
-                temporary.toPath(),
-                target.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        } finally {
-            temporary.delete()
-        }
+        HalfPrecisionFileConverter.convertFp16FileToFp32File(source, target, progress)
     }
 
     /**

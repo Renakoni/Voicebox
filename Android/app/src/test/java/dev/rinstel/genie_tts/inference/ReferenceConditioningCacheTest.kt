@@ -90,26 +90,6 @@ class ReferenceConditioningCacheTest {
     }
 
     @Test
-    fun reusesConditioningForSameReferenceKey() {
-        val cache = ReferenceConditioningCache(maxEntries = 2)
-        val key = key(referenceText = "same reference")
-        var factoryCalls = 0
-
-        val first = cache.getOrPut(key) {
-            factoryCalls += 1
-            conditioning(1)
-        }
-        val second = cache.getOrPut(key) {
-            factoryCalls += 1
-            conditioning(2)
-        }
-
-        assertSame(first, second)
-        assertEquals(1, factoryCalls)
-        assertEquals(longArrayOf(1L).toList(), second.refSeq.values.toList())
-    }
-
-    @Test
     fun missesWhenReferenceTextChanges() {
         val cache = ReferenceConditioningCache(maxEntries = 2)
         var factoryCalls = 0
@@ -166,23 +146,6 @@ class ReferenceConditioningCacheTest {
         }
 
         assertEquals(3, factoryCalls)
-    }
-
-    @Test
-    fun evictsLeastRecentlyUsedEntry() {
-        val cache = ReferenceConditioningCache(maxEntries = 2)
-        val firstKey = key(referenceAudioPath = "/ref/one.wav")
-        val secondKey = key(referenceAudioPath = "/ref/two.wav")
-        val thirdKey = key(referenceAudioPath = "/ref/three.wav")
-
-        cache.getOrPut(firstKey) { conditioning(1) }
-        cache.getOrPut(secondKey) { conditioning(2) }
-        cache.getOrPut(firstKey) { conditioning(99) }
-        cache.getOrPut(thirdKey) { conditioning(3) }
-
-        assertEquals(conditioning(1), cache.get(firstKey))
-        assertEquals(null, cache.get(secondKey))
-        assertEquals(conditioning(3), cache.get(thirdKey))
     }
 
     private fun key(

@@ -63,7 +63,9 @@ class AudioPreview(private val context: Context, private val update: (PreviewSta
         state = PreviewState(path = path, preparing = true)
         update(state)
         runCatching {
-            player = MediaPlayer().apply {
+            val created = MediaPlayer()
+            player = created
+            created.apply {
                 setAudioAttributes(attributes)
                 setDataSource(path)
                 setOnPreparedListener {

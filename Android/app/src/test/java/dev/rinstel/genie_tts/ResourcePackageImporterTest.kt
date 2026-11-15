@@ -12,6 +12,27 @@ import org.junit.Test
 
 class ResourcePackageImporterTest {
     @Test
+    fun restoresEarlierCharacterWhenLaterReplacementFails() {
+        val root = java.nio.file.Files.createTempDirectory("genie-rollback-").toFile()
+        try {
+            val original = File(root, "CharacterModels/v2/Alice/tts_models/model.onnx").apply {
+                parentFile.mkdirs()
+                writeText("old")
+            }
+            // A file where a directory is needed makes the second move fail after Alice was replaced.
+            File(root, "CharacterModels/v2ProPlus").writeText("blocked")
+            assertThrows<java.io.IOException> {
+                ResourcePackageImporter(root).importCharacter(zipOf(listOf(
+                    "CharacterModels/v2/Alice/tts_models/model.onnx" to "new",
+                    "CharacterModels/v2ProPlus/Bob/tts_models/model.onnx" to "bob",
+                )))
+            }
+            assertEquals("old", original.readText())
+            assertFalse(root.listFiles().orEmpty().any { it.name.startsWith(".genie-import-") })
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test
     fun importsCompleteRuntimePackageIntoRuntimeAssets() {
         val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
         val importer = ResourcePackageImporter(filesRoot)

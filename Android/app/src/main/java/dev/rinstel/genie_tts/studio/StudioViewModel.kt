@@ -36,6 +36,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.nio.file.Files
 import java.util.UUID
 
 data class VoiceDraft(val id: String = UUID.randomUUID().toString(), val name: String = "",
@@ -129,6 +130,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val sourceText = if (ownRequest) pendingText else ""
             viewModelScope.launch {
                 val duration = withContext(Dispatchers.IO) { runCatching { duration(path) }.getOrDefault(0) }
+                if (handledOutput != path) return@launch
                 output = StudioOutput(path, name, sourceText, duration)
                 store.output = output
             }
@@ -164,32 +166,39 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun refreshResources() = viewModelScope.launch {
         loading = true
-        val data = withContext(Dispatchers.IO) {
-            val available = modelsRepository.discoverCharacterModels()
-                .filter { modelsRepository.inspect(it.modelFiles).isComplete }
-            val defaults = available.mapNotNull { model ->
-                runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
-                    StudioVoice("default:${model.relativeModelDirectory}", modelName(model),
-                        model.relativeModelDirectory, reference.audioFile.absolutePath,
-                        reference.audioFile.name, reference.referenceText.orEmpty(), builtIn = true, referenceLanguage = reference.language)
+        try {
+            val data = withContext(Dispatchers.IO) {
+                val available = modelsRepository.discoverCharacterModels()
+                    .filter { modelsRepository.inspect(it.modelFiles).isComplete }
+                val defaults = available.mapNotNull { model ->
+                    runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
+                        StudioVoice("default:${model.relativeModelDirectory}", modelName(model),
+                            model.relativeModelDirectory, reference.audioFile.absolutePath,
+                            reference.audioFile.name, reference.referenceText.orEmpty(), builtIn = true, referenceLanguage = reference.language)
+                    }
                 }
+                val voices = (defaults + store.voices()).map { voice ->
+                    if (voice.durationMs > 0) voice else voice.copy(
+                        durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
+                }
+                Triple(available, voices, runtimeRepository.inspect().isComplete)
             }
-            val voices = (defaults + store.voices()).map { voice ->
-                if (voice.durationMs > 0) voice else voice.copy(
-                    durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
+            models = data.first
+            voices = data.second.map { it.copy(referenceLanguage = store.referenceLanguage(it.id, it.referenceLanguage),
+                avatarPath = avatars.path(it.id)) }
+            runtimeReady = data.third
+            if (voices.none { it.id == selectedId }) {
+                selectedId = voices.firstOrNull()?.id.orEmpty()
+                store.selectedId = selectedId
             }
-            Triple(available, voices, runtimeRepository.inspect().isComplete)
+            syncDefaults()
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            Log.e("VoiceStudio", "Cannot load voices", error)
+            notify("音色加载失败，请检查本地资源后重试。")
+        } finally {
+            loading = false
         }
-        models = data.first
-        voices = data.second.map { it.copy(referenceLanguage = store.referenceLanguage(it.id, it.referenceLanguage),
-            avatarPath = avatars.path(it.id)) }
-        runtimeReady = data.third
-        if (voices.none { it.id == selectedId }) {
-            selectedId = voices.firstOrNull()?.id.orEmpty()
-            store.selectedId = selectedId
-        }
-        loading = false
-        syncDefaults()
     }
 
     fun changeOutputLanguage(language: String) {
@@ -275,11 +284,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 runCatching {
                     val picked = ReferenceAudioPicker(app).copyToAppCache(uri)
                     try {
-                        require(picked.cachedFile.length() <= 32L * 1024 * 1024) { "请选择不超过 32 MB 的参考音频。" }
                         val milliseconds = duration(picked.cachedFile.absolutePath)
                         require(milliseconds in 500..30_000) { "请选择 0.5 至 30 秒的音频，建议使用清晰的 3 至 10 秒人声。" }
                         val target = File(referenceRoot, "draft-${UUID.randomUUID()}.${picked.cachedFile.extension}")
-                        picked.cachedFile.copyTo(target)
+                        Files.move(picked.cachedFile.toPath(), target.toPath())
                         Triple(target.absolutePath, picked.displayName, milliseconds)
                     } finally { picked.cachedFile.delete() }
                 }

@@ -17,11 +17,24 @@ class ReferenceAudioPicker(
         val displayName = resolveDisplayName(uri)
         val cacheDirectory = File(context.cacheDir, "reference_audio").apply { mkdirs() }
         val outputFile = File(cacheDirectory, "${System.currentTimeMillis()}-$displayName")
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            outputFile.outputStream().use { output ->
-                input.copyTo(output)
-            }
-        } ?: error("Unable to open selected audio.")
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                outputFile.outputStream().use { output ->
+                    val buffer = ByteArray(64 * 1024)
+                    var total = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        total += count
+                        require(total <= 32L * 1024 * 1024) { "请选择不超过 32 MB 的参考音频。" }
+                        output.write(buffer, 0, count)
+                    }
+                }
+            } ?: error("Unable to open selected audio.")
+        } catch (error: Exception) {
+            outputFile.delete()
+            throw error
+        }
         return PickedReferenceAudio(
             cachedFile = outputFile,
             displayName = displayName,

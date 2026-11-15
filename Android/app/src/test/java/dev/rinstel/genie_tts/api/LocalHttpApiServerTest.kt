@@ -7,6 +7,7 @@ import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import java.io.File
 import java.net.ServerSocket
+import java.net.Socket
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,8 +27,27 @@ class LocalHttpApiServerTest {
             val status = LocalHttpApiServer.currentStatus()
             assertTrue(status.running)
             assertEquals(port, status.port)
+
+            // Repeated service start commands must keep the same listener alive.
+            val listener = LocalHttpApiServer::class.java.getDeclaredField("serverSocket").apply { isAccessible = true }
+            val socket = listener.get(server)
+            server.start(port)
+            org.junit.Assert.assertSame(socket, listener.get(server))
+
+            for (length in listOf("-1", "1048577", "invalid")) {
+                Socket("127.0.0.1", port).use { client ->
+                    client.soTimeout = 5000
+                    client.getOutputStream().write("POST /infer HTTP/1.1\r\nContent-Length: $length\r\n\r\n".toByteArray())
+                    assertTrue(client.getInputStream().bufferedReader().readLine().contains("400"))
+                }
+            }
+            Socket("127.0.0.1", port).use { client ->
+                client.soTimeout = 5000
+                client.getOutputStream().write("GET /health HTTP/1.1\r\n\r\n".toByteArray())
+                assertTrue(client.getInputStream().bufferedReader().readLine().contains("200"))
+            }
         } finally {
-            server.stop()
+            server.close()
         }
     }
 

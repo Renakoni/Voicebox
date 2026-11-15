@@ -6,6 +6,7 @@ import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.File
 import java.net.InetAddress
@@ -14,7 +15,9 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 class LocalHttpApiServer(
@@ -39,9 +42,10 @@ class LocalHttpApiServer(
     @Volatile
     private var acceptThread: Thread? = null
 
-    private val requestExecutor: ExecutorService = Executors.newCachedThreadPool()
+    private val requestExecutor: ExecutorService = ThreadPoolExecutor(0, 4, 60L, TimeUnit.SECONDS, SynchronousQueue())
 
     fun start(port: Int) {
+        if (serverSocket?.let { !it.isClosed && it.localPort == port } == true) return
         stop()
         if (port !in MIN_API_PORT..MAX_API_PORT) {
             updateStatus(
@@ -55,9 +59,9 @@ class LocalHttpApiServer(
         }
         try {
             val socket = ServerSocket()
+            serverSocket = socket
             socket.reuseAddress = true
             socket.bind(InetSocketAddress(InetAddress.getByName(LOOPBACK_ADDRESS), port))
-            serverSocket = socket
             updateStatus(ApiServerStatus(running = true, port = port))
             acceptThread = thread(
                 start = true,
@@ -66,12 +70,16 @@ class LocalHttpApiServer(
             ) {
                 while (!socket.isClosed) {
                     val client = runCatching { socket.accept() }.getOrNull() ?: break
-                    requestExecutor.execute {
-                        handleClient(client)
+                    try {
+                        requestExecutor.execute { runCatching { handleClient(client) } }
+                    } catch (_: java.util.concurrent.RejectedExecutionException) {
+                        client.close()
                     }
                 }
             }
         } catch (error: Throwable) {
+            runCatching { serverSocket?.close() }
+            serverSocket = null
             updateStatus(
                 ApiServerStatus(
                     running = false,
@@ -98,11 +106,7 @@ class LocalHttpApiServer(
 
     private fun handleClient(socket: Socket) {
         socket.use { client ->
-            if (!client.inetAddress.isLoopbackAddress) {
-                writeResponse(client, HttpResponse(403, errorJson("Loopback access only.")))
-                return
-            }
-
+            client.soTimeout = 10_000
             val request = runCatching { readRequest(client) }.getOrElse { error ->
                 writeResponse(client, HttpResponse(400, errorJson(error.message ?: "Bad request.")))
                 return
@@ -336,17 +340,23 @@ class LocalHttpApiServer(
         val queryString = rawPath.substringAfter('?', "")
         val queryParams = parseQueryParams(queryString)
         val headers = linkedMapOf<String, String>()
+        var headerBytes = 0
         while (true) {
             val line = readAsciiLine(input)
             if (line.isBlank()) {
                 break
             }
+            headerBytes += line.length
+            require(headerBytes <= 65_536) { "Request headers are too large." }
             val separator = line.indexOf(':')
             if (separator > 0) {
                 headers[line.substring(0, separator).trim().lowercase()] = line.substring(separator + 1).trim()
             }
         }
-        val contentLength = headers["content-length"]?.toIntOrNull()?.coerceAtLeast(0) ?: 0
+        val contentLength = headers["content-length"]?.let {
+            it.toIntOrNull() ?: error("Invalid Content-Length.")
+        } ?: 0
+        require(contentLength in 0..MAX_REQUEST_BYTES) { "Request body must be at most $MAX_REQUEST_BYTES bytes." }
         val bodyBytes = ByteArray(contentLength).also { DataInputStream(input).readFully(it) }
         return ParsedRequest(
             method = method,
@@ -404,7 +414,7 @@ class LocalHttpApiServer(
     }
 
     private fun readAsciiLine(input: BufferedInputStream): String {
-        val bytes = mutableListOf<Byte>()
+        val bytes = ByteArrayOutputStream()
         while (true) {
             val next = input.read()
             require(next >= 0) { "Unexpected end of stream." }
@@ -412,7 +422,8 @@ class LocalHttpApiServer(
                 break
             }
             if (next != '\r'.code) {
-                bytes += next.toByte()
+                require(bytes.size() < MAX_LINE_BYTES) { "Request line is too long." }
+                bytes.write(next)
             }
         }
         return String(bytes.toByteArray(), StandardCharsets.UTF_8)
@@ -437,6 +448,8 @@ class LocalHttpApiServer(
         private const val MIN_API_PORT = 1024
         private const val MAX_API_PORT = 65535
         private const val INFER_TIMEOUT_MS = 300_000L
+        private const val MAX_REQUEST_BYTES = 1024 * 1024
+        private const val MAX_LINE_BYTES = 8192
 
         @Volatile
         private var status: ApiServerStatus = ApiServerStatus(running = false, port = 0)

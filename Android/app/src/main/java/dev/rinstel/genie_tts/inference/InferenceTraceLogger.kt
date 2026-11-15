@@ -32,14 +32,6 @@ data class InferenceTraceRecord(
     val cacheStatus: InferenceCacheStatus = InferenceCacheStatus.NOT_APPLICABLE,
     val elapsedMs: Long? = null,
 ) {
-    init {
-        require(tensorShape?.all { it >= 0L } != false) {
-            "Trace tensor dimensions must be non-negative."
-        }
-        require(elapsedMs == null || elapsedMs >= 0L) {
-            "Trace elapsed time must be non-negative."
-        }
-    }
 
     fun toLogLine(): String = buildList {
         add("role=${modelRole.wireValue}")
@@ -51,63 +43,13 @@ data class InferenceTraceRecord(
 }
 
 interface InferenceTraceLogger {
+    val tensorDiagnostics: Boolean get() = false
     fun stage(name: String, elapsedMs: Long)
-
     fun event(event: InferenceTraceEvent)
 
     object None : InferenceTraceLogger {
-        override fun stage(name: String, elapsedMs: Long) {
-            requireAllowedStage(name, elapsedMs)
-        }
-
+        override fun stage(name: String, elapsedMs: Long) = Unit
         override fun event(event: InferenceTraceEvent) = Unit
-    }
-
-    companion object {
-        private val allowedStages = setOf(
-            "request_total_ms",
-            "generation_total_ms",
-            "model_inspection_ms",
-            "runtime_inspection_ms",
-            "model_install_ms",
-            "backend_initialization_ms",
-            "runtime_weights_ms",
-            "prepare_total_ms",
-            "backend_total_ms",
-            "write_wav_ms",
-            "text_frontend_init_ms",
-            "roberta_session_warmup_ms",
-            "text_features_ms",
-            "reference_text_features_ms",
-            "reference_conditioning_ms",
-            "prompt_conditioning_ms",
-            "reference_audio_load_ms",
-            "reference_audio_resample_16k_ms",
-            "reference_audio_cache_ms",
-            "reference_audio_cache_write_ms",
-            "hubert_ms",
-            "speaker_encoder_ms",
-            "prompt_encoder_ms",
-            "t2s_input_tensors_ms",
-            "t2s_session_preload_ms",
-            "t2s_encoder_ms",
-            "t2s_first_decoder_ms",
-            "decoder_loop_ms",
-            "semantic_tensor_ms",
-            "vocoder_input_tensors_ms",
-            "vocoder_session_ms",
-            "vocoder_ms",
-            "vits_encoder_ms",
-            "hifigan_ms",
-            "vocoder_output_copy_ms",
-            "session_cleanup_ms",
-        )
-        fun requireAllowedStage(name: String, elapsedMs: Long) {
-            require(name in allowedStages && elapsedMs >= 0L) {
-                "Trace stage metadata is not allowlisted."
-            }
-        }
-
     }
 }
 
@@ -123,11 +65,6 @@ interface InferenceTensorMetricName {
 data class NamedInferenceTensorMetric(
     override val wireValue: String,
 ) : InferenceTensorMetricName {
-    init {
-        require(wireValue.matches(Regex("[a-z][a-z0-9_]*_hash"))) {
-            "Trace tensor metric names must be lowercase hash fields."
-        }
-    }
 }
 
 enum class InferenceTensorMetric(override val wireValue: String) : InferenceTensorMetricName {
@@ -166,24 +103,14 @@ sealed interface InferenceTraceEvent {
     }
 
     data class TensorCount(val metric: InferenceTensorMetric, val value: Long) : InferenceTraceEvent {
-        init { require(value >= 0L) { "Trace tensor count must be non-negative." } }
         override fun toLogLine(): String = "${metric.wireValue}: $value"
     }
 
     data class TensorShape(val metric: InferenceTensorMetric, val value: LongArray) : InferenceTraceEvent {
-        init { require(value.all { it >= 0L }) { "Trace tensor dimensions must be non-negative." } }
         override fun toLogLine(): String = "${metric.wireValue}: ${value.contentToString()}"
     }
 
     data class TensorHash(val metric: InferenceTensorMetricName, val value: String) : InferenceTraceEvent {
-        init {
-            require(metric.wireValue.endsWith("_hash")) {
-                "Trace hashes are only allowed for tensor hash metrics."
-            }
-            require(value.matches(Regex("[0-9a-f]{64}"))) {
-                "Trace tensor hash must be a SHA-256 hexadecimal value."
-            }
-        }
 
         override fun toLogLine(): String = "${metric.wireValue}: $value"
     }
@@ -196,20 +123,6 @@ sealed interface InferenceTraceEvent {
         val max: Float?,
         val mean: Double?,
     ) : InferenceTraceEvent {
-        init {
-            require(metric.wireValue.endsWith("_hash")) {
-                "Trace statistics require a float tensor hash metric."
-            }
-            require(finiteCount >= 0L && nonFiniteCount >= 0L) {
-                "Trace statistics counts must be non-negative."
-            }
-            require((min == null) == (max == null) && (min == null) == (mean == null)) {
-                "Trace statistics summaries must be present together."
-            }
-            require(min == null || min!!.isFinite())
-            require(max == null || max!!.isFinite())
-            require(mean == null || mean.isFinite())
-        }
 
         override fun toLogLine(): String {
             val name = metric.wireValue.removeSuffix("_hash")
@@ -237,9 +150,6 @@ sealed interface InferenceTraceEvent {
         val totalMemoryMiB: Long,
         val availableMemoryMiB: Long,
     ) : InferenceTraceEvent {
-        init {
-            require(totalMemoryMiB >= 0L && availableMemoryMiB >= 0L)
-        }
 
         override fun toLogLine(): String =
             "session_cache: role=${role.wireValue} retained=$retained " +
@@ -254,8 +164,10 @@ sealed interface InferenceTraceEvent {
 class LogcatInferenceTraceLogger(
     private val tag: String = TAG,
 ) : InferenceTraceLogger {
+    // Enable tensor diagnostics explicitly with: adb shell setprop log.tag.GenieTtsTiming DEBUG
+    override val tensorDiagnostics: Boolean get() = Log.isLoggable(tag, Log.DEBUG)
+
     override fun stage(name: String, elapsedMs: Long) {
-        InferenceTraceLogger.requireAllowedStage(name, elapsedMs)
         Log.i(tag, "$name=$elapsedMs ms")
     }
 
@@ -272,8 +184,10 @@ class InferenceTimer(
     private val logger: InferenceTraceLogger,
     private val clockNanos: () -> Long = System::nanoTime,
 ) {
+    val tensorDiagnostics: Boolean = logger.tensorDiagnostics
+
     fun <T> measure(name: String, block: () -> T): T {
-        InferenceTraceLogger.requireAllowedStage(name, 0L)
+        if (logger === InferenceTraceLogger.None) return block()
         val start = clockNanos()
         try {
             return block()
@@ -297,6 +211,7 @@ fun InferenceTimer.traceFloatTensor(
     metric: InferenceTensorMetricName,
     values: FloatArray,
 ) {
+    if (!tensorDiagnostics) return
     val summary = InferenceTraceHash.floatSummary(values)
     event(InferenceTraceEvent.TensorHash(metric, summary.hash))
     event(
@@ -309,4 +224,8 @@ fun InferenceTimer.traceFloatTensor(
             mean = summary.mean,
         ),
     )
+}
+
+fun InferenceTimer.traceLongTensor(metric: InferenceTensorMetricName, values: LongArray) {
+    if (tensorDiagnostics) event(InferenceTraceEvent.TensorHash(metric, InferenceTraceHash.sha256(values)))
 }

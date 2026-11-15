@@ -19,84 +19,14 @@ class OrtSessionRuntime(
         }
 
     private var runtimeFeatureExtractor: OrtRuntimeFeatureExtractor? = null
-    private var initializedModelId: String? = null
+    private var initializedModelDirectory: String? = null
     private var runtimePrepared = false
 
     override fun generate(
         request: GenerationRequest,
         callbacks: BackendRuntimeCallbacks,
     ): GeneratedAudioFile {
-        val timer = InferenceTimer(traceLogger)
-        callbacks.onStage(
-            GenerationStage.INSPECTING_RESOURCES,
-            "inspecting",
-            GenerationProgress.RESOURCE_INSPECTION,
-            "Inspecting resources",
-        )
-        val modelInspection = timer.measure("model_inspection_ms") {
-            modelRepository.inspect(request.characterModel.modelFiles)
-        }
-        require(modelInspection.isComplete) {
-            "Missing model files: ${modelInspection.missingFiles.joinToString(", ")}"
-        }
-
-        val runtimeInspection = timer.measure("runtime_inspection_ms") {
-            runtimeRepository.inspect()
-        }
-        require(runtimeInspection.isComplete) {
-            "Missing runtime files: ${runtimeInspection.missingFiles.joinToString(", ")}"
-        }
-
-        if (!backendEngine.isInitialized() || initializedModelId != request.characterModel.id) {
-            callbacks.onStage(
-                GenerationStage.INSTALLING_MODEL,
-                "installing_model",
-                GenerationProgress.MODEL_INSTALL,
-                "Preparing model",
-            )
-            timer.measure("model_install_ms") {
-                modelRepository.installToPrivateStorage(request.characterModel.modelFiles) { done, total ->
-                    callbacks.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Unpacking weights $done/$total")
-                }
-            }
-
-            callbacks.onStage(
-                GenerationStage.INITIALIZING_BACKEND,
-                "initializing_backend",
-                GenerationProgress.BACKEND_INITIALIZATION,
-                "Initializing backend",
-            )
-            timer.measure("backend_initialization_ms") {
-                backendEngine.initialize(modelRepository.modelRootDirectory(), request.characterModel)
-            }
-            initializedModelId = request.characterModel.id
-        }
-
-        if (!runtimePrepared) {
-            callbacks.onStage(
-                GenerationStage.PREPARING_FEATURES,
-                "preparing_runtime",
-                GenerationProgress.FEATURE_PREPARATION_START,
-                "Preparing runtime",
-            )
-            timer.measure("runtime_weights_ms") {
-                runtimeRepository.prepareRuntimeWeights { done, total ->
-                    callbacks.onStage(GenerationStage.PREPARING_FEATURES, "preparing_runtime", null, "Unpacking weights $done/$total")
-                }
-            }
-            runtimePrepared = true
-        } else {
-            callbacks.onStage(
-                GenerationStage.PREPARING_FEATURES,
-                "preparing_features",
-                GenerationProgress.FEATURE_PREPARATION_START,
-                "Preparing features",
-            )
-        }
-
-        val featureExtractor = runtimeFeatureExtractor ?: featureExtractorFactory(backendEngine).also {
-            runtimeFeatureExtractor = it
-        }
+        val featureExtractor = prepareResources(request, callbacks)
 
         val result = try {
             backendEngine.runtimeCallbacks = callbacks
@@ -118,39 +48,7 @@ class OrtSessionRuntime(
 
     override fun warmup(request: GenerationRequest) {
         val timer = InferenceTimer(traceLogger)
-        val characterModel = request.characterModel
-        val modelInspection = timer.measure("model_inspection_ms") {
-            modelRepository.inspect(characterModel.modelFiles)
-        }
-        require(modelInspection.isComplete) {
-            "Missing model files: ${modelInspection.missingFiles.joinToString(", ")}"
-        }
-        val runtimeInspection = timer.measure("runtime_inspection_ms") {
-            runtimeRepository.inspect()
-        }
-        require(runtimeInspection.isComplete) {
-            "Missing runtime files: ${runtimeInspection.missingFiles.joinToString(", ")}"
-        }
-
-        if (!backendEngine.isInitialized() || initializedModelId != characterModel.id) {
-            timer.measure("model_install_ms") {
-                modelRepository.installToPrivateStorage(characterModel.modelFiles)
-            }
-            timer.measure("backend_initialization_ms") {
-                backendEngine.initialize(modelRepository.modelRootDirectory(), characterModel)
-            }
-            initializedModelId = characterModel.id
-        }
-        if (!runtimePrepared) {
-            timer.measure("runtime_weights_ms") {
-                runtimeRepository.prepareRuntimeWeights()
-            }
-            runtimePrepared = true
-        }
-
-        val featureExtractor = runtimeFeatureExtractor ?: featureExtractorFactory(backendEngine).also {
-            runtimeFeatureExtractor = it
-        }
+        val featureExtractor = prepareResources(request)
         timer.measure("prepare_total_ms") {
             featureExtractor.warmup(request)
         }
@@ -164,11 +62,45 @@ class OrtSessionRuntime(
         }
     }
 
+    private fun prepareResources(request: GenerationRequest, callbacks: BackendRuntimeCallbacks? = null): OrtRuntimeFeatureExtractor {
+        val timer = InferenceTimer(traceLogger)
+        val model = request.characterModel
+        request.context.checkCancelled()
+        if (!backendEngine.isInitialized() || initializedModelDirectory != model.relativeModelDirectory) {
+            callbacks?.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Preparing model")
+            timer.measure("model_install_ms") {
+                modelRepository.installToPrivateStorage(model.modelFiles) { done, total ->
+                    request.context.checkCancelled()
+                    callbacks?.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Unpacking weights $done/$total")
+                }
+            }
+            callbacks?.onStage(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null, "Initializing backend")
+            timer.measure("backend_initialization_ms") {
+                backendEngine.initialize(modelRepository.modelRootDirectory(), model)
+            }
+            initializedModelDirectory = model.relativeModelDirectory
+        }
+        if (!runtimePrepared) {
+            val inspection = timer.measure("runtime_inspection_ms") { runtimeRepository.inspect() }
+            require(inspection.isComplete) { "Missing runtime files: ${inspection.missingFiles.joinToString(", ")}" }
+            timer.measure("runtime_weights_ms") {
+                runtimeRepository.prepareRuntimeWeights { done, total ->
+                    request.context.checkCancelled()
+                    callbacks?.onStage(GenerationStage.PREPARING_FEATURES, "preparing_runtime", null, "Unpacking weights $done/$total")
+                }
+            }
+            runtimePrepared = true
+        }
+        request.context.checkCancelled()
+        callbacks?.onStage(GenerationStage.PREPARING_FEATURES, "preparing_features", null, "Preparing features")
+        return runtimeFeatureExtractor ?: featureExtractorFactory(backendEngine).also { runtimeFeatureExtractor = it }
+    }
+
     override fun close() {
         runtimeFeatureExtractor?.close()
         runtimeFeatureExtractor = null
         backendEngine.close()
-        initializedModelId = null
+        initializedModelDirectory = null
         runtimePrepared = false
     }
 

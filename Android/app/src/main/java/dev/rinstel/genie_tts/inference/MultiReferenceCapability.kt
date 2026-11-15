@@ -31,11 +31,6 @@ data class MultiReferenceCapability(
         require(supported) { "The loaded model does not support auxiliary references." }
     }
 
-    /** Backward-compatible alias for callers that validate auxiliary paths. */
-    fun validate(auxiliaryReferenceAudioPaths: List<String>) {
-        validateAuxiliaryReferencePaths(auxiliaryReferenceAudioPaths)
-    }
-
     val maxAuxiliaryReferenceCount: Int
         get() = (maxReferenceCount - 1).coerceAtLeast(0)
 
@@ -83,7 +78,6 @@ data class MultiReferenceCapability(
             )
         }
 
-        private val REQUIRED_INPUTS = setOf("ref_audio", "sv_emb")
         private val REQUIRED_OUTPUTS = setOf("ge", "ge_advanced")
         private const val REFERENCE_COUNT_INPUT = "reference_count"
     }

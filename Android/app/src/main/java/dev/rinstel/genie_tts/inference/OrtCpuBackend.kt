@@ -98,14 +98,16 @@ class OrtCpuBackend(
         )
         val optimized = OptimizedDecoderAssets.resolve(modelDirectory,
             sharedCacheAllowed = useNativeDecoder && NativeDecoderLoop.isAvailable())
+        val resolvedFiles = linkedMapOf<String, File>()
         for (modelName in sessionModelNames) {
             val modelFile = optimized[modelName] ?: File(modelDirectory, modelName)
-            require(modelFile.exists()) { "Model file not found: ${modelFile.absolutePath}" }
-            sessionFiles[modelName] = modelFile
+            require(modelFile.isFile) { "Model file not found: ${modelFile.absolutePath}" }
+            resolvedFiles[modelName] = modelFile
         }
         if (backend == ExecutionBackend.WEBGPU) {
-            SplitVocoderAssets.validate(modelDirectory).forEach { sessionFiles[it] = File(modelDirectory, it) }
+            SplitVocoderAssets.validate(modelDirectory).forEach { resolvedFiles[it] = File(modelDirectory, it) }
         }
+        sessionFiles.putAll(resolvedFiles)
         modelFiles = characterModel.modelFiles
 
         // Do not create any sessions here. RoBERTa, HuBERT, speaker encoder,
@@ -155,14 +157,12 @@ class OrtCpuBackend(
         try {
             val t2sInputs = timer.measure("t2s_input_tensors_ms") {
                 arrayOf(
-                    createLongTensor(input.refSeq),
-                    createLongTensor(input.textSeq),
-                    createFloatTensor(input.refBert),
-                    createFloatTensor(input.textBert),
-                    createFloatTensor(input.sslContent),
-                ).also { tensors ->
-                    ownedTensors.addAll(tensors.asList())
-                }
+                    createLongTensor(input.refSeq).also(ownedTensors::add),
+                    createLongTensor(input.textSeq).also(ownedTensors::add),
+                    createFloatTensor(input.refBert).also(ownedTensors::add),
+                    createFloatTensor(input.textBert).also(ownedTensors::add),
+                    createFloatTensor(input.sslContent).also(ownedTensors::add),
+                )
             }
             val refSeq = t2sInputs[0]
             val textSeq = t2sInputs[1]
@@ -208,7 +208,6 @@ class OrtCpuBackend(
                 NativeDecoderLoop.isAvailable()
             val predSemantic = if (nativeDecoderAvailable) {
                 val firstDecoderResult = requireNotNull(previousDecoderResult)
-                previousDecoderResult = null
 
                 val yTensor = firstDecoderResult.get(0) as OnnxTensor
                 val yData = LongArray(yTensor.info.numElements.toInt())
@@ -231,6 +230,7 @@ class OrtCpuBackend(
                     tensor.floatBuffer.get(kvData, index * kvElements, kvElements)
                 }
                 firstDecoderResult.close()
+                previousDecoderResult = null
 
                 val outputMapping = IntArray(stageInputNames.size) { index ->
                     if (stageInputNames[index] == "cache_length") -1 else if (index < 2) index else index + 1
@@ -357,15 +357,10 @@ class OrtCpuBackend(
             }
 
             val vocoderInputs = timer.measure("vocoder_input_tensors_ms") {
+                timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.SEMANTIC_TOKENS, predSemantic.info.numElements))
+                timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.SEMANTIC_SHAPE, predSemantic.info.shape))
+                if (timer.tensorDiagnostics) timer.traceLongTensor(InferenceTensorMetric.SEMANTIC_HASH, longTensorValues(predSemantic))
                 if (hasPromptEncoder()) {
-                    timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.SEMANTIC_TOKENS, predSemantic.info.numElements))
-                    timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.SEMANTIC_SHAPE, predSemantic.info.shape))
-                    timer.event(
-                        InferenceTraceEvent.TensorHash(
-                            InferenceTensorMetric.SEMANTIC_HASH,
-                            InferenceTraceHash.sha256(longTensorValues(predSemantic)),
-                        ),
-                    )
                     val ge = createFloatTensor(input.globalEmbedding).also(ownedTensors::add)
                     val geAdvanced = createFloatTensor(input.advancedGlobalEmbedding).also(ownedTensors::add)
                     mapOf(
@@ -375,14 +370,6 @@ class OrtCpuBackend(
                         "ge_advanced" to geAdvanced,
                     )
                 } else {
-                    timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.SEMANTIC_TOKENS, predSemantic.info.numElements))
-                    timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.SEMANTIC_SHAPE, predSemantic.info.shape))
-                    timer.event(
-                        InferenceTraceEvent.TensorHash(
-                            InferenceTensorMetric.SEMANTIC_HASH,
-                            InferenceTraceHash.sha256(longTensorValues(predSemantic)),
-                        ),
-                    )
                     val refAudio = createFloatTensor(
                         requireNotNull(input.refAudio32k) { "V2 vocoder requires refAudio32k in TtsPreparedInput." }
                     ).also(ownedTensors::add)
@@ -539,9 +526,8 @@ class OrtCpuBackend(
             FloatBuffer.wrap(refAudio32k),
             longArrayOf(1L, refAudio32k.size.toLong()),
         )
-        val svEmbedding = createFloatTensor(speakerEmbedding)
         refAudio.use {
-            svEmbedding.use {
+            createFloatTensor(speakerEmbedding).use { svEmbedding ->
                 session(modelName).runCancellable(
                     mapOf(
                         "ref_audio" to refAudio,

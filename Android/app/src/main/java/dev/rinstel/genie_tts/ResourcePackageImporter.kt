@@ -95,7 +95,8 @@ class ResourcePackageImporter(
             val stats = extractZip(input, stagingRoot, expectedRoot)
             install(stagingRoot, stats)
         } finally {
-            stagingRoot.deleteRecursively()
+            // A failed rollback may leave the only working copy here.
+            if (File(stagingRoot, BACKUP_DIRECTORY).listFiles().isNullOrEmpty()) stagingRoot.deleteRecursively()
         }
     }
 

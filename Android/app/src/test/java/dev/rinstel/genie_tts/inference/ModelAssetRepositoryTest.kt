@@ -4,11 +4,27 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 
 class ModelAssetRepositoryTest {
+    @Test
+    fun rebuildsTruncatedExpandedWeights() {
+        val root = java.nio.file.Files.createTempDirectory("genie-partial-").toFile()
+        try {
+            val files = RequiredModelFiles("test", "test", "model.onnx", listOf("weights.bin"),
+                derivedFiles = listOf(DerivedModelFile("weights.fp16", "weights.bin")))
+            val directory = File(root, "CharacterModels/test").apply { mkdirs() }
+            File(directory, "model.onnx").writeBytes(byteArrayOf(0))
+            File(directory, "weights.fp16").writeBytes(byteArrayOf(0, 0x3c))
+            val output = File(directory, "weights.bin").apply { writeBytes(byteArrayOf(0)) }
+
+            ModelAssetRepository(root).installToPrivateStorage(files)
+
+            org.junit.Assert.assertArrayEquals(byteArrayOf(0, 0, 0x80.toByte(), 0x3f), output.readBytes())
+        } finally { root.deleteRecursively() }
+    }
+
     @Test
     fun discoversOriginalCheckpointFilenamesAndDoesNotInventLegacyNames() {
         val root = java.nio.file.Files.createTempDirectory("genie-filenames-").toFile()
@@ -107,83 +123,22 @@ class ModelAssetRepositoryTest {
     }
 
     @Test
-    fun rejectsPromptJsonWithoutNormalInsteadOfPickingAnotherEmotion() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val promptDirectory = File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav").apply { mkdirs() }
-        File(promptDirectory, "angry.wav").writeBytes(byteArrayOf(0))
-        File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav.json").writeText(
-            """
-            {
-              "Angry": {
-                "wav": "angry.wav",
-                "text": "angry text"
-              }
+    fun rejectsInvalidReferenceMetadataInsteadOfPickingFirstAudio() {
+        val root = java.nio.file.Files.createTempDirectory("genie-reference-").toFile()
+        try {
+            val directory = File(root, "CharacterModels/v2ProPlus/mansui").apply { mkdirs() }
+            File(directory, "prompt_wav/normal.wav").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(0)) }
+            val json = File(directory, "prompt_wav.json")
+            for (content in listOf(null, "{", """{"Angry":{"wav":"normal.wav","text":"angry"}}""",
+                """{"Normal":{"wav":"normal.wav","text":"   "}}""",
+                """{"Normal":{"wav":"missing.wav","text":"reference"}}""")) {
+                if (content == null) json.delete() else json.writeText(content)
+                val error = runCatching {
+                    ModelAssetRepository(root).findReferenceExample(modelV2ProPlus("mansui"))
+                }.exceptionOrNull()
+                assertTrue("Expected invalid reference to fail: $content", error is IllegalArgumentException)
             }
-            """.trimIndent(),
-        )
-
-        try {
-            ModelAssetRepository(filesRoot).findReferenceExample(modelV2ProPlus("mansui"))
-            fail("Missing Normal reference must be reported")
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("Normal"))
-        }
-    }
-
-    @Test
-    fun rejectsMalformedPromptJsonInsteadOfPickingFirstAudio() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val promptDirectory = File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav").apply { mkdirs() }
-        File(promptDirectory, "angry.wav").writeBytes(byteArrayOf(0))
-        File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav.json").writeText(
-            "{ \"Angry\": { \"wav\": \"angry.wav\" }",
-        )
-
-        try {
-            ModelAssetRepository(filesRoot).findReferenceExample(modelV2ProPlus("mansui"))
-            fail("Malformed prompt JSON must be reported")
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("prompt_wav.json"))
-        }
-    }
-
-    @Test
-    fun rejectsNormalReferenceWithBlankText() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val promptDirectory = File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav").apply { mkdirs() }
-        File(promptDirectory, "normal.wav").writeBytes(byteArrayOf(0))
-        File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav.json").writeText(
-            """
-            {
-              "Normal": {
-                "wav": "normal.wav",
-                "text": "   "
-              }
-            }
-            """.trimIndent(),
-        )
-
-        try {
-            ModelAssetRepository(filesRoot).findReferenceExample(modelV2ProPlus("mansui"))
-            fail("Blank Normal reference text must be reported")
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("Normal reference"))
-        }
-    }
-
-    @Test
-    fun rejectsMissingPromptJsonInsteadOfPickingFirstAudio() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val promptDirectory = File(filesRoot, "CharacterModels/v2ProPlus/mansui/prompt_wav").apply { mkdirs() }
-        val wavFile = File(promptDirectory, "001-reference text.wav")
-        wavFile.writeBytes(byteArrayOf(0))
-
-        try {
-            ModelAssetRepository(filesRoot).findReferenceExample(modelV2ProPlus("mansui"))
-            fail("Missing prompt_wav.json must be reported")
-        } catch (error: IllegalArgumentException) {
-            assertTrue(error.message.orEmpty().contains("prompt_wav.json"))
-        }
+        } finally { root.deleteRecursively() }
     }
 
     @Test

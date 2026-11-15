@@ -73,22 +73,4 @@ class DefaultTextFeatureExtractorTest {
         assertTrue(features.symbols.contains("zh"))
     }
 
-    @Test
-    fun rejectsNonChineseRequestsUntilOriginalFrontendIsPackaged() {
-        val extractor = DefaultTextFeatureExtractor(
-            chinese = ChineseTextFeatureExtractor(
-                ChineseG2pResources(
-                    polyphonicPinyin = emptyMap(),
-                    opencpopByPinyin = emptyMap(),
-                    singleCharPinyin = emptyMap(),
-                ),
-            ),
-            fallback = UnsupportedLanguageTextFeatureExtractor(),
-        )
-
-        val error = assertThrows(UnsupportedOperationException::class.java) {
-            extractor.extract("en", "test")
-        }
-        assertTrue(error.message.orEmpty().contains("not migrated"))
-    }
 }

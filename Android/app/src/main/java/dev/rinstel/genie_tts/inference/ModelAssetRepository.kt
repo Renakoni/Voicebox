@@ -38,10 +38,8 @@ class ModelAssetRepository private constructor(
         return result.map { model ->
             val character = File(modelRoot, model.relativeModelDirectory).parentFile
             val imported = runCatching { JSONObject(File(character, "checkpoint-import.json").readText()) }.getOrNull()
-            val displayName = listOf("prompt_wav.json", "checkpoint-import.json").firstNotNullOfOrNull { name ->
-                runCatching { JSONObject(File(character, name).readText()).optString("display_name") }
-                    .getOrNull()?.takeIf { it.isNotBlank() }
-            }
+            val displayName = runCatching { JSONObject(File(character, "prompt_wav.json").readText()).optString("display_name") }
+                .getOrNull()?.takeIf { it.isNotBlank() } ?: imported?.optString("display_name")
             model.copy(displayName = displayName?.takeIf { it.isNotBlank() } ?: model.displayName,
                 gptFilename = imported?.optString("gpt_filename").orEmpty(),
                 sovitsFilename = imported?.optString("sovits_filename").orEmpty())
@@ -50,16 +48,14 @@ class ModelAssetRepository private constructor(
 
     fun inspect(requiredModelFiles: RequiredModelFiles): ModelInspectionResult {
         val modelDirectory = File(modelRoot, requiredModelFiles.assetSubdirectory)
-        val present = modelDirectory.list()?.toSet().orEmpty()
         val missingFiles = requiredModelFiles.files.filterNot { fileName ->
-            present.contains(fileName) ||
+            File(modelDirectory, fileName).isFile ||
                 requiredModelFiles.derivedFiles.any { d ->
-                    d.outputFile == fileName && present.contains(d.sourceFile)
+                    d.outputFile == fileName && File(modelDirectory, d.sourceFile).isFile
                 }
         }
         val missingSessionModels = missingSessionModels(modelDirectory, requiredModelFiles)
         return ModelInspectionResult(
-            presentFiles = present,
             missingFiles = missingFiles + missingSessionModels,
         )
     }
@@ -69,32 +65,19 @@ class ModelAssetRepository private constructor(
         if (!targetDirectory.exists()) {
             targetDirectory.mkdirs()
         }
-        val versionFile = File(targetDirectory, ".genie-model-version")
-        val expectedVersion = requiredModelFiles.storageVersion.toString()
-        if (versionFile.exists() && versionFile.readText() == expectedVersion) {
-            val present = targetDirectory.list()?.toSet().orEmpty()
-            if (requiredModelFiles.files.all(present::contains) &&
-                missingSessionModels(targetDirectory, requiredModelFiles).isEmpty()
-            ) {
-                return targetDirectory
-            }
-        }
-
-        val present = targetDirectory.list()?.toSet().orEmpty()
         requiredModelFiles.files.forEach { fileName ->
             val targetFile = File(targetDirectory, fileName)
-            if (targetFile.exists()) return@forEach
-
             val derivedFile = requiredModelFiles.derivedFiles.firstOrNull { it.outputFile == fileName }
             if (derivedFile != null) {
                 val sourceFile = File(targetDirectory, derivedFile.sourceFile)
-                if (sourceFile.exists()) {
-                    HalfPrecisionFileConverter.convertFp16FileToFp32File(sourceFile, targetFile, progress)
+                if (sourceFile.isFile) {
+                    if (!targetFile.isFile || targetFile.length() != sourceFile.length() * 2L) {
+                        HalfPrecisionFileConverter.convertFp16FileToFp32File(sourceFile, targetFile, progress)
+                    }
                     return@forEach
                 }
             }
-
-            require(false) { "Missing model file: ${targetDirectory.absolutePath}/$fileName" }
+            require(targetFile.isFile) { "Missing model file: ${targetDirectory.absolutePath}/$fileName" }
         }
 
         val missingSessionModels = missingSessionModels(targetDirectory, requiredModelFiles)
@@ -102,7 +85,6 @@ class ModelAssetRepository private constructor(
             "Missing model file: ${targetDirectory.absolutePath}/${missingSessionModels.first()}"
         }
 
-        versionFile.writeText(expectedVersion)
         return targetDirectory
     }
 
@@ -149,6 +131,6 @@ class ModelAssetRepository private constructor(
         requiredModelFiles: RequiredModelFiles,
     ): List<String> =
         requiredModelFiles.sessionModelNames(modelDirectory).filterNot { fileName ->
-            File(modelDirectory, fileName).exists()
+            File(modelDirectory, fileName).isFile
         }
 }

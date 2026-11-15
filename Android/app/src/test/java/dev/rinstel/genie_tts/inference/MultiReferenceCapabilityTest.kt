@@ -26,10 +26,10 @@ class MultiReferenceCapabilityTest {
         assertTrue(capability.supported)
         assertEquals(3, capability.maxReferenceCount)
         assertEquals(2048, capability.placeholderAudioSamples)
-        capability.validate(listOf("one.wav", "two.wav"))
+        capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav"))
         var tooManyFailed = false
         try {
-            capability.validate(listOf("one.wav", "two.wav", "three.wav"))
+            capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav", "three.wav"))
         } catch (_: IllegalArgumentException) {
             tooManyFailed = true
         }
@@ -58,7 +58,7 @@ class MultiReferenceCapabilityTest {
         assertFalse(capability.supported)
         var failed = false
         try {
-            capability.validate(listOf("aux.wav"))
+            capability.validateAuxiliaryReferencePaths(listOf("aux.wav"))
         } catch (_: IllegalArgumentException) {
             failed = true
         }
@@ -74,7 +74,7 @@ class MultiReferenceCapabilityTest {
 
         var blankFailed = false
         try {
-            capability.validate(listOf(""))
+            capability.validateAuxiliaryReferencePaths(listOf(""))
         } catch (_: IllegalArgumentException) {
             blankFailed = true
         }
@@ -82,7 +82,7 @@ class MultiReferenceCapabilityTest {
 
         var duplicateFailed = false
         try {
-            capability.validate(listOf("same.wav", "same.wav"))
+            capability.validateAuxiliaryReferencePaths(listOf("same.wav", "same.wav"))
         } catch (_: IllegalArgumentException) {
             duplicateFailed = true
         }

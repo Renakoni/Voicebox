@@ -182,17 +182,9 @@ class GenieBackendService : Service() {
         return START_STICKY
     }
 
-    override fun onTimeout(startId: Int) {
-        Log.w(TIMING_LOG_TAG, "Foreground service timed out (dataSync 6h limit). Restarting with specialUse type.")
-        startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
-    }
-
     private fun startForegroundCompat(id: Int, notification: android.app.Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            startForeground(id, notification, type)
+            startForeground(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
         } else {
             startForeground(id, notification)
         }
@@ -712,16 +704,8 @@ class GenieBackendService : Service() {
     private fun logPowerState() {
         val powerManager = getSystemService(PowerManager::class.java)
         val powerSaveMode = powerManager?.isPowerSaveMode ?: false
-        val idleMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            powerManager?.isDeviceIdleMode ?: false
-        } else {
-            false
-        }
-        val ignoringBatteryOptimizations = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
-        } else {
-            true
-        }
+        val idleMode = powerManager?.isDeviceIdleMode ?: false
+        val ignoringBatteryOptimizations = powerManager?.isIgnoringBatteryOptimizations(packageName) ?: false
         Log.i(
             TIMING_LOG_TAG,
             "power_state: powerSave=$powerSaveMode deviceIdle=$idleMode ignoringBatteryOptimizations=$ignoringBatteryOptimizations",
@@ -862,9 +846,6 @@ class GenieBackendService : Service() {
             .build()
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return
-        }
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             NOTIFICATION_CHANNEL_ID,

@@ -8,6 +8,18 @@ import org.junit.rules.TemporaryFolder
 class HalfPrecisionFileConverterTest {
     @get:Rule val folder = TemporaryFolder()
 
+    @Test fun interruptedConversionPreservesPreviousOutputAndRemovesTemporaryFile() {
+        val source = folder.newFile("source.bin").apply { writeBytes(ByteArray(1024 * 1024 + 2)) }
+        val output = folder.newFile("output.bin").apply { writeText("keep") }
+        assertThrows(IllegalStateException::class.java) {
+            HalfPrecisionFileConverter.convertFp16FileToFp32File(source, output) { done, _ ->
+                if (done > 0) error("cancel")
+            }
+        }
+        assertEquals("keep", output.readText())
+        assertEquals(setOf("source.bin", "output.bin"), folder.root.list()!!.toSet())
+    }
+
     @Test fun progressCountsInputBytesAndDoesNotChangeConvertedWeights() {
         val source = folder.newFile("weights.fp16")
         val bytes = ByteArray(1024 * 1024 + 2) { if (it % 2 == 0) 0 else 0x3c }

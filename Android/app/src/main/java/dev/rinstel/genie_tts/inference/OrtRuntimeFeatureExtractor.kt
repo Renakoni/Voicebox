@@ -181,12 +181,7 @@ class OrtRuntimeFeatureExtractor(
                 GenerationProgress.TEXT_FEATURES_COMPLETE,
                 "Reference conditioning",
             )
-            timer.event(
-                InferenceTraceEvent.TensorHash(
-                    InferenceTensorMetric.TEXT_SEQ_HASH,
-                    InferenceTraceHash.sha256(textFeatures.phoneIds.values),
-                ),
-            )
+            timer.traceLongTensor(InferenceTensorMetric.TEXT_SEQ_HASH, textFeatures.phoneIds.values)
             timer.traceFloatTensor(InferenceTensorMetric.TEXT_BERT_HASH, textFeatures.bert.values)
 
             // Keep semantic/reference features independent from the ordered auxiliary bundle.
@@ -195,11 +190,6 @@ class OrtRuntimeFeatureExtractor(
                     if (cacheHit) InferenceCacheStatus.HIT else InferenceCacheStatus.MISS,
                 ),
             )
-            if (!cacheHit) {
-                timer.measure("runtime_weights_ms") {
-                    runtimeAssets.prepareRuntimeWeights()
-                }
-            }
             backend.reportProgress(
                 GenerationStage.PREPARING_FEATURES,
                 "preparing_features",
@@ -213,12 +203,7 @@ class OrtRuntimeFeatureExtractor(
                     val refFeatures = timer.measure("reference_text_features_ms") {
                         textFeatureExtractor.extract(normalizedPromptLanguage, request.referenceText)
                     }
-                    timer.event(
-                        InferenceTraceEvent.TensorHash(
-                            InferenceTensorMetric.REF_SEQ_HASH,
-                            InferenceTraceHash.sha256(refFeatures.phoneIds.values),
-                        ),
-                    )
+                    timer.traceLongTensor(InferenceTensorMetric.REF_SEQ_HASH, refFeatures.phoneIds.values)
                     timer.traceFloatTensor(InferenceTensorMetric.REF_BERT_HASH, refFeatures.bert.values)
                     // Keep RoBERTa warm only under the memory policy above. When
                     // it is not retained, close it before the audio feature models.
@@ -337,7 +322,6 @@ class OrtRuntimeFeatureExtractor(
 
     private fun ensureHubertSession() {
         if (hubertSession == null) {
-            runtimeAssets.prepareRuntimeWeights()
             val options = OrtSession.SessionOptions()
             try {
                 backend.applySessionOptions(options, InferenceModelRole.HUBERT)
