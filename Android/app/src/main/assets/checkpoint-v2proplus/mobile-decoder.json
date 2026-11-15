@@ -2,15 +2,15 @@
   "schema_version": 1,
   "format": "genie_t2s_head_cache_fp32_v1",
   "sources": {
-    "t2s_first_stage_decoder_fp32.onnx": "868f395999508905128c5325c5db4f4b37b2e70e04d6e2719fec64cbb60ee7f9",
-    "t2s_stage_decoder_fp32.onnx": "3f02881c517423deb610f86d5441bd9825937c5069f3887cacefa1e9dc403b0d"
+    "t2s_first_stage_decoder_fp32.onnx": "b7ad92eba4c5299c478afc8b0e3751204b14b47412e9ea8d9ef06c918e01b8a7",
+    "t2s_stage_decoder_fp32.onnx": "6eadca00317c0f3b0ed10225bdf348a3a5e377b443735d12c7f1d0b7186b76cd"
   },
   "graphs": {
-    "mobile-prefill.onnx": "6f9a7f70e54e7c0b60cda46728c0f99fbf7c9165f3d8f0b2159389f1076b5c8d",
-    "mobile-decoder.onnx": "94938881fb825440c75ad0f64fed7beea9b84029e6ae16074222179598b72c01"
+    "mobile-prefill.onnx": "98c137a1e94fe50b218caad3f7b15bb540e66a7421ba4dee776d809ee78f6564",
+    "mobile-decoder.onnx": "5dc30a0bd2f40d756f5514268629656842e21227b614043443a919294c61a3ce"
   },
   "shared_cache": {
     "format": "genie_t2s_shared_cache_fp32_v1",
-    "sha256": "29f3ad005a6febfb4cbcf7350b1c1e71d81d228e96a2bb969fb0a1eab8f8b57d"
+    "sha256": "8f819d2ec14d53bf63778b0ded41e00c1651b956abf249f1eb593c07f5c8bfd6"
   }
 }
