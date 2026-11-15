@@ -78,6 +78,64 @@ class DiTStep(nn.Module):
         return dit.head(x, t).transpose(1, 2)
 
 
+class TimeCondition(nn.Module):
+    """These projections depend only on four fixed timesteps, not on the speech."""
+    def __init__(self, dit):
+        super().__init__()
+        self.cfm = nn.Module()
+        self.cfm.estimator = dit
+
+    def forward(self, time):
+        dit = self.cfm.estimator
+        t = F.silu(dit.time_embed(time))
+        return (torch.stack([block.attn_norm.linear(t).reshape(6, 1024) for block in dit.transformer_blocks]),
+                dit.norm_out.linear(t).reshape(2, 1024))
+
+
+class CompactDiTStep(nn.Module):
+    """Standard attention for GPU/HTP, with exact unpadded convolution boundaries."""
+    def __init__(self, dit):
+        super().__init__()
+        self.cfm = nn.Module()
+        self.cfm.estimator = dit
+
+    @staticmethod
+    def mish(x):
+        # QNN does not support Softplus; this stable form avoids exp overflow.
+        return x * torch.tanh(torch.log1p(torch.exp(-torch.abs(x))) + torch.clamp(x, min=0))
+
+    def forward(self, x, condition, cos, sin, modulation, final, mask):
+        dit = self.cfm.estimator
+        length = x.shape[-1]
+        x = (F.linear(x.transpose(1, 2), dit.input_embed.proj.weight[:, :100]) + condition) * mask
+        conv = dit.input_embed.conv_pos_embed.conv1d
+        h = self.mish(conv[0](x.transpose(1, 2)).transpose(1, 2)) * mask
+        h = self.mish(conv[2](h.transpose(1, 2)).transpose(1, 2))
+        x = (x + h) * mask
+        key_mask = (1 - mask.transpose(1, 2).unsqueeze(1)) * -10000.
+
+        def rotary(t):
+            # Upstream rotates the first 64 channels BEFORE splitting into heads.
+            first = t[:, :, :64].reshape(1, length, 32, 2)
+            rotated = torch.stack((-first[:, :, :, 1], first[:, :, :, 0]), dim=-1).reshape(1, length, 64)
+            return torch.cat((t[:, :, :64] * cos + rotated * sin, t[:, :, 64:]), dim=-1)
+
+        for i, block in enumerate(dit.transformer_blocks):
+            shift, scale, gate, ff_shift, ff_scale, ff_gate = modulation[i].unbind(0)
+            h = F.layer_norm(x, (1024,), eps=1e-6) * (1 + scale) + shift
+            attn = block.attn
+            q = rotary(attn.to_q(h)).reshape(1, length, 16, 64).transpose(1, 2)
+            k = rotary(attn.to_k(h)).reshape(1, length, 16, 64).permute(0, 2, 3, 1)
+            v = attn.to_v(h).reshape(1, length, 16, 64).transpose(1, 2)
+            weights = torch.softmax((q * (64 ** -.25)) @ (k * (64 ** -.25)) + key_mask, dim=-1)
+            h = (weights @ v).transpose(1, 2).reshape(1, length, 1024)
+            x = x + gate * attn.to_out[0](h)
+            h = F.layer_norm(x, (1024,), eps=1e-6) * (1 + ff_scale) + ff_shift
+            x = (x + ff_gate * block.ff(h)) * mask
+        x = F.layer_norm(x, (1024,), eps=1e-6) * (1 + final[0]) + final[1]
+        return (dit.proj_out(x) * mask).transpose(1, 2)
+
+
 class ReferenceMel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -239,6 +297,14 @@ def main():
                     ['x','condition','rope','time'], ['velocity'],
                     {'x':{2:'frames'},'condition':{1:'frames'},'rope':{1:'frames'},'velocity':{2:'frames'}})
     fuse_attention(args.output/'v5-dit.onnx')
+    exporter.export(TimeCondition(model.cfm.estimator), 'v5-time', (torch.zeros(1),),
+                    ['time'], ['modulation', 'final'], {})
+    exporter.export(CompactDiTStep(model.cfm.estimator), 'v5-dit-compact',
+                    (torch.zeros(1,100,32), torch.zeros(1,32,1024), torch.ones(1,32,64), torch.zeros(1,32,64),
+                     torch.zeros(22,6,1024), torch.zeros(2,1024), torch.ones(1,32,1)),
+                    ['x','condition','cos','sin','modulation','final','mask'], ['velocity'],
+                    {'x':{2:'frames'}, 'condition':{1:'frames'}, 'cos':{1:'frames'}, 'sin':{1:'frames'},
+                     'mask':{1:'frames'}, 'velocity':{2:'frames'}})
     del model
     gc.collect()
     vocoder = Generator(100,'1',[3,7,11],[[1,3,5]]*3,[10,6,2,2,2],512,[20,12,4,4,4],gin_channels=0,is_bias=True)
@@ -269,7 +335,8 @@ def assemble_import(output, gpt_path, sovits):
     manifest['files'] = {name:sha for name,sha in manifest['files'].items() if name.startswith(('t2s_','mobile-'))}
     for name in manifest['files']:
         shutil.copyfile(base/name, output/name)
-    for name in ('v5-reference-audio.onnx','v5-condition.onnx','v5-static.onnx','v5-dit.onnx'):
+    for name in ('v5-reference-audio.onnx','v5-condition.onnx','v5-static.onnx','v5-dit.onnx',
+                 'v5-time.onnx','v5-dit-compact.onnx'):
         manifest['files'][name]=acoustic['files'][name]
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     runtime=output.parent/'RuntimeAssets/v5-vocoder'

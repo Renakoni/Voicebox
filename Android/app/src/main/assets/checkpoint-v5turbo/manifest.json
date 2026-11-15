@@ -12,7 +12,9 @@
     "v5-reference-audio.onnx": "e47fa7c011eede00a3dec9527c13b49003b9b9ca4a1e159d2084a2e4df796c97",
     "v5-condition.onnx": "0fc86b051cb588af77369929b37de5fb1ad1e495885a64a9c2fa4a724dc40937",
     "v5-static.onnx": "b0cd52bf20b1f50cdfb984383fed0a5b8001dfdf840bb874ea60eb74e4398094",
-    "v5-dit.onnx": "cc6eb96d477fe101c99bf6e3bb838ee246c2b9a7271cd5ad54dbe2da00a8cc60"
+    "v5-dit.onnx": "cc6eb96d477fe101c99bf6e3bb838ee246c2b9a7271cd5ad54dbe2da00a8cc60",
+    "v5-time.onnx": "12d6c94cbee5f53fae470b0cc37e622236b38a00d1213f5e84deea69f87ea478",
+    "v5-dit-compact.onnx": "6d2c77e51f5f2513f123186dda3a1f76d37fc710b970ab7343d58d88ef29f2fe"
   },
   "groups": [
     {

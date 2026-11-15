@@ -11,6 +11,7 @@ import android.os.Looper
 import android.os.SystemClock
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.OnnxTensor
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -24,10 +25,18 @@ import dev.rinstel.genie_tts.inference.OrtRuntimeFeatureExtractor
 import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import dev.rinstel.genie_tts.inference.GenerationStage
+import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
 import dev.rinstel.genie_tts.inference.OrtCpuBackend
 import dev.rinstel.genie_tts.inference.InferenceTraceLogger
 import dev.rinstel.genie_tts.inference.InferenceTraceEvent
+import dev.rinstel.genie_tts.inference.V5AcousticDiagnostics
+import dev.rinstel.genie_tts.inference.V5StreamingVocoder
+import dev.rinstel.genie_tts.inference.InferenceTimer
+import dev.rinstel.genie_tts.inference.FloatTensorData
+import java.nio.FloatBuffer
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
 import dev.rinstel.genie_tts.studio.StudioViewModel
 import org.json.JSONObject
@@ -43,6 +52,49 @@ import java.util.concurrent.atomic.AtomicReference
 /** Real checkpoint import; an optional case supplies reference audio for synthesis. */
 @RunWith(AndroidJUnit4::class)
 class CheckpointImportInstrumentedTest {
+    @Test fun streamingVocoderMatchesWholeWaveform() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val source = File(requireNotNull(InstrumentationRegistry.getArguments().getString("checkpointSource")))
+        val bytes = File(source, "streaming-mel.f32").readBytes()
+        val mel = FloatArray(bytes.size / 4)
+        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(mel)
+        val frames = mel.size / 100
+        require(frames > 100 && frames * 100 == mel.size)
+        val environment = OrtEnvironment.getEnvironment()
+        val graph = File(context.getExternalFilesDir(null), "RuntimeAssets/v5-vocoder/v5-vocoder-subpixel.onnx")
+        OrtSession.SessionOptions().use { options ->
+            OrtCpuBackend.configureCpuSessionOptions(options)
+            options.addWebGPU(emptyMap())
+            environment.createSession(graph.absolutePath, options).use { session ->
+                val baseline = OnnxTensor.createTensor(environment, FloatBuffer.wrap(mel), longArrayOf(1, 100, frames.toLong())).use { input ->
+                    session.run(mapOf("mel" to input)).use { result ->
+                        val buffer = (result.get(0) as OnnxTensor).floatBuffer
+                        FloatArray(buffer.remaining()).also { buffer.get(it) }
+                    }
+                }
+                val actual = V5StreamingVocoder(environment, session, InferenceTimer(InferenceTraceLogger.None)).use { streaming ->
+                    var start = 0
+                    for (end in listOf(frames / 3, frames * 2 / 3, frames - 1, frames)) {
+                        val length = end - start
+                        val chunk = FloatArray(100 * length)
+                        for (c in 0 until 100) mel.copyInto(chunk, c * length, c * frames + start, c * frames + end)
+                        streaming.submit(FloatTensorData(chunk, longArrayOf(1, 100, length.toLong())), last = end == frames)
+                        start = end
+                    }
+                    streaming.finish()
+                }
+                assertEquals(baseline.size, actual.size)
+                var error = 0.0
+                var power = 0.0
+                for (i in actual.indices) { error += (actual[i] - baseline[i]).toDouble().let { it * it }; power += baseline[i].toDouble().let { it * it } }
+                val relativeRms = kotlin.math.sqrt(error / power)
+                File(source, "streaming-parity.json").writeText(JSONObject().put("relative_rms", relativeRms)
+                    .put("samples", actual.size).put("last_chunk_frames", 1).toString(2))
+                assertTrue("Streaming waveform relative RMS: $relativeRms", relativeRms < 0.0005)
+            }
+        }
+    }
+
     @Test fun importsOfficialPairAndLoadsOptimizedGraphs() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val sourcePath = InstrumentationRegistry.getArguments().getString("checkpointSource", "checkpoint-test-source")!!
@@ -123,24 +175,44 @@ class CheckpointImportInstrumentedTest {
         val model = repository.discoverCharacterModels().single { it.id == arguments.getString("characterId") }
         val assets = RuntimeAssetRepository(context)
         var timings = JSONObject()
-        val trace = object : InferenceTraceLogger {
-            override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
-            override fun event(event: InferenceTraceEvent) {}
+        var providers = linkedSetOf<String>()
+        var captureIndex = 0
+        val trace = object : V5AcousticDiagnostics {
+            @Synchronized override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
+            @Synchronized override fun event(event: InferenceTraceEvent) {
+                if (event is InferenceTraceEvent.Model) providers.add(event.value.provider.wireValue)
+            }
+            override fun acousticInputs(inputs: Map<String, FloatBuffer>, frames: Int, referenceFrames: Int) {
+                if (arguments.getString("captureAcoustic") != "1") return
+                val output = File(source, "acoustic-${captureIndex++}").apply { mkdirs() }
+                File(output, "case.json").writeText(JSONObject().put("frames", frames).put("reference_frames", referenceFrames)
+                    .put("bucket", inputs.getValue("mask").capacity()).toString(2))
+                inputs.forEach { (name, value) ->
+                    val bytes = ByteBuffer.allocate(value.capacity() * 4).order(ByteOrder.LITTLE_ENDIAN)
+                    bytes.asFloatBuffer().put(value.duplicate().apply { clear() })
+                    File(output, "$name.f32").writeBytes(bytes.array())
+                }
+            }
         }
         val runtime = OrtSessionRuntime(repository, assets, backendEngine = OrtCpuBackend(
+            backend = if (arguments.getString("backend") in setOf("webgpu", "qnn")) ExecutionBackend.WEBGPU else ExecutionBackend.CPU,
             configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
             configureRoleSessionOptions = OrtCpuBackend::configureCpuSessionOptionsForRole,
-            traceLogger = trace, useNativeDecoder = true), traceLogger = trace) { backend ->
+            traceLogger = trace, useNativeDecoder = true,
+            qnnRuntimeDirectory = if (arguments.getString("backend") == "qnn") File(context.filesDir, "QualcommRuntime") else null,
+            qnnPerformance = arguments.getString("qnnPerformance", "balanced")!!), traceLogger = trace) { backend ->
             OrtRuntimeFeatureExtractor(context, assets, backend, traceLogger = trace)
         }
         val rows = org.json.JSONArray()
         try {
             val texts = case.getJSONArray("texts")
-            for (index in 0 until texts.length()) {
+            for (index in 0 until texts.length() * (arguments.getString("repeats")?.toInt() ?: 1)) {
                 timings = JSONObject()
+                providers = linkedSetOf()
                 val labels = linkedSetOf<String>()
                 val start = SystemClock.elapsedRealtime()
-                val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = texts.getString(index),
+                val text = texts.getString(index % texts.length())
+                val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = text,
                     referenceAudioPath = File(source, case.getString("reference_file")).absolutePath,
                     referenceText = case.getString("reference_text"), promptLanguage = case.getString("reference_language")),
                     object : BackendRuntimeCallbacks {
@@ -149,9 +221,10 @@ class CheckpointImportInstrumentedTest {
                         }
                     })
                 assertTrue(generated.audioSamples > generated.sampleRate)
-                rows.put(JSONObject().put("text", texts.getString(index)).put("elapsed_ms", SystemClock.elapsedRealtime() - start)
+                rows.put(JSONObject().put("text", text).put("elapsed_ms", SystemClock.elapsedRealtime() - start)
                     .put("audio_samples", generated.audioSamples).put("sample_rate", generated.sampleRate)
-                    .put("output", generated.file.absolutePath).put("cfm_steps", org.json.JSONArray(labels)).put("stages_ms", timings))
+                    .put("output", generated.file.absolutePath).put("cfm_steps", org.json.JSONArray(labels))
+                    .put("providers", org.json.JSONArray(providers)).put("stages_ms", timings))
                 File(source, "android-generation-result.json").writeText(rows.toString(2))
             }
         } finally { runtime.close() }

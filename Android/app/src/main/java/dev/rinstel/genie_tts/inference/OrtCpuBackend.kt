@@ -17,6 +17,8 @@ class OrtCpuBackend(
     private val configureRoleSessionOptions: ((OrtSession.SessionOptions, InferenceModelRole) -> Unit)? = null,
     // Keep autoregressive execution and shared KV buffers in native code.
     private val useNativeDecoder: Boolean = false,
+    private val qnnRuntimeDirectory: File? = null,
+    private val qnnPerformance: String = "balanced",
 ) : InferenceBackend, PreparedTtsBackend {
 
     private val environment: OrtEnvironment by lazy(LazyThreadSafetyMode.NONE) {
@@ -28,6 +30,7 @@ class OrtCpuBackend(
     private var multiReferenceCapabilityResolved = false
     private var cachedMultiReferenceCapability: MultiReferenceCapability? = null
     private var v5Acoustic: V5AcousticRuntime? = null
+    private var v5DiT: V5DiTRuntime? = null
 
     @Volatile
     private var retainT2SSessionsAfterGeneration = false
@@ -111,7 +114,13 @@ class OrtCpuBackend(
                 "缺少 V5 公共声码器资源：${shared.absolutePath}"
             }
             resolvedFiles[V5AcousticRuntime.VOCODER] = File(shared, V5AcousticRuntime.VOCODER)
-            v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger) { done, total ->
+            if (backend == ExecutionBackend.WEBGPU &&
+                listOf(V5DiTRuntime.GRAPH, V5DiTRuntime.TIME).all { File(modelDirectory, it).isFile }) {
+                for (name in listOf(V5DiTRuntime.GRAPH, V5DiTRuntime.TIME)) resolvedFiles[name] = File(modelDirectory, name)
+                v5DiT = V5DiTRuntime(environment, ::session, { name -> closeSessions { it == name } },
+                    modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger)
+            }
+            v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT) { done, total ->
                 reportProgress(GenerationStage.RUNNING_INFERENCE, "running_inference", null, "CFM $done/$total")
             }
         } else if (backend == ExecutionBackend.WEBGPU) {
@@ -476,6 +485,7 @@ class OrtCpuBackend(
 
     /** Release all currently loaded graphs before the next feature phase. */
     fun releaseLoadedSessions() {
+        v5DiT?.close()
         closeSessions { true }
     }
 
@@ -486,6 +496,7 @@ class OrtCpuBackend(
 
     /** Keep reusable T2S decoders and VITS for a same-character sentence. */
     fun releaseLoadedSessionsKeepingReusableT2SAndVocoder() {
+        if (!retainVocoderSessionAfterGeneration) v5DiT?.close()
         closeSessions {
             when (roleForSession(it)) {
                 InferenceModelRole.T2S -> !isReusableT2SSession(it)
@@ -498,6 +509,7 @@ class OrtCpuBackend(
 
     /** Release VITS before a new T2S phase when memory headroom disappears. */
     fun releaseVocoderSession() {
+        v5DiT?.close()
         closeSessions { roleForSession(it) == InferenceModelRole.VOCODER }
     }
 
@@ -513,7 +525,7 @@ class OrtCpuBackend(
     fun preloadVocoderSession() {
         if (!memoryHeadroomProvider()) return
         if (v5Acoustic != null) {
-            session("v5-dit.onnx")
+            if (v5DiT == null) session("v5-dit.onnx")
             session(V5AcousticRuntime.VOCODER)
         } else if (backend == ExecutionBackend.WEBGPU) {
             session(SplitVocoderAssets.ENCODER)
@@ -625,6 +637,8 @@ class OrtCpuBackend(
     }
 
     override fun close() {
+        v5DiT?.close()
+        v5DiT = null
         sessions.values.forEach(OrtSession::close)
         sessions.clear()
         sessionFiles.clear()
@@ -696,7 +710,7 @@ class OrtCpuBackend(
             (modelName.startsWith("v5-") || matchesSessionName(modelName, VITS) || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN)
 
     private fun usesWebGpu(modelName: String): Boolean =
-        modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER
+        modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER || modelName == V5DiTRuntime.GRAPH
 
     private fun matchesSessionName(actualName: String, requestedName: String): Boolean {
         if (actualName.equals(requestedName, ignoreCase = true)) return true

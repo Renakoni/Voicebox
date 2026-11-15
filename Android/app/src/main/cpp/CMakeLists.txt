@@ -77,6 +77,7 @@ if(ANDROID AND GENIE_ENABLE_NATIVE_DECODER)
     add_library(native_decoder_loop SHARED
         ${DECODER_NATIVE_SOURCE_DIR}/native_decoder_loop.cpp
         ${DECODER_NATIVE_SOURCE_DIR}/native_semantic_slicing.cpp
+        ${DECODER_NATIVE_SOURCE_DIR}/v5_qnn_session.cpp
     )
     target_include_directories(native_decoder_loop PRIVATE
         ${DECODER_NATIVE_SOURCE_DIR}

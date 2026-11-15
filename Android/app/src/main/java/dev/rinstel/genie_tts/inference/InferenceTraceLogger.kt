@@ -16,6 +16,7 @@ enum class InferenceModelRole(val wireValue: String) {
 enum class InferenceProvider(val wireValue: String) {
     CPU("cpu"),
     WEBGPU("webgpu"),
+    QNN("qnn"),
 }
 
 enum class InferenceCacheStatus(val wireValue: String) {
