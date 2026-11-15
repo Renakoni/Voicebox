@@ -27,6 +27,7 @@ class OrtCpuBackend(
     private var modelFiles: RequiredModelFiles? = null
     private var multiReferenceCapabilityResolved = false
     private var cachedMultiReferenceCapability: MultiReferenceCapability? = null
+    private var v5Acoustic: V5AcousticRuntime? = null
 
     @Volatile
     private var retainT2SSessionsAfterGeneration = false
@@ -104,7 +105,16 @@ class OrtCpuBackend(
             require(modelFile.isFile) { "Model file not found: ${modelFile.absolutePath}" }
             resolvedFiles[modelName] = modelFile
         }
-        if (backend == ExecutionBackend.WEBGPU) {
+        if ("v5-dit.onnx" in sessionModelNames) {
+            val shared = File(modelRoot.parentFile, "RuntimeAssets/v5-vocoder")
+            require(File(shared, V5AcousticRuntime.VOCODER).isFile && File(shared, "v5_vocoder_fp32.bin").isFile) {
+                "缺少 V5 公共声码器资源：${shared.absolutePath}"
+            }
+            resolvedFiles[V5AcousticRuntime.VOCODER] = File(shared, V5AcousticRuntime.VOCODER)
+            v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger) { done, total ->
+                reportProgress(GenerationStage.RUNNING_INFERENCE, "running_inference", null, "CFM $done/$total")
+            }
+        } else if (backend == ExecutionBackend.WEBGPU) {
             SplitVocoderAssets.validate(modelDirectory).forEach { resolvedFiles[it] = File(modelDirectory, it) }
         }
         sessionFiles.putAll(resolvedFiles)
@@ -132,7 +142,7 @@ class OrtCpuBackend(
             if (modelFile.name == "mobile-decoder-shared.onnx") {
                 options.addConfigEntry("session.genie_fp16_weight_storage", "1")
             }
-            if (backend == ExecutionBackend.WEBGPU && modelFile.name == SplitVocoderAssets.HIFIGAN) {
+            if (backend == ExecutionBackend.WEBGPU && usesWebGpu(modelFile.name)) {
                 options.addWebGPU(emptyMap())
             }
             // Prompt weights are already materialized as the model's normal
@@ -183,6 +193,7 @@ class OrtCpuBackend(
             }
 
             val currentEncoderResult = requireNotNull(encoderResult)
+            val promptCodes = if (v5Acoustic != null) longTensorValues(currentEncoderResult.get(1) as OnnxTensor) else null
             reportProgress(
                 GenerationStage.RUNNING_INFERENCE,
                 "running_inference",
@@ -356,6 +367,12 @@ class OrtCpuBackend(
                 releaseLoadedSessionsKeepingReusableT2SAndVocoder()
             }
 
+            v5Acoustic?.let { acoustic ->
+                return timer.measure("vocoder_ms") {
+                    acoustic.generate(input, predSemantic, requireNotNull(promptCodes))
+                }.also { generationSucceeded = true }
+            }
+
             val vocoderInputs = timer.measure("vocoder_input_tensors_ms") {
                 timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.SEMANTIC_TOKENS, predSemantic.info.numElements))
                 timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.SEMANTIC_SHAPE, predSemantic.info.shape))
@@ -495,7 +512,10 @@ class OrtCpuBackend(
     /** Shift VITS graph construction into background warmup for lower latency. */
     fun preloadVocoderSession() {
         if (!memoryHeadroomProvider()) return
-        if (backend == ExecutionBackend.WEBGPU) {
+        if (v5Acoustic != null) {
+            session("v5-dit.onnx")
+            session(V5AcousticRuntime.VOCODER)
+        } else if (backend == ExecutionBackend.WEBGPU) {
             session(SplitVocoderAssets.ENCODER)
             session(SplitVocoderAssets.HIFIGAN)
         } else session(VITS)
@@ -609,6 +629,7 @@ class OrtCpuBackend(
         sessions.clear()
         sessionFiles.clear()
         modelFiles = null
+        v5Acoustic = null
         multiReferenceCapabilityResolved = false
         cachedMultiReferenceCapability = null
         retainT2SSessionsAfterGeneration = false
@@ -647,7 +668,7 @@ class OrtCpuBackend(
             InferenceTraceEvent.Model(
                 InferenceTraceRecord(
                     modelRole = roleForSession(loadedModelName),
-                    provider = if (backend == ExecutionBackend.WEBGPU && loadedModelName == SplitVocoderAssets.HIFIGAN) InferenceProvider.WEBGPU else InferenceProvider.CPU,
+                    provider = if (backend == ExecutionBackend.WEBGPU && usesWebGpu(loadedModelName)) InferenceProvider.WEBGPU else InferenceProvider.CPU,
                 ),
             ),
         )
@@ -661,7 +682,7 @@ class OrtCpuBackend(
     }
 
     private fun roleForSession(modelName: String): InferenceModelRole =
-        if (modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN) InferenceModelRole.VOCODER
+        if (modelName.startsWith("v5-") || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN) InferenceModelRole.VOCODER
         else ModelRoles.roleForModelFile(modelName)
 
     private fun isReusableT2SSession(modelName: String): Boolean =
@@ -672,7 +693,10 @@ class OrtCpuBackend(
 
     private fun isReusableVocoderSession(modelName: String): Boolean =
         roleForSession(modelName) == InferenceModelRole.VOCODER &&
-            (matchesSessionName(modelName, VITS) || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN)
+            (modelName.startsWith("v5-") || matchesSessionName(modelName, VITS) || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN)
+
+    private fun usesWebGpu(modelName: String): Boolean =
+        modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER
 
     private fun matchesSessionName(actualName: String, requestedName: String): Boolean {
         if (actualName.equals(requestedName, ignoreCase = true)) return true

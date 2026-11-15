@@ -25,6 +25,9 @@ import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import dev.rinstel.genie_tts.inference.GenerationStage
 import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
+import dev.rinstel.genie_tts.inference.OrtCpuBackend
+import dev.rinstel.genie_tts.inference.InferenceTraceLogger
+import dev.rinstel.genie_tts.inference.InferenceTraceEvent
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
 import dev.rinstel.genie_tts.studio.StudioViewModel
 import org.json.JSONObject
@@ -49,6 +52,14 @@ class CheckpointImportInstrumentedTest {
         val sovits = File(source, case?.getString("sovits_file") ?: "s2Gv2ProPlus.pth")
         val reference = case?.let { CheckpointImporter.Reference(File(source, it.getString("reference_file")),
             it.getString("reference_text"), it.optString("reference_language", "zh")) }
+        val runtimeFixture = File(source, "RuntimeAssets")
+        if (runtimeFixture.isDirectory) {
+            runtimeFixture.walkTopDown().filter { it.isFile }.forEach { file ->
+                val target = File(context.getExternalFilesDir(null), "RuntimeAssets/${file.relativeTo(runtimeFixture).invariantSeparatorsPath}")
+                target.parentFile!!.mkdirs()
+                file.copyTo(target, overwrite = true)
+            }
+        }
         assertTrue("Push the official test pair first", gpt.isFile && sovits.isFile)
         val start = System.nanoTime()
         val connected = CountDownLatch(1)
@@ -69,7 +80,8 @@ class CheckpointImportInstrumentedTest {
             Handler(Looper.getMainLooper()).post {
                 val accepted = service.get().importCheckpointPair(case?.getString("name") ?: "官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
                     onProgress = { android.util.Log.i("CheckpointImportTest", it) },
-                    onComplete = { imported.set(it); finished.countDown() }, reference = reference)
+                    onComplete = { imported.set(it); finished.countDown() }, reference = reference,
+                    replaceCharacterId = InstrumentationRegistry.getArguments().getString("replaceCharacterId"))
                 if (!accepted) { imported.set(Result.failure(IllegalStateException("Import refused"))); finished.countDown() }
             }
             assertTrue("Import timeout", finished.await(180, TimeUnit.SECONDS))
@@ -97,9 +109,52 @@ class CheckpointImportInstrumentedTest {
                 val reportFile = File(source, "android-import-result.json")
                 reportFile.writeText(JSONObject(reportFile.readText()).put("architecture", result.architecture)
                     .put("synthesis_performed", true).put("audio_samples", generated.audioSamples)
-                    .put("output", generated.file.absolutePath).toString(2))
+                    .put("sample_rate", generated.sampleRate).put("output", generated.file.absolutePath).toString(2))
             } finally { runtime.close() }
         }
+    }
+
+    @Test fun generatesWithExistingImportedVoice() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val arguments = InstrumentationRegistry.getArguments()
+        val source = File(requireNotNull(arguments.getString("checkpointSource")))
+        val case = JSONObject(File(source, "import-case.json").readText())
+        val repository = ModelAssetRepository(context)
+        val model = repository.discoverCharacterModels().single { it.id == arguments.getString("characterId") }
+        val assets = RuntimeAssetRepository(context)
+        var timings = JSONObject()
+        val trace = object : InferenceTraceLogger {
+            override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
+            override fun event(event: InferenceTraceEvent) {}
+        }
+        val runtime = OrtSessionRuntime(repository, assets, backendEngine = OrtCpuBackend(
+            configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
+            configureRoleSessionOptions = OrtCpuBackend::configureCpuSessionOptionsForRole,
+            traceLogger = trace, useNativeDecoder = true), traceLogger = trace) { backend ->
+            OrtRuntimeFeatureExtractor(context, assets, backend, traceLogger = trace)
+        }
+        val rows = org.json.JSONArray()
+        try {
+            val texts = case.getJSONArray("texts")
+            for (index in 0 until texts.length()) {
+                timings = JSONObject()
+                val labels = linkedSetOf<String>()
+                val start = SystemClock.elapsedRealtime()
+                val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = texts.getString(index),
+                    referenceAudioPath = File(source, case.getString("reference_file")).absolutePath,
+                    referenceText = case.getString("reference_text"), promptLanguage = case.getString("reference_language")),
+                    object : BackendRuntimeCallbacks {
+                        override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
+                            if (progressLabel?.startsWith("CFM ") == true) labels.add(progressLabel)
+                        }
+                    })
+                assertTrue(generated.audioSamples > generated.sampleRate)
+                rows.put(JSONObject().put("text", texts.getString(index)).put("elapsed_ms", SystemClock.elapsedRealtime() - start)
+                    .put("audio_samples", generated.audioSamples).put("sample_rate", generated.sampleRate)
+                    .put("output", generated.file.absolutePath).put("cfm_steps", org.json.JSONArray(labels)).put("stages_ms", timings))
+                File(source, "android-generation-result.json").writeText(rows.toString(2))
+            }
+        } finally { runtime.close() }
     }
 
     @Test fun importsCommunityVoiceThroughStudioAndKeepsItReadyAfterRecreation() {
@@ -222,9 +277,14 @@ class CheckpointImportInstrumentedTest {
             hashes.put(name, hash)
         }
         assertTrue(OptimizedDecoderAssets.resolve(modelDirectory, true).values.any { it.name == "mobile-decoder-shared.onnx" })
-        SplitVocoderAssets.validate(modelDirectory)
-        val graphs = listOf("t2s_encoder_fp32.onnx", "mobile-prefill.onnx", "mobile-decoder-shared.onnx",
-            "prompt_encoder_fp32.onnx", "split-encoder.onnx", "split-hifigan.onnx")
+        val graphs = if (result.architecture == "v5turbo") {
+            listOf("t2s_encoder_fp32.onnx", "mobile-prefill.onnx", "mobile-decoder-shared.onnx",
+                "v5-reference-audio.onnx", "v5-condition.onnx", "v5-static.onnx", "v5-dit.onnx")
+        } else {
+            SplitVocoderAssets.validate(modelDirectory)
+            listOf("t2s_encoder_fp32.onnx", "mobile-prefill.onnx", "mobile-decoder-shared.onnx",
+                "prompt_encoder_fp32.onnx", "split-encoder.onnx", "split-hifigan.onnx")
+        }
         for (graph in graphs) {
             OrtSession.SessionOptions().use { options ->
                 options.setIntraOpNumThreads(1)

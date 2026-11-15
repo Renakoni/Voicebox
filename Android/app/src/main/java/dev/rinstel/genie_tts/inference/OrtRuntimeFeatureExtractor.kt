@@ -392,12 +392,16 @@ class OrtRuntimeFeatureExtractor(
         isV2ProPlus: Boolean,
         timer: InferenceTimer,
     ): ReferenceConditioning {
+        val isV5 = "v5-dit.onnx" in request.characterModel.modelFiles.sessionModels
         val refAudio32k = timer.measure("reference_audio_load_ms") {
-            loadReferenceAudio(File(request.referenceAudioPath), 32000)
+            loadReferenceAudio(File(request.referenceAudioPath), 32000, silenceSeconds = if (isV5) 0f else 0.3f)
         }
         timer.traceFloatTensor(InferenceTensorMetric.REFERENCE_AUDIO_HASH, refAudio32k)
         val refAudio16k = timer.measure("reference_audio_resample_16k_ms") {
-            WavAudioReader.resample(refAudio32k, 32000, 16000)
+            val audio = WavAudioReader.resample(refAudio32k, 32000, 16000)
+            // Upstream V5 appends 32000 * 0.3 zeros to HuBERT's 16 kHz input;
+            // its reference spectrogram and mel use the unpadded waveform.
+            if (isV5) audio.copyOf(audio.size + 9600) else audio
         }
         timer.traceFloatTensor(InferenceTensorMetric.REFERENCE_AUDIO_16K_HASH, refAudio16k)
         val audioCacheKey = ReferenceAudioFeatureCache.key(
@@ -655,10 +659,10 @@ class OrtRuntimeFeatureExtractor(
             refAudio32k = refAudio32k,
         )
 
-    private fun loadReferenceAudio(file: File, targetRate: Int): FloatArray {
+    private fun loadReferenceAudio(file: File, targetRate: Int, silenceSeconds: Float = 0.3f): FloatArray {
         val decoded = MediaAudioDecoder.decodeMonoPcm(file) ?: WavAudioReader.readMonoPcm(file)
         val resampled = WavAudioReader.resample(decoded.samples, decoded.sampleRate, targetRate)
-        return WavAudioReader.appendSilence(resampled, targetRate, 0.3f)
+        return if (silenceSeconds == 0f) resampled else WavAudioReader.appendSilence(resampled, targetRate, silenceSeconds)
     }
 
     private fun runHubert(audio16k: FloatArray): FloatTensorData {

@@ -87,7 +87,7 @@ class GenerationPipelineTest {
 
             override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult {
                 capturedMaxDecoderSteps = maxDecoderSteps
-                return TtsGenerationResult(floatArrayOf(0f, 0.25f, -0.25f), longArrayOf(1L, 1L, 3L))
+                return TtsGenerationResult(floatArrayOf(0f, 0.25f, -0.25f), longArrayOf(1L, 1L, 3L), sampleRate = 48000)
             }
         }
         val inputPreparer = object : TtsInputPreparer {
@@ -114,6 +114,8 @@ class GenerationPipelineTest {
         assertTrue(output.file.exists())
         assertEquals(File(outputDirectory, output.file.name).absolutePath, output.file.absolutePath)
         assertEquals(3, output.audioSamples)
+        assertEquals(48000, output.sampleRate)
+        assertEquals(48000, WavAudioReader.readMonoPcm(output.file).sampleRate)
         assertEquals(123, capturedMaxDecoderSteps)
     }
 

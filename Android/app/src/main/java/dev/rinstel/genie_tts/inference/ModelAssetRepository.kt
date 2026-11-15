@@ -38,6 +38,10 @@ class ModelAssetRepository private constructor(
             .orEmpty()
         result += CharacterModelCatalog.v2FromCharacterIds(v2Ids)
 
+        result += CharacterModelCatalog.v2FromCharacterIds(File(modelRoot, "v5turbo").listFiles()
+            ?.filter { File(it, "tts_models").isDirectory }?.map { it.name }.orEmpty())
+            .map { it.copy(modelFiles = RequiredModelFiles.v5TurboCharacter(it.id)) }
+
         return result.map { model ->
             val character = File(modelRoot, model.relativeModelDirectory).parentFile
             val imported = runCatching { JSONObject(File(character, "checkpoint-import.json").readText()) }.getOrNull()

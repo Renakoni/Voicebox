@@ -163,6 +163,9 @@ val syncRuntimeAssets = tasks.register<Sync>("syncRuntimeAssets") {
     from(File(sourceRoot, "speaker_encoder.onnx")) {
         into("RuntimeAssets")
     }
+    from(File(sourceRoot, "v5-vocoder")) {
+        into("RuntimeAssets/v5-vocoder")
+    }
     from(File(sourceRoot, "RoBERTa/RoBERTa.onnx")) {
         into("RuntimeAssets/roberta-wwm-ext-large-onnx")
         rename { "model.onnx" }

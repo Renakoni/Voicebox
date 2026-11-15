@@ -36,7 +36,6 @@ import dev.rinstel.genie_tts.inference.GenerationRequest
 import dev.rinstel.genie_tts.inference.GenerationContext
 import dev.rinstel.genie_tts.inference.GenerationCancelledException
 import dev.rinstel.genie_tts.inference.EmptySemanticException
-import dev.rinstel.genie_tts.inference.GenerationPipeline
 import dev.rinstel.genie_tts.inference.GenerationStage
 import dev.rinstel.genie_tts.inference.InferenceTraceLogger
 import dev.rinstel.genie_tts.inference.LogcatInferenceTraceLogger
@@ -348,6 +347,7 @@ class GenieBackendService : Service() {
         replaceCharacterId: String? = null,
         gptFilename: String = "",
         sovitsFilename: String = "",
+        architectureHint: String? = null,
     ): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
         CheckpointImporter(requireNotNull(getExternalFilesDir(null))) { file ->
             assets.open(file)
@@ -355,7 +355,8 @@ class GenieBackendService : Service() {
             openGpt = { contentResolver.openInputStream(gpt) ?: error("无法读取 GPT 权重，请重新选择。") },
             openSovits = { contentResolver.openInputStream(sovits) ?: error("无法读取 SoVITS 权重，请重新选择。") },
             progress = progress, checkCancelled = context::checkCancelled, reference = reference,
-            replaceCharacterId = replaceCharacterId, gptFilename = gptFilename, sovitsFilename = sovitsFilename)
+            replaceCharacterId = replaceCharacterId, gptFilename = gptFilename, sovitsFilename = sovitsFilename,
+            architectureHint = architectureHint)
     }
 
     fun editCharacterReference(id: String, name: String, reference: CheckpointImporter.Reference,
@@ -462,11 +463,11 @@ class GenieBackendService : Service() {
                     lastCompletedAtMs = completedAtMs,
                     message = getString(
                         R.string.prototype_service_completed,
-                        formatAudioDuration(result.audioSamples),
+                        formatAudioDuration(result.audioSamples, result.sampleRate),
                     ),
                 )
                 onComplete?.invoke(InferResult.Success(result.file,
-                    result.audioSamples.toLong() * 1000 / GenerationPipeline.OUTPUT_SAMPLE_RATE))
+                    result.audioSamples.toLong() * 1000 / result.sampleRate))
             }
             if (!delivered) {
                 result.file.delete()
@@ -607,10 +608,10 @@ class GenieBackendService : Service() {
         }
     }
 
-    private fun formatAudioDuration(audioSamples: Int): String = String.format(
+    private fun formatAudioDuration(audioSamples: Int, sampleRate: Int): String = String.format(
         Locale.US,
         "%.2fs",
-        audioSamples.toDouble() / GenerationPipeline.OUTPUT_SAMPLE_RATE,
+        audioSamples.toDouble() / sampleRate,
     )
 
     // One state snapshot fans out to notification, bound UI listeners, and local API clients.

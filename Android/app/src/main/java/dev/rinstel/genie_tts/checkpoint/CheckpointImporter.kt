@@ -12,7 +12,7 @@ import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.UUID
 
-/** Installs standard V2Pro/Plus checkpoints using the Genie graph/weight layout. */
+/** Installs supported GPT-SoVITS checkpoints with the selected mobile graph template. */
 class CheckpointImporter(
     private val filesRoot: File,
     private val openAsset: (String) -> InputStream,
@@ -30,6 +30,7 @@ class CheckpointImporter(
         replaceCharacterId: String? = null,
         gptFilename: String = "",
         sovitsFilename: String = "",
+        architectureHint: String? = null,
     ): Result {
         require(name.isNotBlank() && name.length <= 80) { "请填写 1 至 80 字的音色名称。" }
         reference?.let {
@@ -38,7 +39,6 @@ class CheckpointImporter(
             require(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { "参考音频缺少有效的文件扩展名。" }
         }
         require(filesRoot.isDirectory || filesRoot.mkdirs()) { "无法创建模型目录。" }
-        require(filesRoot.usableSpace >= 2L * 1024 * 1024 * 1024) { "请至少留出 2 GB 空间后再导入。" }
         val staging = File(filesRoot, ".genie-checkpoint-${UUID.randomUUID()}")
         require(staging.mkdir())
         try {
@@ -57,16 +57,20 @@ class CheckpointImporter(
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
                 TorchCheckpoint(sovitsFile).use { sovits ->
-                    architecture = validateArchitecture(gpt, sovits)
+                    architecture = validateArchitecture(gpt, sovits, sovitsHash, architectureHint)
                     existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it, architecture) }
                     progress("读取 $architecture 模型")
                     manifestBytes = openAsset("${assetDirectory(architecture)}/manifest.json").use { it.readBytes() }
                     manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
                     val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
                     val groups = manifest.getJSONArray("groups")
+                    var storedBytes = 0L
+                    var expandedBytes = 0L
                     // Validate the complete pair before producing any installed weight file.
                     for (g in 0 until groups.length()) {
-                        val entries = groups.getJSONObject(g).getJSONArray("tensors")
+                        val group = groups.getJSONObject(g)
+                        val half = group.getString("precision") == "fp16"
+                        val entries = group.getJSONArray("tensors")
                         for (i in 0 until entries.length()) {
                             checkCancelled()
                             val entry = entries.getJSONObject(i)
@@ -75,8 +79,13 @@ class CheckpointImporter(
                             require(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
                                 "权重结构与 $architecture 不匹配：${entry.getString("key")}。请确认选择了配套的完整模型。"
                             }
+                            storedBytes += tensor.elements * if (half) 2 else 4
+                            if (half) expandedBytes += tensor.elements * 4
                         }
                     }
+                    // Check the actual final layout once; source copies are removed before expansion.
+                    val remainingBytes = maxOf(storedBytes, storedBytes + expandedBytes - gptFile.length() - sovitsFile.length())
+                    require(filesRoot.usableSpace >= remainingBytes) { "存储空间不足，无法保存并展开此模型。" }
                     for (g in 0 until groups.length()) {
                         val group = groups.getJSONObject(g)
                         val half = group.getString("precision") == "fp16"
@@ -159,7 +168,7 @@ class CheckpointImporter(
         return hex(digest.digest())
     }
 
-    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint): String {
+    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint, sovitsHash: String, architectureHint: String?): String {
         fun config(checkpoint: TorchCheckpoint, key: String) =
             ((checkpoint.root["config"] as? Map<*, *>)?.get(key) as? Map<*, *>)
                 ?: error("模型缺少结构配置，请选择 GPT-SoVITS 导出的完整权重。")
@@ -169,6 +178,18 @@ class CheckpointImporter(
         val pro = s["upsample_initial_channel"] == 512L
         val expectedG = mapOf("vocab_size" to 1025L, "phoneme_vocab_size" to 732L, "embedding_dim" to 512L,
             "hidden_dim" to 512L, "head" to 16L, "linear_units" to 2048L, "n_layer" to 24L, "EOS" to 1024L)
+        if (sovits.weights.containsKey("cfm.estimator.proj_out.weight")) {
+            require(expectedG.all { (k, v) -> g[k] == v } && s["semantic_frame_rate"] == "25hz" &&
+                d["sampling_rate"] == 32000L && d["filter_length"] == 2048L && d["hop_length"] == 640L &&
+                !sovits.weights.containsKey("cfm.estimator.d_embed.time_mlp.0.weight") && !sovits.root.containsKey("lora_rank")) {
+                "当前只支持 V5 Turbo 完整权重，不支持其他扩散版本或 LoRA。"
+            }
+            require(sovitsHash == "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022" ||
+                s["version"] == "v5turbo" || architectureHint == "v5turbo") {
+                "此权重结构属于 V5，但缺少 Dev/Turbo 标记；请由导入调用方明确指定 v5turbo。"
+            }
+            return "v5turbo"
+        }
         val expectedS = mapOf("inter_channels" to 192L, "hidden_channels" to 192L, "filter_channels" to 768L,
             "n_heads" to 2L, "n_layers" to 6L, "kernel_size" to 3L, "gin_channels" to 1024L,
             "upsample_initial_channel" to if (pro) 512L else 768L)

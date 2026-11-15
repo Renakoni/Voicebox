@@ -3,3 +3,15 @@ Copyright Srikanth Lingala
 https://github.com/srikanth-lingala/zip4j
 Apache License 2.0
 Used to read PyTorch ZIP64 checkpoint files on Android.
+
+GPT-SoVITS
+Copyright (c) 2024 RVC-Boss
+https://github.com/RVC-Boss/GPT-SoVITS
+MIT License; see GPT-SoVITS-MIT.txt.
+V5 acoustic graph templates and inference scheduling derive from commit
+6d51ffceafbf240145619af4c92408a6e54b7924.
+
+F5-TTS
+https://github.com/SWivid/F5-TTS
+MIT License; see F5-TTS-MIT.txt.
+The V5 DiT backbone is adapted upstream from F5-TTS.

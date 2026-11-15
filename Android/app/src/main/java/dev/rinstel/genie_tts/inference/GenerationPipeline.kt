@@ -48,7 +48,7 @@ class GenerationPipeline(
             )
             try {
                 timer.measure("write_wav_ms") {
-                    WavFileWriter.writeMonoPcm16(outputFile, result.audio, OUTPUT_SAMPLE_RATE)
+                    WavFileWriter.writeMonoPcm16(outputFile, result.audio, result.sampleRate)
                 }
                 request.context.checkCancelled()
                 progressCallbacks?.onStage(
@@ -62,6 +62,7 @@ class GenerationPipeline(
                     file = outputFile,
                     audioSamples = result.audio.size,
                     tensorShape = result.shape,
+                    sampleRate = result.sampleRate,
                 )
             } catch (error: Throwable) {
                 outputFile.delete()
@@ -78,7 +79,4 @@ class GenerationPipeline(
         require(backend.isInitialized()) { "CPU backend is not initialized." }
     }
 
-    companion object {
-        const val OUTPUT_SAMPLE_RATE = 32000
-    }
 }
