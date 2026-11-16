@@ -112,5 +112,6 @@ tests/parity/.tmp/
 !/tools/build_v5turbo_templates.py
 !/tools/split_v5_dit.py
 !/tools/split_vits_acoustic.py
+!/tools/split_v2_htp.py
 !/tools/subpixel_hifigan.py
 !Android/app/src/main/assets/official-runtime/*.onnx

@@ -34,7 +34,7 @@ class QnnContextCacheInstrumentedTest {
         assertTrue(NativeDecoderLoop.isAvailable())
 
         // Exercise the existing private JNI boundary without adding a production benchmark API.
-        val type = V5QnnSession::class.java
+        val type = QnnSession::class.java
         fun method(name: String, vararg parameters: Class<*>) =
             type.getDeclaredMethod(name, *parameters).apply { isAccessible = true }
         val create = method("create", String::class.java, String::class.java, String::class.java,

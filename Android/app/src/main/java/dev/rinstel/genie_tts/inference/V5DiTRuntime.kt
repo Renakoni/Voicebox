@@ -36,7 +36,7 @@ internal class V5DiTRuntime(
     // Keep one HTP-sized workspace and one unpadded GPU tail; never cache every sentence length.
     private var workspace: Workspace? = null
     private var tailWorkspace: Workspace? = null
-    private val qnn = mutableMapOf<Int, V5QnnSession?>()
+    private val qnn = mutableMapOf<Int, QnnSession?>()
     private var npuPrepared = false
     private val hasSplitGraphs = SPLIT_GRAPHS.all { File(directory, it).isFile }
     // A backend-specific graph shares the weights; the final FP32 step keeps BODY.
@@ -54,7 +54,7 @@ internal class V5DiTRuntime(
                 if (!qnn.containsKey(bucket)) {
                     progress(index, BUCKETS.size)
                     qnn[bucket] = timer.measure("v5_qnn_session_ms") {
-                        V5QnnSession(runtime, htpBody, qnnPerformance, bucket, allowCompilation = true)
+                        QnnSession(runtime, htpBody, qnnPerformance, bucket, allowCompilation = true)
                     }
                 }
             }
@@ -89,7 +89,7 @@ internal class V5DiTRuntime(
             // Feature preparation and memory trimming can evict live sessions.
             // Reload their prepared contexts; source compilation is forbidden here.
             qnn[bucket] = timer.measure("v5_qnn_context_reload_ms") {
-                try { V5QnnSession(runtime, htpBody, qnnPerformance, bucket) }
+                try { QnnSession(runtime, htpBody, qnnPerformance, bucket) }
                 catch (error: Exception) {
                     GenerationContext.checkCurrent()
                     android.util.Log.w("VoiceboxV5", "HTP context unavailable, using FP32 WebGPU", error)

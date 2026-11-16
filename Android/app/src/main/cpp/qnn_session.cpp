@@ -56,11 +56,11 @@ void fail(JNIEnv* env, const std::exception& error) {
 
 // The QNN runtime owns ALL its Ort handles. Java/WebGPU OrtValues never cross this boundary.
 extern "C" JNIEXPORT jlong JNICALL
-Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
+Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
         JNIEnv* env, jclass, jstring runtime, jstring model, jstring cache, jstring performance, jint frames) {
     try {
         auto s = std::make_unique<Session>();
-        if (frames != 512 && frames != 768 && frames != 1000) throw std::runtime_error("Unsupported HTP bucket");
+        if (frames != 64 && frames != 512 && frames != 768 && frames != 1000) throw std::runtime_error("Unsupported HTP bucket");
         const auto directory = string(env, runtime);
         const auto modelPath = string(env, model);
         const auto cachePath = string(env, cache);
@@ -151,7 +151,7 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_dev_rinstel_genie_1tts_inference_V5QnnSession_inputNames(JNIEnv* env, jclass, jlong handle) {
+Java_dev_rinstel_genie_1tts_inference_QnnSession_inputNames(JNIEnv* env, jclass, jlong handle) {
     auto& s = *reinterpret_cast<Session*>(handle);
     auto result = env->NewObjectArray(s.names.size(), env->FindClass("java/lang/String"), nullptr);
     for (size_t i = 0; i < s.names.size(); ++i) {
@@ -162,7 +162,7 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_inputNames(JNIEnv* env, jclas
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_V5QnnSession_run(
+Java_dev_rinstel_genie_1tts_inference_QnnSession_run(
         JNIEnv* env, jclass, jlong handle, jobjectArray buffers, jobject output) {
     auto& s = *reinterpret_cast<Session*>(handle);
     std::vector<OrtValue*> owned;
@@ -194,13 +194,13 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_run(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_V5QnnSession_terminate(JNIEnv* env, jclass, jlong handle, jboolean cancel) {
+Java_dev_rinstel_genie_1tts_inference_QnnSession_terminate(JNIEnv* env, jclass, jlong handle, jboolean cancel) {
     auto& s = *reinterpret_cast<Session*>(handle);
     try { s.check(cancel ? s.api->RunOptionsSetTerminate(s.run) : s.api->RunOptionsUnsetTerminate(s.run)); }
     catch (const std::exception& error) { fail(env, error); }
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_V5QnnSession_destroy(JNIEnv*, jclass, jlong handle) {
+Java_dev_rinstel_genie_1tts_inference_QnnSession_destroy(JNIEnv*, jclass, jlong handle) {
     delete reinterpret_cast<Session*>(handle);
 }

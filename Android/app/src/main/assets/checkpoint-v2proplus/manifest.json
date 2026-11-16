@@ -13,7 +13,10 @@
     "split-encoder.onnx": "301e0a44b5ac9bbb1ae448711a15a8bd858ab192a0b9be74d141c9b0404bd7af",
     "split-hifigan.onnx": "c810b967ec25caf1e3d11a68626ed0c29a7d153a88d808c676a986342d24dd9a",
     "mobile-decoder.json": "8aeffeda87e947ca9d4f347ada2d151bbbc2a6fe4562de5f09c6cccb45d7ed7f",
-    "split-vits.json": "564f58918acfde9225fbbc3f9df2869cdd780773baffc74c5d9b914646089f08"
+    "split-vits.json": "564f58918acfde9225fbbc3f9df2869cdd780773baffc74c5d9b914646089f08",
+    "v2-htp-stem.onnx": "2f6910863bc206d7f6530fc293219f5a38b8c64a6798a546e335616d133713f7",
+    "v2-htp-body.onnx": "644029c2e1cfaa67d3cc5995a5e0666fd5b320153c707aa3efdd0c165addd0d4",
+    "v2-htp-head.onnx": "38347cb9b60d25d2187c27085cd513eb385dd4ab3c5a63251c259bcf346ae263"
   },
   "groups": [
     {

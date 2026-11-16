@@ -6,8 +6,10 @@ import java.nio.FloatBuffer
 import java.security.MessageDigest
 
 /** Optional Qualcomm runtime; no ORT objects are shared with the WebGPU library. */
-internal class V5QnnSession(runtime: File, model: File, performance: String, frames: Int,
-                            allowCompilation: Boolean = false) : AutoCloseable {
+internal class QnnSession(runtime: File, model: File, performance: String, frames: Int,
+                          allowCompilation: Boolean = false,
+                          weights: File = File(model.parentFile, "v5_sovits_fp32.bin"),
+                          namespace: String = "v5") : AutoCloseable {
     private val handle: Long
     private val names: Array<String>
 
@@ -20,7 +22,7 @@ internal class V5QnnSession(runtime: File, model: File, performance: String, fra
         digest.update(model.readBytes())
         // Import replaces the model directory atomically. Metadata also invalidates local
         // weight/runtime replacements without re-reading gigabytes for each shape bucket.
-        val dependencies = listOf(File(model.parentFile, "v5_sovits_fp32.bin")) +
+        val dependencies = listOf(weights) +
             runtime.listFiles().orEmpty().filter { it.extension == "so" }.sortedBy { it.name }
         dependencies.forEach { file ->
             digest.update("\n${file.name}:${file.length()}:${file.lastModified()}".toByteArray())
@@ -30,9 +32,10 @@ internal class V5QnnSession(runtime: File, model: File, performance: String, fra
             while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
         }
         val key = digest.digest().take(12).joinToString("") { "%02x".format(it) }
-        val cache = File(model.parentFile, ".v5-htp-$key-$frames.onnx")
-        // Retain only this model/runtime's three bounded shape contexts.
-        model.parentFile!!.listFiles()?.filter { it.name.startsWith(".v5-htp-") && !it.name.startsWith(".v5-htp-$key-") }
+        val prefix = ".$namespace-htp-"
+        val cache = File(model.parentFile, "$prefix$key-$frames.onnx")
+        // Retain only this model/runtime's bounded shape contexts.
+        model.parentFile!!.listFiles()?.filter { it.name.startsWith(prefix) && !it.name.startsWith("$prefix$key-") }
             ?.forEach { it.delete() }
         // Generation loads only a prepared context. Even if it disappears, this
         // path cannot compile the source graph while rendering an acoustic chunk.

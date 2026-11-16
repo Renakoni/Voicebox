@@ -55,7 +55,7 @@ class V5AcousticOptimizationInstrumentedTest {
             result.put("pss_prepared_kib", Debug.getPss())
             dit.close() // Feature preparation may release active sessions.
             dit.prepareNpu { _, _ -> error("Eviction must preserve prepared disk contexts") }
-            V5QnnSession(File(context.filesDir, "QualcommRuntime"),
+            QnnSession(File(context.filesDir, "QualcommRuntime"),
                 File(fixture.getString("directory"), V5DiTRuntime.HTP_BODY), "balanced", 768).use { }
             assertEquals(3, timings.length())
         }

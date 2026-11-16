@@ -20,6 +20,8 @@ def build(checkpoint, source, output):
     weights = torch.load(checkpoint, map_location="cpu", weights_only=True)["weight"]
     manifest = json.loads((source / "manifest.json").read_text())
     manifest["architecture"] = "v2Pro"
+    # The Plus HTP body has different channels and upsampling kernels.
+    manifest["files"] = {name: value for name, value in manifest["files"].items() if not name.startswith("v2-htp-")}
     layout = {}
     for group in manifest["groups"]:
         offset = 0

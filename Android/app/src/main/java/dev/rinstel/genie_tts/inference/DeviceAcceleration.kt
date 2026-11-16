@@ -44,7 +44,7 @@ class DeviceAcceleration(private val context: Context) {
         val probe = File(context.cacheDir, "qnn-capability.onnx")
         try {
             context.assets.open("device-acceleration/probe.onnx").use { input -> probe.outputStream().use(input::copyTo) }
-            V5QnnSession.probe(runtime, probe)
+            QnnSession.probe(runtime, probe)
             runtimeDirectory = runtime
             mutableStatus.value = DeviceAccelerationStatus(device, true, "NPU 验证通过", checking = false)
         } catch (error: Exception) {
