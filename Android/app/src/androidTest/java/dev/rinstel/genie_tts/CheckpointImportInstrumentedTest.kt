@@ -18,6 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import dev.rinstel.genie_tts.inference.ModelAssetRepository
+import dev.rinstel.genie_tts.inference.modelArchitectureLabel
 import dev.rinstel.genie_tts.inference.OptimizedDecoderAssets
 import dev.rinstel.genie_tts.inference.SplitVocoderAssets
 import dev.rinstel.genie_tts.inference.OrtSessionRuntime
@@ -91,6 +92,34 @@ class CheckpointImportInstrumentedTest {
                 File(source, "streaming-parity.json").writeText(JSONObject().put("relative_rms", relativeRms)
                     .put("samples", actual.size).put("last_chunk_frames", 1).toString(2))
                 assertTrue("Streaming waveform relative RMS: $relativeRms", relativeRms < 0.0005)
+
+                // An interrupted caller must not let the backend release a session still in use.
+                val gpuLock = Any()
+                val streaming = V5StreamingVocoder(environment, session, InferenceTimer(InferenceTraceLogger.None), gpuLock)
+                val closing = CountDownLatch(1)
+                val closed = CountDownLatch(1)
+                val failure = AtomicReference<Throwable>()
+                val interrupted = AtomicReference(false)
+                val closer = Thread {
+                    Thread.currentThread().interrupt()
+                    closing.countDown()
+                    try { streaming.close() } catch (error: Throwable) { failure.set(error) }
+                    finally { interrupted.set(Thread.currentThread().isInterrupted); closed.countDown() }
+                }
+                try {
+                    synchronized(gpuLock) {
+                        streaming.submit(FloatTensorData(mel, longArrayOf(1, 100, frames.toLong())), last = true)
+                        closer.start()
+                        assertTrue(closing.await(5, TimeUnit.SECONDS))
+                        assertFalse("Close returned while the GPU worker was blocked", closed.await(200, TimeUnit.MILLISECONDS))
+                    }
+                    assertTrue("Vocoder close did not finish", closed.await(60, TimeUnit.SECONDS))
+                    assertTrue(failure.get() is InterruptedException)
+                    assertTrue(interrupted.get())
+                } finally {
+                    closer.join()
+                    streaming.close()
+                }
             }
         }
     }
@@ -178,6 +207,11 @@ class CheckpointImportInstrumentedTest {
         var providers = linkedSetOf<String>()
         var captureIndex = 0
         val trace = object : V5AcousticDiagnostics {
+            private var conditionInputs = emptyMap<String, FloatBuffer>()
+            override fun acousticCondition(prompt: FloatTensorData, features: FloatTensorData) {
+                if (arguments.getString("captureAcoustic") == "1") conditionInputs = mapOf(
+                    "prompt" to FloatBuffer.wrap(prompt.values), "features" to FloatBuffer.wrap(features.values))
+            }
             @Synchronized override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
             @Synchronized override fun event(event: InferenceTraceEvent) {
                 if (event is InferenceTraceEvent.Model) providers.add(event.value.provider.wireValue)
@@ -187,11 +221,17 @@ class CheckpointImportInstrumentedTest {
                 val output = File(source, "acoustic-${captureIndex++}").apply { mkdirs() }
                 File(output, "case.json").writeText(JSONObject().put("frames", frames).put("reference_frames", referenceFrames)
                     .put("bucket", inputs.getValue("mask").capacity()).toString(2))
-                inputs.forEach { (name, value) ->
+                (inputs + conditionInputs).forEach { (name, value) ->
                     val bytes = ByteBuffer.allocate(value.capacity() * 4).order(ByteOrder.LITTLE_ENDIAN)
                     bytes.asFloatBuffer().put(value.duplicate().apply { clear() })
                     File(output, "$name.f32").writeBytes(bytes.array())
                 }
+            }
+            override fun acousticResult(state: FloatBuffer) {
+                if (arguments.getString("captureAcoustic") != "1") return
+                val bytes = ByteBuffer.allocate(state.capacity() * 4).order(ByteOrder.LITTLE_ENDIAN)
+                bytes.asFloatBuffer().put(state.duplicate().apply { clear() })
+                File(source, "acoustic-${captureIndex - 1}/result.f32").writeBytes(bytes.array())
             }
         }
         val runtime = OrtSessionRuntime(repository, assets, backendEngine = OrtCpuBackend(
@@ -199,7 +239,7 @@ class CheckpointImportInstrumentedTest {
             configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
             configureRoleSessionOptions = OrtCpuBackend::configureCpuSessionOptionsForRole,
             traceLogger = trace, useNativeDecoder = true,
-            qnnRuntimeDirectory = if (arguments.getString("backend") == "qnn") File(context.filesDir, "QualcommRuntime") else null,
+            qnnRuntimeDirectory = { if (arguments.getString("backend") == "qnn") File(context.filesDir, "QualcommRuntime") else null },
             qnnPerformance = arguments.getString("qnnPerformance", "balanced")!!), traceLogger = trace) { backend ->
             OrtRuntimeFeatureExtractor(context, assets, backend, traceLogger = trace)
         }
@@ -232,13 +272,16 @@ class CheckpointImportInstrumentedTest {
 
     @Test fun importsCommunityVoiceThroughStudioAndKeepsItReadyAfterRecreation() {
         val app = ApplicationProvider.getApplicationContext<Application>()
-        val source = File(app.getExternalFilesDir(null), "checkpoint-community-source")
+        val source = InstrumentationRegistry.getArguments().getString("checkpointSource")?.let(::File)
+            ?: File(app.getExternalFilesDir(null), "checkpoint-community-source")
         val case = JSONObject(File(source, "import-case.json").readText())
         val gpt = File(source, case.getString("gpt_file"))
         val sovits = File(source, case.getString("sovits_file"))
         val reference = File(source, case.getString("reference_file"))
         val transcript = case.getString("reference_text")
         val name = case.getString("name")
+        val architecture = case.optString("architecture", "v2ProPlus")
+        val language = case.optString("reference_language", "auto")
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         var owner = ViewModelStore()
         lateinit var vm: StudioViewModel
@@ -276,6 +319,7 @@ class CheckpointImportInstrumentedTest {
             onMain { vm.pickCheckpoint(Uri.fromFile(sovits), false) }
             awaitStudio { !vm.fileBusy }
             onMain {
+                assertEquals(modelArchitectureLabel(architecture), vm.checkpointRecognition)
                 vm.importCheckpoints()
                 assertEquals("请选择配套的参考音频，并填写音频中的原文。", vm.checkpointError)
                 assertFalse(vm.importing)
@@ -289,6 +333,7 @@ class CheckpointImportInstrumentedTest {
                 assertTrue(vm.checkpointDraft!!.durationMs in 500..30_000)
                 importedSample = vm.checkpointDraft!!.audioPath
                 vm.editCheckpointTranscript(transcript)
+                vm.editCheckpointLanguage(language)
                 vm.importCheckpoints()
             }
             awaitStudio { !vm.importing && !vm.loading }
@@ -302,9 +347,11 @@ class CheckpointImportInstrumentedTest {
                 val voice = requireNotNull(vm.selectedVoice)
                 assertEquals(name, voice.name)
                 assertEquals(transcript, voice.transcript)
+                assertEquals(language, voice.referenceLanguage)
+                assertEquals(architecture, voice.modelDirectory.substringBefore('/'))
                 assertArrayEquals(reference.readBytes(), File(voice.audioPath).readBytes())
                 selectedId = voice.id
-                result = CheckpointImporter.Result(vm.modelFor(voice)!!.id, voice.name)
+                result = CheckpointImporter.Result(vm.modelFor(voice)!!.id, voice.name, architecture)
                 vm.openVoicePicker(); vm.chooseVoice(voice)
                 assertFalse(vm.choosingVoice)
                 assertNull(vm.draft)
@@ -317,6 +364,7 @@ class CheckpointImportInstrumentedTest {
             onMain {
                 assertEquals(selectedId, vm.selectedId)
                 assertEquals(transcript, vm.selectedVoice!!.transcript)
+                assertEquals(language, vm.selectedVoice!!.referenceLanguage)
                 assertNotNull(vm.modelFor(vm.selectedVoice!!))
             }
             verifyImportedModel(app, result, source, start)

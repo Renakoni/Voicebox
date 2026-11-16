@@ -1,138 +1,56 @@
 package dev.rinstel.genie_tts
 
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
-import java.io.File
+import java.util.concurrent.CancellationException
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
-import org.junit.Test
 
 class ResourcePackageImporterTest {
-    @Test
-    fun restoresEarlierCharacterWhenLaterReplacementFails() {
-        val root = java.nio.file.Files.createTempDirectory("genie-rollback-").toFile()
-        try {
-            val original = File(root, "CharacterModels/v2/Alice/tts_models/model.onnx").apply {
-                parentFile.mkdirs()
-                writeText("old")
+    @get:Rule val temporary = TemporaryFolder()
+
+    @Test fun installsAndReplacesOnlyTheRuntimeDirectory() {
+        val root = temporary.newFolder()
+        val models = root.resolve("CharacterModels").apply { mkdir() }.resolve("keep").apply { writeText("voice") }
+        val old = root.resolve("RuntimeAssets").apply { mkdir() }.resolve("old").apply { writeText("old") }
+        ResourcePackageImporter(root).importRuntime(zipOf(runtimeEntries()))
+        assertFalse(old.exists())
+        assertEquals("voice", models.readText())
+        runtimeEntries().forEach { (path, content) -> assertEquals(content, root.resolve(path).readText()) }
+        assertFalse(root.listFiles()!!.any { it.name.startsWith(".") })
+    }
+
+    @Test fun rejectsIncompleteAndEscapingPackagesWithoutChangingTheInstalledRuntime() {
+        val root = temporary.newFolder()
+        val existing = root.resolve("RuntimeAssets").apply { mkdir() }.resolve("keep").apply { writeText("previous") }
+        val importer = ResourcePackageImporter(root)
+        for (entries in listOf(
+            listOf("RuntimeAssets/../outside" to "bad"),
+            listOf("/RuntimeAssets/outside" to "bad"),
+            listOf("CharacterModels/model.onnx" to "bad"),
+            runtimeEntries().dropLast(1),
+        )) {
+            assertThrows(IllegalArgumentException::class.java) { importer.importRuntime(zipOf(entries)) }
+            assertEquals("previous", existing.readText())
+            assertEquals(listOf("RuntimeAssets"), root.list()!!.toList())
+        }
+    }
+
+    @Test fun cancelledExtractionKeepsTheInstalledRuntimeAndRemovesStagingFiles() {
+        val root = temporary.newFolder()
+        val existing = root.resolve("RuntimeAssets").apply { mkdir() }.resolve("keep").apply { writeText("previous") }
+        var checks = 0
+        assertThrows(CancellationException::class.java) {
+            ResourcePackageImporter(root).importRuntime(zipOf(runtimeEntries())) {
+                if (++checks == 4) throw CancellationException()
             }
-            // A file where a directory is needed makes the second move fail after Alice was replaced.
-            File(root, "CharacterModels/v2ProPlus").writeText("blocked")
-            assertThrows<java.io.IOException> {
-                ResourcePackageImporter(root).importCharacter(zipOf(listOf(
-                    "CharacterModels/v2/Alice/tts_models/model.onnx" to "new",
-                    "CharacterModels/v2ProPlus/Bob/tts_models/model.onnx" to "bob",
-                )))
-            }
-            assertEquals("old", original.readText())
-            assertFalse(root.listFiles().orEmpty().any { it.name.startsWith(".genie-import-") })
-        } finally { root.deleteRecursively() }
-    }
-
-    @Test
-    fun importsCompleteRuntimePackageIntoRuntimeAssets() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val importer = ResourcePackageImporter(filesRoot)
-
-        val result = importer.importRuntime(zipOf(runtimeEntries()))
-
-        assertEquals(ResourcePackageImporter.PackageType.RUNTIME, result.packageType)
-        assertEquals(6, result.fileCount)
-        assertTrue(File(filesRoot, "RuntimeAssets/speaker_encoder.onnx").isFile)
-        assertTrue(
-            File(
-                filesRoot,
-                "RuntimeAssets/chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json",
-            ).isFile,
-        )
-    }
-
-    @Test
-    fun rejectsZipPathTraversalBeforeWritingOutsideStagingDirectory() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val importer = ResourcePackageImporter(filesRoot)
-
-        assertThrows<IllegalArgumentException> {
-            importer.importRuntime(
-                zipOf(
-                    runtimeEntries() + ("RuntimeAssets/../escape.txt" to "escape"),
-                ),
-            )
         }
-
-        assertFalse(File(filesRoot.parentFile, "escape.txt").exists())
-        assertFalse(File(filesRoot, "RuntimeAssets").exists())
-    }
-
-    @Test
-    fun rejectsRuntimePackageWithMissingRequiredFile() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val oldRuntimeFile = File(filesRoot, "RuntimeAssets/old.marker").apply {
-            parentFile.mkdirs()
-            writeText("keep")
-        }
-        val importer = ResourcePackageImporter(filesRoot)
-
-        assertThrows<IllegalArgumentException> {
-            importer.importRuntime(zipOf(runtimeEntries().filterNot { it.first.endsWith("speaker_encoder.onnx") }))
-        }
-
-        assertTrue(oldRuntimeFile.isFile)
-        assertEquals("keep", oldRuntimeFile.readText())
-    }
-
-    @Test
-    fun replacesOnlyMatchingCharacterAndPreservesOtherCharacters() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        File(filesRoot, "CharacterModels/v2ProPlus/Alice/tts_models/old.onnx").apply {
-            parentFile.mkdirs()
-            writeText("old")
-        }
-        val otherCharacter = File(filesRoot, "CharacterModels/v2ProPlus/Bob/tts_models/model.onnx").apply {
-            parentFile.mkdirs()
-            writeText("bob")
-        }
-        val importer = ResourcePackageImporter(filesRoot)
-
-        val result = importer.importCharacter(
-            zipOf(
-                listOf(
-                    "CharacterModels/v2ProPlus/Alice/tts_models/model.onnx" to "new",
-                    "CharacterModels/v2ProPlus/Alice/prompt_wav.json" to "{}",
-                ),
-            ),
-        )
-
-        assertEquals(listOf("v2ProPlus/Alice"), result.characterIds)
-        assertFalse(File(filesRoot, "CharacterModels/v2ProPlus/Alice/tts_models/old.onnx").exists())
-        assertEquals(
-            "new",
-            File(filesRoot, "CharacterModels/v2ProPlus/Alice/tts_models/model.onnx").readText(),
-        )
-        assertTrue(otherCharacter.isFile)
-    }
-
-    @Test
-    fun rejectsCharacterPackageWithoutOnnxAndKeepsExistingCharacter() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val oldModel = File(filesRoot, "CharacterModels/v2ProPlus/Alice/tts_models/model.onnx").apply {
-            parentFile.mkdirs()
-            writeText("old")
-        }
-        val importer = ResourcePackageImporter(filesRoot)
-
-        assertThrows<IllegalArgumentException> {
-            importer.importCharacter(
-                zipOf(
-                    listOf("CharacterModels/v2ProPlus/Alice/prompt_wav.json" to "{}"),
-                ),
-            )
-        }
-
-        assertEquals("old", oldModel.readText())
+        assertEquals("previous", existing.readText())
+        assertEquals(listOf("RuntimeAssets"), root.list()!!.toList())
     }
 
     private fun runtimeEntries(): List<Pair<String, String>> = listOf(
@@ -156,13 +74,4 @@ class ResourcePackageImporterTest {
         return ByteArrayInputStream(bytes.toByteArray())
     }
 
-    private inline fun <reified T : Throwable> assertThrows(block: () -> Unit) {
-        try {
-            block()
-        } catch (error: Throwable) {
-            if (error is T) return
-            throw error
-        }
-        throw AssertionError("Expected ${T::class.java.simpleName}")
-    }
 }

@@ -85,13 +85,7 @@ class ChineseTextFeatureExtractor(
 
     private fun segmentChineseText(text: String): List<WordSegment> {
         if (text.isEmpty()) return emptyList()
-        // The packaged exporter populates wordEntries; keep the legacy maps
-        // supported for tests and older resource bundles.
-        if (resources.wordFrequencies.isEmpty() && resources.wordEntries.isEmpty()) {
-            return fallbackSegments(text)
-        }
-
-        val totalFrequency = resources.totalWordFrequency
+        val logTotalFrequency = kotlin.math.ln(resources.totalWordFrequency)
         val scores = DoubleArray(text.length + 1) { Double.NEGATIVE_INFINITY }
         val lengths = IntArray(text.length)
         scores[text.length] = 0.0
@@ -103,7 +97,7 @@ class ChineseTextFeatureExtractor(
                 if (frequency <= 0) continue
                 val suffixScore = scores[start + length]
                 if (suffixScore.isInfinite() && suffixScore < 0) continue
-                val score = kotlin.math.ln(frequency.toDouble()) - kotlin.math.ln(totalFrequency) + suffixScore
+                val score = kotlin.math.ln(frequency.toDouble()) - logTotalFrequency + suffixScore
                 if (score > scores[start]) {
                     scores[start] = score
                     lengths[start] = length
@@ -111,7 +105,7 @@ class ChineseTextFeatureExtractor(
             }
             if (lengths[start] == 0) {
                 lengths[start] = 1
-                scores[start] = kotlin.math.ln(1.0) - kotlin.math.ln(totalFrequency) + scores[start + 1]
+                scores[start] = -logTotalFrequency + scores[start + 1]
             }
         }
 
@@ -122,23 +116,6 @@ class ChineseTextFeatureExtractor(
             val word = text.substring(index, minOf(text.length, index + length))
             result += WordSegment(word, resources.wordTag(word))
             index += length
-        }
-        return result
-    }
-
-    private fun fallbackSegments(text: String): List<WordSegment> {
-        val result = mutableListOf<WordSegment>()
-        var index = 0
-        while (index < text.length) {
-            val phraseMatch = longestPhraseMatch(text, index)
-            if (phraseMatch != null) {
-                result += WordSegment(phraseMatch.first, resources.wordTag(phraseMatch.first))
-                index += phraseMatch.first.length
-            } else {
-                val word = text[index].toString()
-                result += WordSegment(word, resources.wordTag(word))
-                index += 1
-            }
         }
         return result
     }
@@ -305,16 +282,6 @@ class ChineseTextFeatureExtractor(
             }
         }
         return duplicatePunctuationRegex.replace(replaced, "$1")
-    }
-
-    private fun longestPhraseMatch(text: String, startIndex: Int): Pair<String, List<String>>? {
-        val maxLength = minOf(resources.maxPhraseLength, text.length - startIndex)
-        for (length in maxLength downTo 2) {
-            val candidate = text.substring(startIndex, startIndex + length)
-            val pinyin = resources.polyphonicPinyin[candidate] ?: continue
-            return candidate to pinyin
-        }
-        return null
     }
 
     private fun singleCharacterPinyin(char: Char): String? {

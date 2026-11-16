@@ -14,7 +14,10 @@
     "v5-static.onnx": "b0cd52bf20b1f50cdfb984383fed0a5b8001dfdf840bb874ea60eb74e4398094",
     "v5-dit.onnx": "cc6eb96d477fe101c99bf6e3bb838ee246c2b9a7271cd5ad54dbe2da00a8cc60",
     "v5-time.onnx": "12d6c94cbee5f53fae470b0cc37e622236b38a00d1213f5e84deea69f87ea478",
-    "v5-dit-compact.onnx": "6d2c77e51f5f2513f123186dda3a1f76d37fc710b970ab7343d58d88ef29f2fe"
+    "v5-dit-compact.onnx": "6d2c77e51f5f2513f123186dda3a1f76d37fc710b970ab7343d58d88ef29f2fe",
+    "v5-dit-stem.onnx": "146911406dbc61d4baa22f0441ef70413238f64a385b3de257c54283985a69b7",
+    "v5-dit-body.onnx": "d7f67920e5548a5136b39afc07e45a4f64e3f80cf22347245afbf7c611eda345",
+    "v5-dit-head.onnx": "0d4fd3752686476954223a44230b1ecb93d1fcf69c7d72a625b08a927c03858b"
   },
   "groups": [
     {

@@ -31,8 +31,10 @@ class CheckpointImporter(
         gptFilename: String = "",
         sovitsFilename: String = "",
         architectureHint: String? = null,
+        newCharacterId: String? = null,
     ): Result {
         require(name.isNotBlank() && name.length <= 80) { "请填写 1 至 80 字的音色名称。" }
+        require(newCharacterId == null || newCharacterId.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { "无效的音色目录。" }
         reference?.let {
             require(it.text.isNotBlank()) { "请填写参考音频对应的原文。" }
             require(it.audioFile.isFile && it.audioFile.length() in 1..32L * 1024 * 1024) { "请选择有效的参考音频，文件不能超过 32 MB。" }
@@ -52,7 +54,7 @@ class CheckpointImporter(
             progress("读取 SoVITS 权重")
             val sovitsFile = File(staging, "source.pth")
             val sovitsHash = copyCheckpoint(openSovits, sovitsFile, checkCancelled)
-            val characterId = replaceCharacterId ?: ("imported-" + UUID.randomUUID().toString())
+            val characterId = replaceCharacterId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
             val character = File(staging, characterId).apply { mkdirs() }
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
@@ -205,7 +207,7 @@ class CheckpointImporter(
         return if (pro) "v2Pro" else "v2ProPlus"
     }
 
-    private fun writeTensor(input: InputStream, output: OutputStream, tensor: TorchTensor, half: Boolean, checkCancelled: () -> Unit) {
+    internal fun writeTensor(input: InputStream, output: OutputStream, tensor: TorchTensor, half: Boolean, checkCancelled: () -> Unit) {
         val width = tensor.storage.bytesPerElement
         val buffer = ByteArray(64 * 1024)
         val converted = ByteBuffer.allocate(128 * 1024).order(ByteOrder.LITTLE_ENDIAN)

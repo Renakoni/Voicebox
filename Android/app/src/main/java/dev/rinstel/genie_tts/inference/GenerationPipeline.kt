@@ -76,7 +76,6 @@ class GenerationPipeline(
         require(request.referenceAudioPath.isNotBlank()) { "Reference audio path is required." }
         require(request.referenceText.isNotBlank()) { "Reference text is required." }
         require(request.language.isNotBlank()) { "Language is required." }
-        require(backend.isInitialized()) { "CPU backend is not initialized." }
     }
 
 }

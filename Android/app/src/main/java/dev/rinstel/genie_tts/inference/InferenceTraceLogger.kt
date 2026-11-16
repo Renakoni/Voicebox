@@ -57,6 +57,7 @@ interface InferenceTraceLogger {
 enum class InferenceRuntimeLabel(val wireValue: String) {
     CPU("ORT CPU EP"),
     WEBGPU("ORT CPU + WebGPU"),
+    QNN("ORT CPU + WebGPU + QNN"),
 }
 
 interface InferenceTensorMetricName {

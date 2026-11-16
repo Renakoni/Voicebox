@@ -174,7 +174,7 @@ internal class TorchPickle(private val bytes: ByteArray) {
     }
 }
 
-internal class TorchCheckpoint(file: File) : Closeable {
+internal class TorchCheckpoint(file: File, weightsKey: String? = "weight") : Closeable {
     private val zip = ZipFile(file)
     private val prefix: String
     val root: Map<*, *>
@@ -192,7 +192,8 @@ internal class TorchCheckpoint(file: File) : Closeable {
             root = TorchPickle(zip.getInputStream(metadata).use { input ->
                 ByteArray(metadata.uncompressedSize.toInt()).also { DataInputStream(input).readFully(it); require(input.read() == -1) }
             }).read()
-            weights = root["weight"] as? Map<*, *> ?: error("缺少 weight，请选择 GPT-SoVITS 导出的模型，而非训练过程快照。")
+            weights = if (weightsKey == null) root else root[weightsKey] as? Map<*, *>
+                ?: error("缺少 weight，请选择 GPT-SoVITS 导出的模型，而非训练过程快照。")
         } catch (error: Throwable) { zip.close(); throw error }
     }
 

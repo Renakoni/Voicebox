@@ -1,0 +1,152 @@
+diff --git a/onnxruntime/core/providers/webgpu/math/gemm_utils.cc b/onnxruntime/core/providers/webgpu/math/gemm_utils.cc
+index b762c38..362b0d8 100644
+--- a/onnxruntime/core/providers/webgpu/math/gemm_utils.cc
++++ b/onnxruntime/core/providers/webgpu/math/gemm_utils.cc
+@@ -230,7 +230,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                   int output_components,
+                                   uint32_t tile_inner,
+                                   bool split_k,
+-                                  uint32_t split_dim_inner) {
++                                  uint32_t split_dim_inner,
++                                  bool unroll_rows) {
+   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
+ 
+   std::string write_data_to_sub_a_vec4_snippet =
+@@ -429,14 +430,27 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+       if (inner_elements_size != 3) {
+         shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+       }
+-      shader.MainFunctionBody()
+-          << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
+-          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+-          << "        acc[i] = BCached0 * ACached.x + acc[i];\n"
+-          << "        acc[i] = BCached1 * ACached.y + acc[i];\n"
+-          << "        acc[i] = BCached2 * ACached.z + acc[i];\n"
+-          << "        " << (inner_elements_size == 3 ? "" : "acc[i] = BCached3 * ACached.w + acc[i];") << "\n"
+-          << "      }\n";
++      if (unroll_rows) {
++        // Literal accumulator indices avoid dynamic array indexing in the shader.
++        for (int64_t row = 0; row < elements_per_thread_y; ++row) {
++          shader.MainFunctionBody() << "      { let ACached = mm_Asub[tileRow + " << row << "][k];\n";
++          const char* components[] = {"x", "y", "z", "w"};
++          for (int part = 0; part < inner_elements_size; ++part) {
++            shader.MainFunctionBody() << "        acc[" << row << "] = fma(BCached" << part
++                << ", " << type_string << "(ACached." << components[part] << "), acc[" << row << "]);\n";
++          }
++          shader.MainFunctionBody() << "      }\n";
++        }
++      } else {
++        shader.MainFunctionBody()
++            << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
++            << "        let ACached = mm_Asub[tileRow + i][k];\n"
++            << "        acc[i] = BCached0 * ACached.x + acc[i];\n"
++            << "        acc[i] = BCached1 * ACached.y + acc[i];\n"
++            << "        acc[i] = BCached2 * ACached.z + acc[i];\n"
++            << "        " << (inner_elements_size == 3 ? "" : "acc[i] = BCached3 * ACached.w + acc[i];") << "\n"
++            << "      }\n";
++      }
+     }
+     shader.MainFunctionBody()
+         << "    }\n"
+diff --git a/onnxruntime/core/providers/webgpu/math/gemm_utils.h b/onnxruntime/core/providers/webgpu/math/gemm_utils.h
+index 13c2989..919206c 100644
+--- a/onnxruntime/core/providers/webgpu/math/gemm_utils.h
++++ b/onnxruntime/core/providers/webgpu/math/gemm_utils.h
+@@ -48,7 +48,8 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                   int output_components = 4,
+                                   uint32_t tile_inner = 32,
+                                   bool split_k = false,
+-                                  uint32_t split_dim_inner = 32);
++                                  uint32_t split_dim_inner = 32,
++                                  bool unroll_rows = false);
+ 
+ Status MakeMatMulPackedSource(ShaderHelper& shader,
+                               const InlinedVector<int64_t>& elements_per_thread,
+diff --git a/onnxruntime/core/providers/webgpu/math/matmul.cc b/onnxruntime/core/providers/webgpu/math/matmul.cc
+index 6b0600f..9b8eb91 100644
+--- a/onnxruntime/core/providers/webgpu/math/matmul.cc
++++ b/onnxruntime/core/providers/webgpu/math/matmul.cc
+@@ -231,10 +231,20 @@ Status ComputeMatMul(ComputeContext* context,
+                                                    ? InlinedVector<int64_t>({4, 1, 1})
+                                                    : InlinedVector<int64_t>({4, 4, 1});
+ 
++  // Adreno FP32 vec4: reuse each B tile across 64 output rows. No CPU affinity
++  // or device-model selection; other adapters keep the upstream kernel.
++  const auto& limits = context->DeviceLimits();
++  const bool unroll_rows = is_vec4 && dim_a_outer >= 64 && a->IsDataType<float>() &&
++                           context->AdapterInfo().vendor == std::string_view{"qualcomm"} &&
++                           limits.maxComputeWorkgroupSizeY >= 16 &&
++                           limits.maxComputeInvocationsPerWorkgroup >= 128 &&
++                           limits.maxComputeWorkgroupStorageSize >= 12288;
++  const uint32_t workgroup_y = unroll_rows ? 16 : MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y;
++
+   const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
+                                                (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
+-  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
+-                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
++  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + workgroup_y * elements_per_thread[1] - 1) /
++                                               (workgroup_y * elements_per_thread[1]));
+   uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                          (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+ 
+@@ -283,15 +293,15 @@ Status ComputeMatMul(ComputeContext* context,
+     }
+   }
+ 
+-  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner};
++  MatMulProgram matmul_program{activation, use_bias_in_matmul, is_vec4, elements_per_thread, is_channels_last, split_dim_inner, unroll_rows};
+   matmul_program
+-      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner)
++      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last, split_dim_inner, workgroup_y)
+       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
+                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
+       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}, {dispatch_x}, {dispatch_y}, {dispatch_z}, {splits_per_batch}})
+       .AddIndices(outer_dims)
+       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
+-      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
++      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, workgroup_y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z)
+       .AddOutput(std::move(output));
+ 
+   if (use_bias_in_matmul) {
+diff --git a/onnxruntime/core/providers/webgpu/math/matmul_packed.cc b/onnxruntime/core/providers/webgpu/math/matmul_packed.cc
+index 0d2a196..b0fa95b 100644
+--- a/onnxruntime/core/providers/webgpu/math/matmul_packed.cc
++++ b/onnxruntime/core/providers/webgpu/math/matmul_packed.cc
+@@ -45,7 +45,7 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
+     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(
+         shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims,
+         /*transA = */ false, /*transB = */ false, /*alpha = */ 1.f, /*need_handle_matmul = */ true,
+-        /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_));
++        /*output_components = */ 4, /*tile_inner = */ 32, need_split_k, split_dim_inner_, unroll_rows_));
+   } else {
+     ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims));
+   }
+diff --git a/onnxruntime/core/providers/webgpu/math/matmul_packed.h b/onnxruntime/core/providers/webgpu/math/matmul_packed.h
+index eceb79f..b1f6cff 100644
+--- a/onnxruntime/core/providers/webgpu/math/matmul_packed.h
++++ b/onnxruntime/core/providers/webgpu/math/matmul_packed.h
+@@ -13,13 +13,14 @@ namespace onnxruntime {
+ namespace webgpu {
+ class MatMulProgram final : public Program<MatMulProgram> {
+  public:
+-  MatMulProgram(const Activation& activation, bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread, bool is_channels_last = false, uint32_t split_dim_inner = 1) : Program{"MatMul"},
++  MatMulProgram(const Activation& activation, bool bias, bool is_vec4, const gsl::span<int64_t>& elements_per_thread, bool is_channels_last = false, uint32_t split_dim_inner = 1, bool unroll_rows = false) : Program{"MatMul"},
+                                                                                                                                                                                      activation_(activation),
+                                                                                                                                                                                      has_bias_{bias},
+                                                                                                                                                                                      is_vec4_{is_vec4},
+                                                                                                                                                                                      elements_per_thread_(elements_per_thread.begin(), elements_per_thread.end()),
+                                                                                                                                                                                      is_channels_last_(is_channels_last),
+-                                                                                                                                                                                     split_dim_inner_(split_dim_inner) {}
++                                                                                                                                                                                     split_dim_inner_(split_dim_inner),
++                                                                                                                                                                                     unroll_rows_(unroll_rows) {}
+ 
+   Status GenerateShaderCode(ShaderHelper& sh) const override;
+   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"dim_a_outer", ProgramUniformVariableDataType::Uint32},
+@@ -39,6 +40,7 @@ class MatMulProgram final : public Program<MatMulProgram> {
+   const InlinedVector<int64_t> elements_per_thread_;
+   bool is_channels_last_ = false;
+   uint32_t split_dim_inner_ = 1;
++  const bool unroll_rows_;
+ };
+ 
+ // The program to initialize the output with 0 or bias before doing MatMul with Split-K. In Split-K,

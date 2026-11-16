@@ -2,6 +2,7 @@ package dev.rinstel.genie_tts.inference
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,28 +28,13 @@ class MultiReferenceCapabilityTest {
         assertEquals(3, capability.maxReferenceCount)
         assertEquals(2048, capability.placeholderAudioSamples)
         capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav"))
-        var tooManyFailed = false
-        try {
+        assertThrows(IllegalArgumentException::class.java) {
             capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav", "three.wav"))
-        } catch (_: IllegalArgumentException) {
-            tooManyFailed = true
         }
-        assertTrue(tooManyFailed)
     }
 
     @Test
-    fun validatesAnonymousTensorSlotsByCount() {
-        val capability = MultiReferenceCapability(
-            supported = true,
-            maxReferenceCount = 3,
-        )
-
-        capability.validateReferenceCount(3)
-        assertEquals(2048, capability.placeholderAudioSamples)
-    }
-
-    @Test
-    fun legacyOrIncompleteContractIsRejected() {
+    fun incompleteContractIsRejected() {
         val capability = MultiReferenceCapability.fromMetadata(
             metadata = emptyMap(),
             inputNames = setOf("reference_count", "ref_audio_0", "sv_emb_0"),
@@ -56,13 +42,9 @@ class MultiReferenceCapabilityTest {
         )
 
         assertFalse(capability.supported)
-        var failed = false
-        try {
+        assertThrows(IllegalArgumentException::class.java) {
             capability.validateAuxiliaryReferencePaths(listOf("aux.wav"))
-        } catch (_: IllegalArgumentException) {
-            failed = true
         }
-        assertTrue(failed)
     }
 
     @Test
@@ -72,20 +54,12 @@ class MultiReferenceCapabilityTest {
             maxReferenceCount = 3,
         )
 
-        var blankFailed = false
-        try {
+        assertThrows(IllegalArgumentException::class.java) {
             capability.validateAuxiliaryReferencePaths(listOf(""))
-        } catch (_: IllegalArgumentException) {
-            blankFailed = true
         }
-        assertTrue(blankFailed)
 
-        var duplicateFailed = false
-        try {
+        assertThrows(IllegalArgumentException::class.java) {
             capability.validateAuxiliaryReferencePaths(listOf("same.wav", "same.wav"))
-        } catch (_: IllegalArgumentException) {
-            duplicateFailed = true
         }
-        assertTrue(duplicateFailed)
     }
 }

@@ -2,10 +2,6 @@ package dev.rinstel.genie_tts.inference
 
 interface BackendRuntime : AutoCloseable {
     val backend: ExecutionBackend
-    /** False when an optional provider's native libraries are not loadable. */
-    val isAvailable: Boolean
-        get() = true
-
     val runtimeLabel: String
         get() = backend.label
 

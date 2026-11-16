@@ -265,9 +265,6 @@ tasks.named("preBuild").configure { dependsOn(syncLanguageAssets) }
 tasks.withType<Test>().configureEach {
     maxParallelForks = 1
     jvmArgs("-Xmx96m")
-    providers.gradleProperty("checkpointValidationRoot").orNull?.let {
-        systemProperty("genieCheckpointValidationRoot", it)
-    }
 }
 
 afterEvaluate {

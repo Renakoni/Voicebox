@@ -32,6 +32,7 @@ import dev.rinstel.genie_tts.inference.BackendRuntime
 import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
 import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
+import dev.rinstel.genie_tts.inference.DeviceAcceleration
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import dev.rinstel.genie_tts.inference.GenerationContext
 import dev.rinstel.genie_tts.inference.GenerationCancelledException
@@ -48,6 +49,8 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class GenieBackendService : Service() {
     private val binder = LocalBinder()
@@ -57,6 +60,8 @@ class GenieBackendService : Service() {
     private val worker: ExecutorService = Executors.newSingleThreadExecutor()
     private val apiMessenger = Messenger(ApiHandler())
     private val generationGate = GenerationRequestGate()
+    private val officialDownloadState = MutableStateFlow(OfficialDownloadState())
+    val officialDownload = officialDownloadState.asStateFlow()
     @Volatile private var destroyed = false
     @Volatile private var warmupContext: GenerationContext? = null
 
@@ -73,6 +78,8 @@ class GenieBackendService : Service() {
     private lateinit var modelRepository: ModelAssetRepository
     private lateinit var runtimeRepository: RuntimeAssetRepository
     private lateinit var localHttpApiServer: LocalHttpApiServer
+    lateinit var deviceAcceleration: DeviceAcceleration
+        private set
 
     private val runtimes = linkedMapOf<ExecutionBackend, BackendRuntime>()
     // Accessed only by the inference worker. Do not retain two complete voice runtimes.
@@ -101,6 +108,7 @@ class GenieBackendService : Service() {
         settingsRepository = AppSettingsRepository(this)
         modelRepository = ModelAssetRepository(this)
         runtimeRepository = RuntimeAssetRepository(this)
+        deviceAcceleration = DeviceAcceleration(this)
         localHttpApiServer = LocalHttpApiServer(
             object : LocalHttpApiServer.Bridge {
                 override fun currentState(): BackendServiceState = this@GenieBackendService.currentState()
@@ -128,11 +136,11 @@ class GenieBackendService : Service() {
             },
         )
         val traceLogger = LogcatInferenceTraceLogger()
-        val cpuBackends = mutableListOf(ExecutionBackend.CPU)
+        val executionBackends = mutableListOf(ExecutionBackend.CPU)
         if (ai.onnxruntime.OrtEnvironment.getAvailableProviders().contains(ai.onnxruntime.OrtProvider.WEBGPU)) {
-            cpuBackends += ExecutionBackend.WEBGPU
+            executionBackends += ExecutionBackend.WEBGPU
         }
-        for (executionBackend in cpuBackends) {
+        for (executionBackend in executionBackends) {
             runtimes[executionBackend] = OrtSessionRuntime(
                 modelRepository = modelRepository,
                 runtimeRepository = runtimeRepository,
@@ -149,6 +157,10 @@ class GenieBackendService : Service() {
                     },
                     traceLogger = traceLogger,
                     useNativeDecoder = true,
+                    qnnRuntimeDirectory = {
+                        deviceAcceleration.runtimeDirectory.takeIf { settingsRepository.deviceAccelerationEnabled }
+                    },
+                    onNpuUnavailable = deviceAcceleration::modelUnavailable,
                 ),
                 featureExtractorFactory = { backend ->
                     OrtRuntimeFeatureExtractor(
@@ -161,10 +173,8 @@ class GenieBackendService : Service() {
                 traceLogger = traceLogger,
             )
         }
-        apiEnabledBackends = runtimes
-            .filterValues { it.isAvailable }
-            .keys
-            .toSet()
+        apiEnabledBackends = runtimes.keys.toSet()
+        worker.execute { deviceAcceleration.detect(ExecutionBackend.WEBGPU in apiEnabledBackends) }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
         syncLocalHttpApiServer()
@@ -260,7 +270,6 @@ class GenieBackendService : Service() {
             warmupContext?.cancel("VOICE_CHANGED")
         }
         activeDefaults = supportedDefaults
-        companionDefaults = supportedDefaults
         supportedDefaults?.let(::scheduleWarmup)
     }
 
@@ -322,18 +331,36 @@ class GenieBackendService : Service() {
 
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
-    /** Import on the session owner thread; a replacement must never race inference or warmup. */
-    fun importResourcePackage(
-        type: ResourcePackageImporter.PackageType,
-        uri: android.net.Uri,
-        onComplete: (Result<ResourcePackageImporter.ImportResult>) -> Unit,
-    ): Boolean = importOnWorker(onComplete) { _, _ ->
-        contentResolver.openInputStream(uri)?.use { input ->
-            val importer = ResourcePackageImporter(requireNotNull(getExternalFilesDir(null)))
-            when (type) {
-                ResourcePackageImporter.PackageType.RUNTIME -> importer.importRuntime(input)
-                ResourcePackageImporter.PackageType.CHARACTER -> importer.importCharacter(input)
+    fun downloadOfficialModel(id: String): Boolean {
+        val catalog = OfficialModelCatalog(this)
+        val model = catalog.models.firstOrNull { it.id == id } ?: return false
+        val previous = officialDownloadState.value
+        officialDownloadState.value = OfficialDownloadState(id, "准备下载", running = true)
+        val accepted = importOnWorker<Unit>(onComplete = { result ->
+            officialDownloadState.value = result.fold(
+                { OfficialDownloadState(id, "已下载", completed = true) },
+                { error ->
+                    Log.w("OfficialModels", "Model download failed", error)
+                    OfficialDownloadState(id, error = if (error is java.util.concurrent.CancellationException)
+                        "已取消下载" else error.message?.takeIf { text -> text.any { it in '\u4e00'..'\u9fff' } }
+                        ?: "下载失败，请检查网络后重试。")
+                })
+        }) { context, _ ->
+            OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open).install(model, context::checkCancelled) {
+                officialDownloadState.value = it
             }
+        }
+        if (!accepted) officialDownloadState.value = previous
+        return accepted
+    }
+
+    /** Import on the session owner thread; a replacement must never race inference or warmup. */
+    fun importRuntimePackage(
+        uri: android.net.Uri,
+        onComplete: (Result<Unit>) -> Unit,
+    ): Boolean = importOnWorker(onComplete) { context, _ ->
+        contentResolver.openInputStream(uri)?.use { input ->
+            ResourcePackageImporter(requireNotNull(getExternalFilesDir(null))).importRuntime(input, context::checkCancelled)
         } ?: error("无法读取资源包，请重新选择文件。")
     }
 
@@ -375,10 +402,11 @@ class GenieBackendService : Service() {
         setActiveDefaults(null)
         val context = GenerationContext()
         if (!generationGate.tryAcquire(context)) return false
+        publishState(GenerationStage.INSTALLING_MODEL, true, state.requestedBackend,
+            state.resolvedBackend, state.runtimeLabel, "正在导入资源", context = context)
         worker.execute {
-            publishState(GenerationStage.INSTALLING_MODEL, true, state.requestedBackend,
-                state.resolvedBackend, state.runtimeLabel, "正在导入资源", context = context)
             val result = runCatching {
+                context.checkCancelled()
                 runtimes.values.forEach(BackendRuntime::close)
                 workerBackend = null
                 synchronized(warmupLock) { completedWarmupKey = null; queuedWarmupKey = null }
@@ -406,9 +434,6 @@ class GenieBackendService : Service() {
             context.checkCancelled()
             selectWorkerBackend(backend)
             val activeRuntime = requireNotNull(runtime) {
-                getString(R.string.prototype_backend_unavailable, backend.label)
-            }
-            require(activeRuntime.isAvailable) {
                 getString(R.string.prototype_backend_unavailable, backend.label)
             }
             val result = withActiveGenerationResources {
@@ -871,10 +896,6 @@ class GenieBackendService : Service() {
         internal const val ACTION_RELOAD_INFERENCE_SETTINGS =
             "dev.rinstel.genie_tts.action.RELOAD_INFERENCE_SETTINGS"
         private const val ACTION_CLEAR_CACHE = "dev.rinstel.genie_tts.action.CLEAR_CACHE"
-
-        @Volatile
-        var companionDefaults: ActiveDefaults? = null
-            private set
 
         fun serviceIntent(context: android.content.Context): Intent =
             Intent(context, GenieBackendService::class.java)

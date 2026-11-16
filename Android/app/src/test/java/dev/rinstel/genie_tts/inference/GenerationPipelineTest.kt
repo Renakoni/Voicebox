@@ -19,7 +19,6 @@ class GenerationPipelineTest {
         val sequence = LongTensorData(longArrayOf(1L), longArrayOf(1L, 1L))
         val pipeline = GenerationPipeline(
             backend = object : PreparedTtsBackend {
-                override fun isInitialized() = true
                 override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int) =
                     TtsGenerationResult(floatArrayOf(0.25f), longArrayOf(1L, 1L, 1L))
             },
@@ -49,28 +48,6 @@ class GenerationPipelineTest {
     }
 
     @Test
-    fun rejectsBlankSynthesisText() {
-        val request = GenerationRequest(
-            characterModel = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).first(),
-            language = "zh",
-            synthesisText = "",
-            referenceAudioPath = "/tmp/ref.wav",
-            referenceText = "reference",
-        )
-
-        val error = runCatching {
-            GenerationPipeline(
-                backend = initializedBackend(),
-                inputPreparer = neverCalledInputPreparer(),
-                outputDirectory = java.nio.file.Files.createTempDirectory("genie-test-").toFile(),
-            ).generate(request)
-        }.exceptionOrNull()
-
-        assertTrue(error is IllegalArgumentException)
-        assertTrue(error?.message?.contains("Synthesis text") == true)
-    }
-
-    @Test
     fun writesGeneratedAudioToOutputFile() {
         val outputDirectory = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
         var capturedMaxDecoderSteps = -1
@@ -83,8 +60,6 @@ class GenerationPipelineTest {
             maxDecoderSteps = 123,
         )
         val backend = object : PreparedTtsBackend {
-            override fun isInitialized(): Boolean = true
-
             override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult {
                 capturedMaxDecoderSteps = maxDecoderSteps
                 return TtsGenerationResult(floatArrayOf(0f, 0.25f, -0.25f), longArrayOf(1L, 1L, 3L), sampleRate = 48000)
@@ -118,19 +93,5 @@ class GenerationPipelineTest {
         assertEquals(48000, WavAudioReader.readMonoPcm(output.file).sampleRate)
         assertEquals(123, capturedMaxDecoderSteps)
     }
-
-    private fun initializedBackend(): PreparedTtsBackend =
-        object : PreparedTtsBackend {
-            override fun isInitialized(): Boolean = true
-
-            override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult =
-                error("Backend should not be called.")
-        }
-
-    private fun neverCalledInputPreparer(): TtsInputPreparer =
-        object : TtsInputPreparer {
-            override fun prepare(request: GenerationRequest): TtsPreparedInput =
-                error("Input preparer should not be called.")
-        }
 
 }

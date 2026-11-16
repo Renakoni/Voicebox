@@ -1,0 +1,1979 @@
+{
+  "version": 1,
+  "logical_data_type": "float32",
+  "weight_file": "chinese-hubert-base_weights_fp16.bin",
+  "initializers": [
+    {
+      "name": "model.feature_extractor.conv_layers.0.conv.weight",
+      "data_type": 1,
+      "offset": 0,
+      "length": 20480,
+      "shape": [
+        512,
+        1,
+        10
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.1.conv.weight",
+      "data_type": 1,
+      "offset": 20480,
+      "length": 3145728,
+      "shape": [
+        512,
+        512,
+        3
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.2.conv.weight",
+      "data_type": 1,
+      "offset": 3166208,
+      "length": 3145728,
+      "shape": [
+        512,
+        512,
+        3
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.3.conv.weight",
+      "data_type": 1,
+      "offset": 6311936,
+      "length": 3145728,
+      "shape": [
+        512,
+        512,
+        3
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.4.conv.weight",
+      "data_type": 1,
+      "offset": 9457664,
+      "length": 3145728,
+      "shape": [
+        512,
+        512,
+        3
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.5.conv.weight",
+      "data_type": 1,
+      "offset": 12603392,
+      "length": 2097152,
+      "shape": [
+        512,
+        512,
+        2
+      ]
+    },
+    {
+      "name": "model.feature_extractor.conv_layers.6.conv.weight",
+      "data_type": 1,
+      "offset": 14700544,
+      "length": 2097152,
+      "shape": [
+        512,
+        512,
+        2
+      ]
+    },
+    {
+      "name": "model.feature_projection.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16797696,
+      "length": 2048,
+      "shape": [
+        512
+      ]
+    },
+    {
+      "name": "model.feature_projection.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16799744,
+      "length": 2048,
+      "shape": [
+        512
+      ]
+    },
+    {
+      "name": "model.feature_projection.projection.bias",
+      "data_type": 1,
+      "offset": 16801792,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.pos_conv_embed.conv.bias",
+      "data_type": 1,
+      "offset": 16804864,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16807936,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16811008,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 16814080,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 16817152,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 16820224,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 16823296,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16826368,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16829440,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 16832512,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 16844800,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 16847872,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.0.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 16850944,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 16854016,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 16857088,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 16860160,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 16863232,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16866304,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16869376,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 16872448,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 16884736,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 16887808,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.1.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 16890880,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 16893952,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 16897024,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 16900096,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 16903168,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16906240,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16909312,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 16912384,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 16924672,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 16927744,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.2.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 16930816,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 16933888,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 16936960,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 16940032,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 16943104,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16946176,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16949248,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 16952320,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 16964608,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 16967680,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.3.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 16970752,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 16973824,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 16976896,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 16979968,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 16983040,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.layer_norm.weight",
+      "data_type": 1,
+      "offset": 16986112,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.layer_norm.bias",
+      "data_type": 1,
+      "offset": 16989184,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 16992256,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17004544,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17007616,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.4.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17010688,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17013760,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17016832,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17019904,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17022976,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17026048,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17029120,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17032192,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17044480,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17047552,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.5.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17050624,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17053696,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17056768,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17059840,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17062912,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17065984,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17069056,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17072128,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17084416,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17087488,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.6.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17090560,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17093632,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17096704,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17099776,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17102848,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17105920,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17108992,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17112064,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17124352,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17127424,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.7.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17130496,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17133568,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17136640,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17139712,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17142784,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17145856,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17148928,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17152000,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17164288,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17167360,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.8.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17170432,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17173504,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17176576,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17179648,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17182720,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17185792,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17188864,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17191936,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17204224,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17207296,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.9.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17210368,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17213440,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17216512,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17219584,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17222656,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17225728,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17228800,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17231872,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17244160,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17247232,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.10.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17250304,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.attention.k_proj.bias",
+      "data_type": 1,
+      "offset": 17253376,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.attention.v_proj.bias",
+      "data_type": 1,
+      "offset": 17256448,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.attention.q_proj.bias",
+      "data_type": 1,
+      "offset": 17259520,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.attention.out_proj.bias",
+      "data_type": 1,
+      "offset": 17262592,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.layer_norm.weight",
+      "data_type": 1,
+      "offset": 17265664,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.layer_norm.bias",
+      "data_type": 1,
+      "offset": 17268736,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.feed_forward.intermediate_dense.bias",
+      "data_type": 1,
+      "offset": 17271808,
+      "length": 12288,
+      "shape": [
+        3072
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.feed_forward.output_dense.bias",
+      "data_type": 1,
+      "offset": 17284096,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.final_layer_norm.weight",
+      "data_type": 1,
+      "offset": 17287168,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "model.encoder.layers.11.final_layer_norm.bias",
+      "data_type": 1,
+      "offset": 17290240,
+      "length": 3072,
+      "shape": [
+        768
+      ]
+    },
+    {
+      "name": "onnx::Mul_1456",
+      "data_type": 1,
+      "offset": 17293312,
+      "length": 2048,
+      "shape": [
+        512,
+        1
+      ]
+    },
+    {
+      "name": "onnx::Add_1457",
+      "data_type": 1,
+      "offset": 17295360,
+      "length": 2048,
+      "shape": [
+        512,
+        1
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1458",
+      "data_type": 1,
+      "offset": 17297408,
+      "length": 1572864,
+      "shape": [
+        512,
+        768
+      ]
+    },
+    {
+      "name": "onnx::Conv_1461",
+      "data_type": 1,
+      "offset": 18870272,
+      "length": 18874368,
+      "shape": [
+        768,
+        48,
+        128
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1466",
+      "data_type": 1,
+      "offset": 37744640,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1467",
+      "data_type": 1,
+      "offset": 40103936,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1474",
+      "data_type": 1,
+      "offset": 42463232,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1478",
+      "data_type": 1,
+      "offset": 44822528,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1479",
+      "data_type": 1,
+      "offset": 47181824,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1480",
+      "data_type": 1,
+      "offset": 56619008,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1481",
+      "data_type": 1,
+      "offset": 66056192,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1482",
+      "data_type": 1,
+      "offset": 68415488,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1489",
+      "data_type": 1,
+      "offset": 70774784,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1493",
+      "data_type": 1,
+      "offset": 73134080,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1494",
+      "data_type": 1,
+      "offset": 75493376,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1495",
+      "data_type": 1,
+      "offset": 84930560,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1496",
+      "data_type": 1,
+      "offset": 94367744,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1497",
+      "data_type": 1,
+      "offset": 96727040,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1504",
+      "data_type": 1,
+      "offset": 99086336,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1508",
+      "data_type": 1,
+      "offset": 101445632,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1509",
+      "data_type": 1,
+      "offset": 103804928,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1510",
+      "data_type": 1,
+      "offset": 113242112,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1511",
+      "data_type": 1,
+      "offset": 122679296,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1512",
+      "data_type": 1,
+      "offset": 125038592,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1519",
+      "data_type": 1,
+      "offset": 127397888,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1523",
+      "data_type": 1,
+      "offset": 129757184,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1524",
+      "data_type": 1,
+      "offset": 132116480,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1525",
+      "data_type": 1,
+      "offset": 141553664,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1526",
+      "data_type": 1,
+      "offset": 150990848,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1527",
+      "data_type": 1,
+      "offset": 153350144,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1534",
+      "data_type": 1,
+      "offset": 155709440,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1538",
+      "data_type": 1,
+      "offset": 158068736,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1539",
+      "data_type": 1,
+      "offset": 160428032,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1540",
+      "data_type": 1,
+      "offset": 169865216,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1541",
+      "data_type": 1,
+      "offset": 179302400,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1542",
+      "data_type": 1,
+      "offset": 181661696,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1549",
+      "data_type": 1,
+      "offset": 184020992,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1553",
+      "data_type": 1,
+      "offset": 186380288,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1554",
+      "data_type": 1,
+      "offset": 188739584,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1555",
+      "data_type": 1,
+      "offset": 198176768,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1556",
+      "data_type": 1,
+      "offset": 207613952,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1557",
+      "data_type": 1,
+      "offset": 209973248,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1564",
+      "data_type": 1,
+      "offset": 212332544,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1568",
+      "data_type": 1,
+      "offset": 214691840,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1569",
+      "data_type": 1,
+      "offset": 217051136,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1570",
+      "data_type": 1,
+      "offset": 226488320,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1571",
+      "data_type": 1,
+      "offset": 235925504,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1572",
+      "data_type": 1,
+      "offset": 238284800,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1579",
+      "data_type": 1,
+      "offset": 240644096,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1583",
+      "data_type": 1,
+      "offset": 243003392,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1584",
+      "data_type": 1,
+      "offset": 245362688,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1585",
+      "data_type": 1,
+      "offset": 254799872,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1586",
+      "data_type": 1,
+      "offset": 264237056,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1587",
+      "data_type": 1,
+      "offset": 266596352,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1594",
+      "data_type": 1,
+      "offset": 268955648,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1598",
+      "data_type": 1,
+      "offset": 271314944,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1599",
+      "data_type": 1,
+      "offset": 273674240,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1600",
+      "data_type": 1,
+      "offset": 283111424,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1601",
+      "data_type": 1,
+      "offset": 292548608,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1602",
+      "data_type": 1,
+      "offset": 294907904,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1609",
+      "data_type": 1,
+      "offset": 297267200,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1613",
+      "data_type": 1,
+      "offset": 299626496,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1614",
+      "data_type": 1,
+      "offset": 301985792,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1615",
+      "data_type": 1,
+      "offset": 311422976,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1616",
+      "data_type": 1,
+      "offset": 320860160,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1617",
+      "data_type": 1,
+      "offset": 323219456,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1624",
+      "data_type": 1,
+      "offset": 325578752,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1628",
+      "data_type": 1,
+      "offset": 327938048,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1629",
+      "data_type": 1,
+      "offset": 330297344,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1630",
+      "data_type": 1,
+      "offset": 339734528,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1631",
+      "data_type": 1,
+      "offset": 349171712,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1632",
+      "data_type": 1,
+      "offset": 351531008,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1639",
+      "data_type": 1,
+      "offset": 353890304,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1643",
+      "data_type": 1,
+      "offset": 356249600,
+      "length": 2359296,
+      "shape": [
+        768,
+        768
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1644",
+      "data_type": 1,
+      "offset": 358608896,
+      "length": 9437184,
+      "shape": [
+        768,
+        3072
+      ]
+    },
+    {
+      "name": "onnx::MatMul_1645",
+      "data_type": 1,
+      "offset": 368046080,
+      "length": 9437184,
+      "shape": [
+        3072,
+        768
+      ]
+    }
+  ]
+}

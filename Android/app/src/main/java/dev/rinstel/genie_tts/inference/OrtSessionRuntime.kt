@@ -12,8 +12,8 @@ class OrtSessionRuntime(
     private val featureExtractorFactory: (OrtCpuBackend) -> OrtRuntimeFeatureExtractor,
 ) : BackendRuntime {
     override val backend: ExecutionBackend = backendEngine.backend
-    override val runtimeLabel: String =
-        when (backendEngine.backend) {
+    override val runtimeLabel: String
+        get() = if (backendEngine.usesNpu) "ORT CPU + WebGPU + QNN" else when (backendEngine.backend) {
             ExecutionBackend.CPU -> "ORT CPU EP"
             ExecutionBackend.WEBGPU -> "ORT CPU + WebGPU"
         }

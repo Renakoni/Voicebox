@@ -42,11 +42,6 @@ class StudioStore(context: Context) {
         get() = preferences.getString("output_language", "zh") ?: "zh"
         set(value) { preferences.edit().putString("output_language", value).apply() }
 
-    fun referenceLanguage(id: String, default: String) = preferences.getString("reference_language:$id", default) ?: default
-    fun setReferenceLanguage(id: String, language: String) {
-        preferences.edit().putString("reference_language:$id", language).apply()
-    }
-
     fun voices(): List<StudioVoice> {
         val array = JSONArray(preferences.getString("voices", "[]"))
         return List(array.length()) { index ->

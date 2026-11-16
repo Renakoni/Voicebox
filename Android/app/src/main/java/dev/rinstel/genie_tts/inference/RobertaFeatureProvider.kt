@@ -168,35 +168,11 @@ class RobertaFeatureProvider(
             val tokenizerFile: File,
         )
 
-        /** Accept both the Python download layout and the legacy Android layout. */
         internal fun resolveAssetFiles(runtimeRoot: File): AssetFiles? {
-            val directories = listOf(
-                File(runtimeRoot, "roberta"),
-                File(runtimeRoot, "RoBERTa"),
-                File(runtimeRoot, "roberta-wwm-ext-large-onnx"),
-            )
-            val modelNames = listOf("RoBERTa.onnx", "model.onnx", "model_fp16.onnx")
-            val tokenizerPaths = listOf(
-                "roberta_tokenizer/tokenizer.json",
-                "tokenizer.json",
-            )
-
-            for (directory in directories) {
-                val model = modelNames
-                    .map { File(directory, it) }
-                    .firstOrNull(File::isFile)
-                    ?: directory.listFiles()
-                        ?.filter { it.isFile && it.extension.equals("onnx", ignoreCase = true) }
-                        ?.sortedBy(File::getName)
-                        ?.firstOrNull()
-                val tokenizer = tokenizerPaths
-                    .map { File(directory, it) }
-                    .firstOrNull(File::isFile)
-                if (model != null && tokenizer != null) {
-                    return AssetFiles(model, tokenizer)
-                }
-            }
-            return null
+            val directory = File(runtimeRoot, "roberta-wwm-ext-large-onnx")
+            val model = File(directory, "model.onnx")
+            val tokenizer = File(directory, "roberta_tokenizer/tokenizer.json")
+            return if (model.isFile && tokenizer.isFile) AssetFiles(model, tokenizer) else null
         }
 
         fun tryCreate(

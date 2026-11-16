@@ -68,6 +68,7 @@ tests/parity/.tmp/
 !Android/app/src/main/assets/checkpoint-v2proplus/*.onnx
 !Android/app/src/main/assets/checkpoint-v2pro/*.onnx
 !Android/app/src/main/assets/checkpoint-v5turbo/*.onnx
+!Android/app/src/main/assets/device-acceleration/probe.onnx
 *.bin
 *.ckpt
 *.pth
@@ -109,5 +110,7 @@ tests/parity/.tmp/
 !/tools/ort-build-requirements.txt
 !/tools/build_v2pro_templates.py
 !/tools/build_v5turbo_templates.py
+!/tools/split_v5_dit.py
 !/tools/split_vits_acoustic.py
 !/tools/subpixel_hifigan.py
+!Android/app/src/main/assets/official-runtime/*.onnx

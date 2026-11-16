@@ -1,0 +1,96 @@
+{
+  "schema": 2,
+  "gpt": {
+    "urls": [
+      "https://huggingface.co/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/s1v3.ckpt",
+      "https://hf-mirror.com/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/s1v3.ckpt",
+      "https://www.modelscope.cn/models/AI-ModelScope/GPT-SoVITS/resolve/master/s1v3.ckpt"
+    ],
+    "bytes": 155284856,
+    "sha256": "87133414860ea14ff6620c483a3db5ed07b44be42e2c3fcdad65523a729a745a"
+  },
+  "vocoder": {
+    "urls": [
+      "https://huggingface.co/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/gsv-v5-pretrained/vocoder.pth",
+      "https://hf-mirror.com/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/gsv-v5-pretrained/vocoder.pth"
+    ],
+    "bytes": 57761163,
+    "sha256": "b7543c83222aa2105bb4efb56845086bc5f2eeba61243d723ffa062052b3221f"
+  },
+  "runtime": [
+    {
+      "path": "speaker_encoder.onnx",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/speaker_encoder.onnx",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/speaker_encoder.onnx"
+      ],
+      "bytes": 184812166,
+      "sha256": "31ed0858f7059785dfd58731efb0effdbe39d5b9175b2b36f5a3341adbc0bb67"
+    },
+    {
+      "path": "chinese-hubert-base/chinese-hubert-base.onnx",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/chinese-hubert-base/chinese-hubert-base.onnx",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/chinese-hubert-base/chinese-hubert-base.onnx"
+      ],
+      "bytes": 237741,
+      "sha256": "f517f4270ed864fd84594662838c581b63ff4178f73572882e3737c4dacd68ac"
+    },
+    {
+      "path": "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/chinese-hubert-base/chinese-hubert-base_weights_fp16.bin",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/chinese-hubert-base/chinese-hubert-base_weights_fp16.bin"
+      ],
+      "bytes": 188741632,
+      "sha256": "83abf6483f49d51fa4da5634c7131a2670f01da96b94263cafdb564d24e92cea"
+    },
+    {
+      "path": "roberta-wwm-ext-large-onnx/model.onnx",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData(Optional)/RoBERTa/RoBERTa.onnx",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData(Optional)/RoBERTa/RoBERTa.onnx"
+      ],
+      "bytes": 598977160,
+      "sha256": "a1903ece48e4f119e8b12cf38429999f81c043eaba8978508ddf5964409cb392"
+    },
+    {
+      "path": "roberta-wwm-ext-large-onnx/roberta_tokenizer/tokenizer.json",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData(Optional)/RoBERTa/roberta_tokenizer/tokenizer.json",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData(Optional)/RoBERTa/roberta_tokenizer/tokenizer.json"
+      ],
+      "bytes": 439124,
+      "sha256": "7dfbf1966ebf99d471c3796e9b457329d2b2182b817e144f1e904b957745c839"
+    }
+  ],
+  "models": [
+    {
+      "id": "official-v2proplus",
+      "name": "官方 V2 Pro Plus",
+      "architecture": "v2ProPlus",
+      "sovits": {
+        "urls": [
+          "https://huggingface.co/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/v2Pro/s2Gv2ProPlus.pth",
+          "https://hf-mirror.com/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/v2Pro/s2Gv2ProPlus.pth",
+          "https://www.modelscope.cn/models/AI-ModelScope/GPT-SoVITS/resolve/master/v2Pro/s2Gv2ProPlus.pth"
+        ],
+        "bytes": 200125741,
+        "sha256": "d42a22bbbf65fb2bbdd45ad6a66841156977db45c7aabe0a6992ff378d9c7d3b"
+      }
+    },
+    {
+      "id": "official-v5turbo",
+      "name": "官方 V5 Turbo",
+      "architecture": "v5turbo",
+      "sovits": {
+        "urls": [
+          "https://huggingface.co/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/gsv-v5-pretrained/s2Gv5turbo.pth",
+          "https://hf-mirror.com/lj1995/GPT-SoVITS/resolve/8f8857563c040d542de108a2c18b0425abd6c9c5/gsv-v5-pretrained/s2Gv5turbo.pth"
+        ],
+        "bytes": 766406144,
+        "sha256": "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022"
+      }
+    }
+  ]
+}

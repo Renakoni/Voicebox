@@ -305,6 +305,8 @@ def main():
                     ['x','condition','cos','sin','modulation','final','mask'], ['velocity'],
                     {'x':{2:'frames'}, 'condition':{1:'frames'}, 'cos':{1:'frames'}, 'sin':{1:'frames'},
                      'mask':{1:'frames'}, 'velocity':{2:'frames'}})
+    from split_v5_dit import split_compact_dit
+    split_compact_dit(args.output/'v5-dit-compact.onnx')
     del model
     gc.collect()
     vocoder = Generator(100,'1',[3,7,11],[[1,3,5]]*3,[10,6,2,2,2],512,[20,12,4,4,4],gin_channels=0,is_bias=True)
@@ -336,7 +338,7 @@ def assemble_import(output, gpt_path, sovits):
     for name in manifest['files']:
         shutil.copyfile(base/name, output/name)
     for name in ('v5-reference-audio.onnx','v5-condition.onnx','v5-static.onnx','v5-dit.onnx',
-                 'v5-time.onnx','v5-dit-compact.onnx'):
+                 'v5-time.onnx','v5-dit-compact.onnx','v5-dit-stem.onnx','v5-dit-body.onnx','v5-dit-head.onnx'):
         manifest['files'][name]=acoustic['files'][name]
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     runtime=output.parent/'RuntimeAssets/v5-vocoder'

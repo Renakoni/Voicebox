@@ -7,12 +7,14 @@ import java.nio.FloatBuffer
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 
 /** Overlap HTP flow with FP32 GPU audio, retaining both sides of the convolution receptive field. */
 internal class V5StreamingVocoder(
     private val environment: OrtEnvironment,
     private val session: OrtSession,
     private val timer: InferenceTimer,
+    private val gpuLock: Any = Any(),
 ) : AutoCloseable {
     private val context = GenerationContext.current()
     private val worker = Executors.newSingleThreadExecutor()
@@ -36,11 +38,13 @@ internal class V5StreamingVocoder(
         require(end >= begin)
         pending = worker.submit<FloatArray> {
             val render = {
-                OnnxTensor.createTensor(environment, FloatBuffer.wrap(values), longArrayOf(1, 100, count.toLong())).use { input ->
-                    timer.measure("v5_hifigan_ms") { session.runCancellable(mapOf("mel" to input)) }.use { output ->
-                        val samples = (output.get(0) as OnnxTensor).floatBuffer
-                        samples.position(begin * HOP)
-                        FloatArray((end - begin) * HOP).also { samples.get(it) }
+                synchronized(gpuLock) {
+                    OnnxTensor.createTensor(environment, FloatBuffer.wrap(values), longArrayOf(1, 100, count.toLong())).use { input ->
+                        timer.measure("v5_hifigan_ms") { session.runCancellable(mapOf("mel" to input)) }.use { output ->
+                            val samples = (output.get(0) as OnnxTensor).floatBuffer
+                            samples.position(begin * HOP)
+                            FloatArray((end - begin) * HOP).also { samples.get(it) }
+                        }
                     }
                 }
             }
@@ -72,7 +76,17 @@ internal class V5StreamingVocoder(
 
     override fun close() {
         // Always join before the backend can release the session, including a failed/cancelled flow.
-        try { collect() } finally { worker.shutdown() }
+        var interrupted = false
+        try { collect() }
+        catch (error: InterruptedException) { interrupted = true; throw error }
+        finally {
+            worker.shutdown()
+            while (!worker.isTerminated) {
+                try { worker.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS) }
+                catch (_: InterruptedException) { interrupted = true }
+            }
+            if (interrupted) Thread.currentThread().interrupt()
+        }
     }
 
     companion object {

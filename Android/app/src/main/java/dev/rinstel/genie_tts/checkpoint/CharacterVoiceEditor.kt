@@ -22,12 +22,12 @@ class CharacterVoiceEditor(private val filesRoot: File) {
         require(reference.text.isNotBlank() && reference.audioFile.isFile) { "请选择参考音频并填写原文。" }
         val target = character(id, version)
         val manifest = File(target, "prompt_wav.json")
-        val json = JSONObject(manifest.readText())
-        val previous = json.getJSONObject("Normal").getString("wav")
-        val audioRoot = File(target, "prompt_wav")
-        val oldAudio = File(audioRoot, previous).canonicalFile
+        val json = if (manifest.isFile) JSONObject(manifest.readText()) else JSONObject()
+        val previous = json.optJSONObject("Normal")?.optString("wav")?.takeIf { it.isNotBlank() }
+        val audioRoot = File(target, "prompt_wav").apply { mkdirs() }
+        val oldAudio = previous?.let { File(audioRoot, it).canonicalFile }
         val replacingAudio = reference.audioFile.canonicalFile != oldAudio
-        val audio = if (replacingAudio) File(audioRoot, "reference-${UUID.randomUUID()}.${reference.audioFile.extension}") else oldAudio
+        val audio = if (replacingAudio) File(audioRoot, "reference-${UUID.randomUUID()}.${reference.audioFile.extension}") else requireNotNull(oldAudio)
         val temporary = File(target, ".prompt-${UUID.randomUUID()}.json")
         var saved = false
         try {
@@ -39,7 +39,7 @@ class CharacterVoiceEditor(private val filesRoot: File) {
             saved = true
             val stillUsed = json.keys().asSequence().filter { it != "Normal" }
                 .any { json.optJSONObject(it)?.optString("wav") == previous }
-            if (replacingAudio && !stillUsed && oldAudio.parentFile == audioRoot.canonicalFile) oldAudio.delete()
+            if (replacingAudio && !stillUsed && oldAudio?.parentFile == audioRoot.canonicalFile) oldAudio.delete()
         } finally {
             temporary.delete()
             if (!saved && replacingAudio) audio.delete()

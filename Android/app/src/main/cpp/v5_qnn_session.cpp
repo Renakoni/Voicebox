@@ -1,7 +1,6 @@
 #include <jni.h>
 #include <dlfcn.h>
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <memory>
 #include <stdexcept>
@@ -21,7 +20,9 @@ struct Session {
     std::vector<std::string> names;
     std::vector<std::vector<int64_t>> shapes;
     std::vector<size_t> counts;
-    size_t frames = 0;
+    std::string outputName;
+    std::vector<int64_t> outputShape;
+    size_t outputCount = 0;
 
     void check(OrtStatus* status) {
         if (!status) return;
@@ -58,7 +59,6 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
     try {
         auto s = std::make_unique<Session>();
         if (frames != 512 && frames != 768 && frames != 1000) throw std::runtime_error("Unsupported HTP bucket");
-        s->frames = frames;
         const auto directory = string(env, runtime);
         const auto modelPath = string(env, model);
         const auto cachePath = string(env, cache);
@@ -82,7 +82,7 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
         s->check(s->api->SessionOptionsAppendExecutionProvider(s->options, "QNN", keys, values, 4));
         s->check(s->api->AddSessionConfigEntry(s->options, "session.disable_cpu_ep_fallback", "1"));
         const bool cached = std::ifstream(cachePath).good();
-        if (!cached) {
+        if (!cached && !cachePath.empty()) {
             s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_enable", "1"));
             s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_embed_mode", "1"));
             s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_file_path", cachePath.c_str()));
@@ -95,6 +95,20 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
         s->check(s->api->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &s->memory));
         OrtAllocator* allocator = nullptr;
         s->check(s->api->GetAllocatorWithDefaultOptions(&allocator));
+        char* outputName = nullptr;
+        s->check(s->api->SessionGetOutputName(s->session, 0, allocator, &outputName));
+        s->outputName = outputName; allocator->Free(allocator, outputName);
+        OrtTypeInfo* outputInfo = nullptr;
+        s->check(s->api->SessionGetOutputTypeInfo(s->session, 0, &outputInfo));
+        const auto releaseType = [api = s->api](OrtTypeInfo* info) { api->ReleaseTypeInfo(info); };
+        const std::unique_ptr<OrtTypeInfo, decltype(releaseType)> ownedOutputInfo(outputInfo, releaseType);
+        const OrtTensorTypeAndShapeInfo* outputTensor = nullptr;
+        s->check(s->api->CastTypeInfoToTensorInfo(outputInfo, &outputTensor));
+        s->check(s->api->GetTensorShapeElementCount(outputTensor, &s->outputCount));
+        size_t outputRank = 0;
+        s->check(s->api->GetDimensionsCount(outputTensor, &outputRank));
+        s->outputShape.resize(outputRank);
+        s->check(s->api->GetDimensions(outputTensor, s->outputShape.data(), outputRank));
         size_t count = 0;
         s->check(s->api->SessionGetInputCount(s->session, &count));
         for (size_t i = 0; i < count; ++i) {
@@ -103,6 +117,7 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
             s->names.emplace_back(name); allocator->Free(allocator, name);
             OrtTypeInfo* info = nullptr;
             s->check(s->api->SessionGetInputTypeInfo(s->session, i, &info));
+            const std::unique_ptr<OrtTypeInfo, decltype(releaseType)> ownedInfo(info, releaseType);
             const OrtTensorTypeAndShapeInfo* tensor = nullptr;
             s->check(s->api->CastTypeInfoToTensorInfo(info, &tensor));
             size_t rank = 0, elements = 0;
@@ -111,7 +126,6 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
             s->check(s->api->GetDimensions(tensor, shape.data(), rank));
             s->check(s->api->GetTensorShapeElementCount(tensor, &elements));
             s->shapes.push_back(shape); s->counts.push_back(elements);
-            s->api->ReleaseTypeInfo(info);
         }
         return reinterpret_cast<jlong>(s.release());
     } catch (const std::exception& error) { fail(env, error); return 0; }
@@ -149,13 +163,12 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_run(
                 s.shapes[i].data(), s.shapes[i].size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &tensor));
             owned.push_back(tensor); inputs.push_back(tensor); names.push_back(s.names[i].c_str());
         }
-        const char* outputName = "velocity";
-        s.check(s.api->Run(s.session, s.run, names.data(), inputs.data(), inputs.size(), &outputName, 1, &result));
+        const char* outputName = s.outputName.c_str();
         auto destination = env->GetDirectBufferAddress(output);
-        if (!destination || env->GetDirectBufferCapacity(output) != static_cast<jlong>(100 * s.frames)) throw std::runtime_error("QNN output buffer shape");
-        void* source = nullptr;
-        s.check(s.api->GetTensorMutableData(result, &source));
-        std::memcpy(destination, source, 100 * s.frames * sizeof(float));
+        if (!destination || env->GetDirectBufferCapacity(output) != static_cast<jlong>(s.outputCount)) throw std::runtime_error("QNN output buffer shape");
+        s.check(s.api->CreateTensorWithDataAsOrtValue(s.memory, destination, s.outputCount * sizeof(float),
+            s.outputShape.data(), s.outputShape.size(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &result));
+        s.check(s.api->Run(s.session, s.run, names.data(), inputs.data(), inputs.size(), &outputName, 1, &result));
     } catch (const std::exception& error) { fail(env, error); }
     if (result) s.api->ReleaseValue(result);
     for (auto tensor : owned) s.api->ReleaseValue(tensor);

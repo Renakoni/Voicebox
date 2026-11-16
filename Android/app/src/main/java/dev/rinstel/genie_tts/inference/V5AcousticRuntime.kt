@@ -13,7 +13,7 @@ import java.util.Random
 internal class V5AcousticRuntime(
     private val environment: OrtEnvironment,
     private val session: (String) -> OrtSession,
-    traceLogger: InferenceTraceLogger,
+    private val traceLogger: InferenceTraceLogger,
     private val accelerated: V5DiTRuntime? = null,
     private val progress: (Int, Int) -> Unit,
 ) {
@@ -55,6 +55,7 @@ internal class V5AcousticRuntime(
                 val length = features.shape[2].toInt()
                 val paddedPrompt = concat(prompt, FloatTensorData(FloatArray(100 * (length - referenceFrames)),
                     longArrayOf(1, 100, (length - referenceFrames).toLong())))
+                if (traceLogger is V5AcousticDiagnostics) traceLogger.acousticCondition(paddedPrompt, features)
                 floatTensor(paddedPrompt).use { promptTensor ->
                     floatTensor(features).use { featuresTensor ->
                         timer.measure("v5_static_ms") {
@@ -97,7 +98,7 @@ internal class V5AcousticRuntime(
                             results += mel
                             if (streaming == null && results.size == 1 && chunkCount > 1 && accelerated?.lastUsedNpu == true) {
                                 val vocoder = timer.measure("v5_vocoder_session_ms") { session(VOCODER) }
-                                streaming = V5StreamingVocoder(environment, vocoder, timer)
+                                streaming = V5StreamingVocoder(environment, vocoder, timer, accelerated.gpuLock)
                             }
                             streaming?.submit(mel, last = start + chunkFrames >= targetFrames)
                             rollingMel = mel.last(minOf(referenceFrames, mel.shape[2].toInt()))

@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
         uri?.let(studio::pickReference)
     }
     private val runtimePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { studio.importPackage(ResourcePackageImporter.PackageType.RUNTIME, it) }
+        uri?.let(studio::importRuntimePackage)
     }
     private val gptPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { studio.pickCheckpoint(it, gpt = true) }

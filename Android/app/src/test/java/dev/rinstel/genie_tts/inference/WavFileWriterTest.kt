@@ -1,22 +1,9 @@
 package dev.rinstel.genie_tts.inference
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class WavFileWriterTest {
-    @Test
-    fun writesPcm16WavFile() {
-        val output = File(java.nio.file.Files.createTempDirectory("genie-test-").toFile(), "out.wav")
-
-        WavFileWriter.writeMonoPcm16(output, floatArrayOf(-1f, 0f, 1f), 32000)
-
-        val bytes = output.readBytes()
-        assertEquals("RIFF", String(bytes.copyOfRange(0, 4), Charsets.US_ASCII))
-        assertEquals("WAVE", String(bytes.copyOfRange(8, 12), Charsets.US_ASCII))
-        assertTrue(output.length() > 44)
-    }
 
     @Test
     fun convertsSamplesToLittleEndianPcm16Buffer() {

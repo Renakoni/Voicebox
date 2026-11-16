@@ -15,8 +15,8 @@ data class ReferenceConditioningCacheKey(
     val usesPromptEncoder: Boolean,
     val referenceAudioSize: Long = -1L,
     val referenceAudioLastModified: Long = -1L,
-    val modelInterfaceVersion: String = "legacy",
-    val preprocessingVersion: String = "legacy",
+    val modelInterfaceVersion: String,
+    val preprocessingVersion: String,
     val conditioningRole: InferenceModelRole = InferenceModelRole.TEXT_FRONTEND,
     val auxiliaryReferenceAudioFingerprints: List<ReferenceAudioFingerprint> = emptyList(),
 )

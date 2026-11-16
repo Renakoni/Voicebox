@@ -90,62 +90,19 @@ class ReferenceConditioningCacheTest {
     }
 
     @Test
-    fun missesWhenReferenceTextChanges() {
-        val cache = ReferenceConditioningCache(maxEntries = 2)
-        var factoryCalls = 0
-
-        cache.getOrPut(key(referenceText = "reference one")) {
-            factoryCalls += 1
-            conditioning(1)
-        }
-        val second = cache.getOrPut(key(referenceText = "reference two")) {
-            factoryCalls += 1
-            conditioning(2)
-        }
-
-        assertEquals(2, factoryCalls)
-        assertEquals(longArrayOf(2L).toList(), second.refSeq.values.toList())
-    }
-
-    @Test
-    fun missesWhenReferenceFileFingerprintChanges() {
-        val cache = ReferenceConditioningCache(maxEntries = 2)
+    fun changedConditioningInputsDoNotReuseCachedTensors() {
         val base = key()
-        var factoryCalls = 0
-
-        cache.getOrPut(base) {
-            factoryCalls += 1
-            conditioning(1)
+        val changes = listOf(
+            base.copy(referenceText = "different text"),
+            base.copy(referenceAudioSize = 42L, referenceAudioLastModified = 7L),
+            base.copy(preprocessingVersion = "new-preprocessing"),
+            base.copy(modelInterfaceVersion = "new-interface"),
+        )
+        changes.forEach { changed ->
+            val cache = ReferenceConditioningCache()
+            cache.getOrPut(base) { conditioning(1) }
+            assertEquals(2L, cache.getOrPut(changed) { conditioning(2) }.refSeq.values.single())
         }
-        val replacement = base.copy(referenceAudioSize = 42L, referenceAudioLastModified = 7L)
-        cache.getOrPut(replacement) {
-            factoryCalls += 1
-            conditioning(2)
-        }
-
-        assertEquals(2, factoryCalls)
-    }
-
-    @Test
-    fun missesWhenPreprocessingOrModelInterfaceChanges() {
-        val cache = ReferenceConditioningCache(maxEntries = 4)
-        val base = key()
-        var factoryCalls = 0
-
-        cache.getOrPut(base) {
-            factoryCalls += 1
-            conditioning(1)
-        }
-        cache.getOrPut(base.copy(preprocessingVersion = "reference-conditioning-v3")) {
-            factoryCalls += 1
-            conditioning(2)
-        }
-        cache.getOrPut(base.copy(modelInterfaceVersion = "new-interface")) {
-            factoryCalls += 1
-            conditioning(3)
-        }
-
-        assertEquals(3, factoryCalls)
     }
 
     private fun key(
@@ -159,6 +116,8 @@ class ReferenceConditioningCacheTest {
             referenceAudioPath = referenceAudioPath,
             referenceText = referenceText,
             usesPromptEncoder = true,
+            modelInterfaceVersion = "prompt-v2",
+            preprocessingVersion = "reference-conditioning-v2",
         )
 
     private fun conditioning(value: Long): ReferenceConditioning =

@@ -2,6 +2,7 @@ package dev.rinstel.genie_tts.studio
 
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -10,7 +11,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -36,9 +38,17 @@ internal fun VoiceAvatar(name: String, path: String = "", modifier: Modifier = M
     Box(modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!, if (name.isBlank()) "音色头像" else "$name 的头像",
             Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        else if (name.isNotBlank()) Text(name.take(1), style = MaterialTheme.typography.headlineSmall,
-            color = MaterialTheme.colorScheme.onSecondaryContainer)
-        else Icon(Icons.Default.Face, null, Modifier.size(36.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+        else {
+            val color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .75f)
+            Canvas(Modifier.fillMaxSize(.5f)) {
+                listOf(.3f, .6f, .9f, .6f, .3f).forEachIndexed { index, height ->
+                    val x = size.width * (index + 1) / 6
+                    drawLine(color, Offset(x, size.height * (1 - height) / 2),
+                        Offset(x, size.height * (1 + height) / 2),
+                        strokeWidth = size.width / 12, cap = StrokeCap.Round)
+                }
+            }
+        }
     }
 }
 

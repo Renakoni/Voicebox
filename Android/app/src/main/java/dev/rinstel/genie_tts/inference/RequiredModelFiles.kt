@@ -5,9 +5,8 @@ import java.io.File
 data class RequiredModelFiles(
     val variantName: String,
     val assetSubdirectory: String,
-    val primarySessionModel: String,
     val files: List<String>,
-    val sessionModels: List<String> = listOf(primarySessionModel),
+    val sessionModels: List<String>,
     val optionalSessionModels: List<String> = emptyList(),
     val sessionModelVariants: Map<String, String> = emptyMap(),
     val derivedFiles: List<DerivedModelFile> = emptyList(),
@@ -18,21 +17,16 @@ data class RequiredModelFiles(
     /** Select a graph variant without making the optimized graph mandatory. */
     fun sessionModelNames(
         modelDirectory: File,
-        preferFp16: Boolean = false,
     ): List<String> =
         (sessionModels.map { modelName ->
             val variant = sessionModelVariants[modelName]
             when {
                 variant == null -> modelName
-                preferFp16 && File(modelDirectory, variant).isFile -> variant
                 File(modelDirectory, modelName).isFile -> modelName
                 File(modelDirectory, variant).isFile -> variant
                 else -> modelName
             }
         } + optionalSessionModels.filter { File(modelDirectory, it).isFile }).distinct()
-
-    fun fallbackSessionModelName(modelName: String): String? =
-        sessionModelVariants.entries.firstOrNull { it.value == modelName }?.key
 
     companion object {
         private val fp16SynthesisVariants = mapOf(
@@ -44,7 +38,6 @@ data class RequiredModelFiles(
         fun v2ProPlusCharacter(characterId: String): RequiredModelFiles = RequiredModelFiles(
             variantName = "${characterId.replaceFirstChar { it.uppercase() }} (V2ProPlus)",
             assetSubdirectory = "v2ProPlus/$characterId/tts_models",
-            primarySessionModel = "t2s_encoder_fp32.onnx",
             files = listOf(
                 "prompt_encoder_fp32.bin",
                 "t2s_encoder_fp32.bin",
@@ -77,7 +70,6 @@ data class RequiredModelFiles(
         fun v2Character(characterId: String): RequiredModelFiles = RequiredModelFiles(
             variantName = "${characterId.replaceFirstChar { it.uppercase() }} (V2)",
             assetSubdirectory = "v2/$characterId/tts_models",
-            primarySessionModel = "t2s_encoder_fp32.onnx",
             files = listOf(
                 "t2s_encoder_fp32.bin",
                 "t2s_shared_fp32.bin",

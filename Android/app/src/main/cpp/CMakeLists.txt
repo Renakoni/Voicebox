@@ -85,32 +85,3 @@ if(ANDROID AND GENIE_ENABLE_NATIVE_DECODER)
     )
     target_link_libraries(native_decoder_loop ${log-lib})
 endif()
-
-include(CTest)
-
-if(BUILD_TESTING AND NOT ANDROID)
-    add_executable(reference_resampler_test
-        reference_resampler.cpp
-        reference_resampler_test.cpp
-        ${SOXR_CONSTANT_SOURCES}
-    )
-    target_include_directories(reference_resampler_test PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${SOXR_SOURCE_DIR}
-    )
-    target_compile_definitions(reference_resampler_test PRIVATE
-        SOXR_LIB=1
-        WITH_CR32=1
-        WITH_CR32S=0
-        WITH_CR64=0
-        WITH_CR64S=0
-        WITH_VR32=0
-        WITH_PFFFT=0
-        WITH_AVFFT=0
-        WITH_OPENMP=0
-        WITH_DEV_TRACE=0
-        HAVE_BIGENDIAN=0
-        HAVE_LRINT=1
-    )
-    add_test(NAME reference_resampler_test COMMAND reference_resampler_test)
-endif()

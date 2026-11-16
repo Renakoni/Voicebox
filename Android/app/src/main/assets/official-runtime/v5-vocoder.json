@@ -1,0 +1,1754 @@
+{
+  "file": "v5_vocoder_fp32.bin",
+  "precision": "fp32",
+  "tensors": [
+    {
+      "checkpoint": "vocoder",
+      "key": "conv_pre.weight",
+      "shape": [
+        512,
+        100,
+        7
+      ],
+      "elements": 358400
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "conv_pre.bias",
+      "shape": [
+        512
+      ],
+      "elements": 512
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.0.weight",
+      "shape": [
+        512,
+        256,
+        20
+      ],
+      "elements": 2621440
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.1.weight",
+      "shape": [
+        256,
+        128,
+        12
+      ],
+      "elements": 393216
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.2.weight",
+      "shape": [
+        128,
+        64,
+        4
+      ],
+      "elements": 32768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.3.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.3.weight",
+      "shape": [
+        64,
+        32,
+        4
+      ],
+      "elements": 8192
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.4.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "ups.4.weight",
+      "shape": [
+        32,
+        16,
+        4
+      ],
+      "elements": 2048
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.0.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.1.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs1.2.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.0.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.1.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.0.convs2.2.weight",
+      "shape": [
+        256,
+        256,
+        3
+      ],
+      "elements": 196608
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.0.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.1.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs1.2.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.0.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.1.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.1.convs2.2.weight",
+      "shape": [
+        256,
+        256,
+        7
+      ],
+      "elements": 458752
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.0.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.1.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs1.2.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.0.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.0.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.1.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.1.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.2.bias",
+      "shape": [
+        256
+      ],
+      "elements": 256
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.2.convs2.2.weight",
+      "shape": [
+        256,
+        256,
+        11
+      ],
+      "elements": 720896
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.0.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.1.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs1.2.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.0.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.1.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.3.convs2.2.weight",
+      "shape": [
+        128,
+        128,
+        3
+      ],
+      "elements": 49152
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.0.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.1.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs1.2.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.0.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.1.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.4.convs2.2.weight",
+      "shape": [
+        128,
+        128,
+        7
+      ],
+      "elements": 114688
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.0.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.1.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs1.2.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.0.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.0.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.1.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.1.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.2.bias",
+      "shape": [
+        128
+      ],
+      "elements": 128
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.5.convs2.2.weight",
+      "shape": [
+        128,
+        128,
+        11
+      ],
+      "elements": 180224
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.0.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.1.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs1.2.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.0.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.1.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.6.convs2.2.weight",
+      "shape": [
+        64,
+        64,
+        3
+      ],
+      "elements": 12288
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.0.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.1.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs1.2.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.0.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.1.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.7.convs2.2.weight",
+      "shape": [
+        64,
+        64,
+        7
+      ],
+      "elements": 28672
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.0.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.1.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs1.2.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.0.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.0.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.1.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.1.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.2.bias",
+      "shape": [
+        64
+      ],
+      "elements": 64
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.8.convs2.2.weight",
+      "shape": [
+        64,
+        64,
+        11
+      ],
+      "elements": 45056
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.0.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.1.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs1.2.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.0.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.1.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.9.convs2.2.weight",
+      "shape": [
+        32,
+        32,
+        3
+      ],
+      "elements": 3072
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.0.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.1.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs1.2.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.0.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.1.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.10.convs2.2.weight",
+      "shape": [
+        32,
+        32,
+        7
+      ],
+      "elements": 7168
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.0.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.1.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs1.2.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.0.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.0.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.1.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.1.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.2.bias",
+      "shape": [
+        32
+      ],
+      "elements": 32
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.11.convs2.2.weight",
+      "shape": [
+        32,
+        32,
+        11
+      ],
+      "elements": 11264
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.0.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.1.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs1.2.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.0.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.1.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.12.convs2.2.weight",
+      "shape": [
+        16,
+        16,
+        3
+      ],
+      "elements": 768
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.0.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.1.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs1.2.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.0.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.1.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.13.convs2.2.weight",
+      "shape": [
+        16,
+        16,
+        7
+      ],
+      "elements": 1792
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.0.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.1.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs1.2.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.0.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.0.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.1.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.1.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.2.bias",
+      "shape": [
+        16
+      ],
+      "elements": 16
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "resblocks.14.convs2.2.weight",
+      "shape": [
+        16,
+        16,
+        11
+      ],
+      "elements": 2816
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "conv_post.weight",
+      "shape": [
+        1,
+        16,
+        7
+      ],
+      "elements": 112
+    },
+    {
+      "checkpoint": "vocoder",
+      "key": "conv_post.bias",
+      "shape": [
+        1
+      ],
+      "elements": 1
+    }
+  ],
+  "graph_sha256": "a5bc4379a5e4a50eb87c0993b4c35feae4e68108b6ffc4698f1556d30eb153f4",
+  "weights_sha256": "4212575af86c72ceacf06ca0d78659dfd40821102a25c2bece444da5879e3742"
+}

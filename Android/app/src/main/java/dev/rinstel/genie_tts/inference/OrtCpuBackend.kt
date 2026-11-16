@@ -11,15 +11,16 @@ import java.nio.FloatBuffer
 import java.nio.LongBuffer
 
 class OrtCpuBackend(
-    override val backend: ExecutionBackend = ExecutionBackend.CPU,
+    val backend: ExecutionBackend = ExecutionBackend.CPU,
     private val configureSessionOptions: (OrtSession.SessionOptions) -> Unit = {},
     private val traceLogger: InferenceTraceLogger = InferenceTraceLogger.None,
     private val configureRoleSessionOptions: ((OrtSession.SessionOptions, InferenceModelRole) -> Unit)? = null,
     // Keep autoregressive execution and shared KV buffers in native code.
     private val useNativeDecoder: Boolean = false,
-    private val qnnRuntimeDirectory: File? = null,
+    private val qnnRuntimeDirectory: () -> File? = { null },
     private val qnnPerformance: String = "balanced",
-) : InferenceBackend, PreparedTtsBackend {
+    private val onNpuUnavailable: () -> Unit = {},
+) : AutoCloseable, PreparedTtsBackend {
 
     private val environment: OrtEnvironment by lazy(LazyThreadSafetyMode.NONE) {
         OrtEnvironment.getEnvironment()
@@ -31,6 +32,7 @@ class OrtCpuBackend(
     private var cachedMultiReferenceCapability: MultiReferenceCapability? = null
     private var v5Acoustic: V5AcousticRuntime? = null
     private var v5DiT: V5DiTRuntime? = null
+    val usesNpu: Boolean get() = v5DiT?.lastUsedNpu == true
 
     @Volatile
     private var retainT2SSessionsAfterGeneration = false
@@ -57,7 +59,7 @@ class OrtCpuBackend(
     // Initialization only validates and indexes model files. Heavy ORT
     // sessions are opened on demand so runtime feature models do not overlap
     // with the T2S/vocoder working set.
-    override fun isInitialized(): Boolean = sessionFiles.isNotEmpty()
+    fun isInitialized(): Boolean = sessionFiles.isNotEmpty()
 
     fun hasPromptEncoder(): Boolean =
         sessionFiles.keys.any { it.contains("prompt_encoder", ignoreCase = true) }
@@ -82,10 +84,6 @@ class OrtCpuBackend(
         val interOpThreads: Int,
     )
 
-    fun applySessionOptions(options: OrtSession.SessionOptions) {
-        configureSessionOptions(options)
-    }
-
     fun applySessionOptions(
         options: OrtSession.SessionOptions,
         role: InferenceModelRole,
@@ -93,7 +91,7 @@ class OrtCpuBackend(
         configureRoleSessionOptions?.invoke(options, role) ?: configureSessionOptions(options)
     }
 
-    override fun initialize(modelRoot: File, characterModel: CharacterModel): SessionSummary {
+    fun initialize(modelRoot: File, characterModel: CharacterModel) {
         close()
 
         val modelDirectory = File(modelRoot, characterModel.relativeModelDirectory)
@@ -117,8 +115,11 @@ class OrtCpuBackend(
             if (backend == ExecutionBackend.WEBGPU &&
                 listOf(V5DiTRuntime.GRAPH, V5DiTRuntime.TIME).all { File(modelDirectory, it).isFile }) {
                 for (name in listOf(V5DiTRuntime.GRAPH, V5DiTRuntime.TIME)) resolvedFiles[name] = File(modelDirectory, name)
+                for (name in V5DiTRuntime.SPLIT_GRAPHS) {
+                    File(modelDirectory, name).takeIf { it.isFile }?.let { resolvedFiles[name] = it }
+                }
                 v5DiT = V5DiTRuntime(environment, ::session, { name -> closeSessions { it == name } },
-                    modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger)
+                    modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger, onNpuUnavailable)
             }
             v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT) { done, total ->
                 reportProgress(GenerationStage.RUNNING_INFERENCE, "running_inference", null, "CFM $done/$total")
@@ -131,12 +132,6 @@ class OrtCpuBackend(
 
         // Do not create any sessions here. RoBERTa, HuBERT, speaker encoder,
         // and the character graphs are loaded in disjoint inference phases.
-        return SessionSummary(
-            backend = backend,
-            sessionNames = sessionFiles.keys.toList(),
-            inputNames = emptyList(),
-            outputNames = emptyList(),
-        )
     }
 
     private fun createSession(
@@ -661,28 +656,13 @@ class OrtCpuBackend(
         }
         requireNotNull(selectedName) { "Session is not available: $modelName" }
         val selectedFile = requireNotNull(sessionFiles[selectedName])
-        val selectedRole = roleForSession(selectedName)
-        val loaded = try {
-            selectedName to createSession(selectedFile, selectedRole)
-        } catch (error: Exception) {
-            val fallbackName = modelFiles?.fallbackSessionModelName(selectedName)
-            val fallbackFile = fallbackName?.let { File(selectedFile.parentFile, it) }
-            if (fallbackName == null || fallbackFile == null || !fallbackFile.isFile) {
-                throw error
-            }
-            val fallbackSession = createSession(fallbackFile, roleForSession(fallbackName))
-            sessionFiles.remove(selectedName)
-            sessionFiles[fallbackName] = fallbackFile
-            fallbackName to fallbackSession
-        }
-        val loadedModelName = loaded.first
-        val loadedSession = loaded.second
-        sessions[loadedModelName] = loadedSession
+        val loadedSession = createSession(selectedFile, roleForSession(selectedName))
+        sessions[selectedName] = loadedSession
         traceLogger.event(
             InferenceTraceEvent.Model(
                 InferenceTraceRecord(
-                    modelRole = roleForSession(loadedModelName),
-                    provider = if (backend == ExecutionBackend.WEBGPU && usesWebGpu(loadedModelName)) InferenceProvider.WEBGPU else InferenceProvider.CPU,
+                    modelRole = roleForSession(selectedName),
+                    provider = if (backend == ExecutionBackend.WEBGPU && usesWebGpu(selectedName)) InferenceProvider.WEBGPU else InferenceProvider.CPU,
                 ),
             ),
         )
@@ -710,14 +690,12 @@ class OrtCpuBackend(
             (modelName.startsWith("v5-") || matchesSessionName(modelName, VITS) || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN)
 
     private fun usesWebGpu(modelName: String): Boolean =
-        modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER || modelName == V5DiTRuntime.GRAPH
+        modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER ||
+            modelName == V5DiTRuntime.GRAPH || modelName == V5DiTRuntime.BODY
 
     private fun matchesSessionName(actualName: String, requestedName: String): Boolean {
-        if (actualName.equals(requestedName, ignoreCase = true)) return true
-        val keyword = requestedName
-            .substringBefore("_fp32.onnx")
-            .substringBefore("_fp16.onnx")
-        return actualName.contains(keyword, ignoreCase = true)
+        return actualName.equals(requestedName, ignoreCase = true) ||
+            actualName.equals(requestedName.replace("_fp32.onnx", "_fp16.onnx"), ignoreCase = true)
     }
 
     private fun createLongTensor(data: LongTensorData): OnnxTensor =

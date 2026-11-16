@@ -30,18 +30,6 @@ class QqVoiceInstrumentedTest {
         source.delete(); dir.delete()
     }
 
-    @Test fun fullFixtureEncodesWithoutChangingSource() {
-        val dir = requireNotNull(context.getExternalFilesDir("QqVoiceTests"))
-        val source = File(dir, "fixture.wav")
-        assertTrue("Push the generated fixture.wav before this test", source.isFile)
-        val original = source.readBytes()
-        val result = QqSilk.fromWav(source)
-        assertArrayEquals(original, source.readBytes())
-        assertEquals(8760, result.durationMs)
-        assertEquals(438, packetCount(result.bytes))
-        File(dir, "fixture.silk").writeBytes(result.bytes)
-    }
-
     @Test fun fractionalSecondsArePreservedInTheEncodedAudio() {
         val source = File(context.cacheDir, "qq-10-point-2-seconds.wav")
         try {

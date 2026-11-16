@@ -37,10 +37,14 @@ class AppSettingsRepository(
         }
 
     var apiEnabled: Boolean
-        get() = storage.getBoolean(KEY_API_ENABLED, true)
+        get() = storage.getBoolean(KEY_API_ENABLED, false)
         set(value) {
             storage.putBoolean(KEY_API_ENABLED, value)
         }
+
+    var deviceAccelerationEnabled: Boolean
+        get() = storage.getBoolean("device_acceleration", true)
+        set(value) { storage.putBoolean("device_acceleration", value) }
 
     var apiPort: Int
         get() = storage.getInt(KEY_API_PORT, DEFAULT_API_PORT).coerceIn(MIN_API_PORT, MAX_API_PORT)

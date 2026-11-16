@@ -4,12 +4,10 @@ import android.content.Context
 import java.io.File
 import org.json.JSONObject
 
-class ModelAssetRepository private constructor(
+class ModelAssetRepository(
     private val filesRoot: File,
 ) {
     constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)))
-
-    constructor(filesRoot: File, marker: Unit = Unit) : this(filesRoot)
 
     private val modelRoot: File
         get() = File(filesRoot, "CharacterModels")
@@ -115,7 +113,10 @@ class ModelAssetRepository private constructor(
         require(wav.isNotBlank() && text?.isNotBlank() == true) {
             "${promptJson.name} Normal reference must contain wav and text."
         }
-        val audioFile = File(promptDirectory, wav)
+        val audioFile = File(promptDirectory, wav).canonicalFile
+        require(audioFile.toPath().startsWith(promptDirectory.canonicalFile.toPath())) {
+            "Normal reference audio must stay inside prompt_wav."
+        }
         require(audioFile.isFile) {
             "Normal reference audio is missing: ${audioFile.absolutePath}"
         }

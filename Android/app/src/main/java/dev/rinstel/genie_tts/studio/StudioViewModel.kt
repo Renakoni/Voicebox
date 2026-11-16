@@ -20,9 +20,14 @@ import dev.rinstel.genie_tts.BackendServiceListener
 import dev.rinstel.genie_tts.BackendServiceState
 import dev.rinstel.genie_tts.GenieBackendService
 import dev.rinstel.genie_tts.ReferenceAudioPicker
-import dev.rinstel.genie_tts.ResourcePackageImporter
+import dev.rinstel.genie_tts.OfficialModel
+import dev.rinstel.genie_tts.OfficialModelCatalog
+import dev.rinstel.genie_tts.OfficialDownloadState
 import dev.rinstel.genie_tts.api.ActiveDefaults
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
+import dev.rinstel.genie_tts.checkpoint.CheckpointPreview
+import dev.rinstel.genie_tts.inference.modelArchitectureLabel
+import dev.rinstel.genie_tts.inference.DeviceAccelerationStatus
 import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationContext
@@ -33,6 +38,8 @@ import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
 import dev.rinstel.genie_tts.inference.ReferenceLanguage
 import dev.rinstel.genie_tts.inference.LanguageNormalizer
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -55,8 +62,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val modelsRepository = ModelAssetRepository(app)
     private val runtimeRepository = RuntimeAssetRepository(app)
     private val settings = AppSettingsRepository(app)
+    private val officialCatalog = OfficialModelCatalog(app)
+    val officialModels = officialCatalog.models
     private val referenceRoot = File(app.filesDir, "studio_references").apply { mkdirs() }
     private var service: GenieBackendService? = null
+    private var accelerationUpdates: Job? = null
+    private var downloadUpdates: Job? = null
+    private var resourceUpdates: Job? = null
     private var bound = false
     private var pendingRequest: GenerationContext? = null
     private var pendingVoiceName = ""
@@ -71,12 +83,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var text by mutableStateOf(store.text); private set
     var outputLanguage by mutableStateOf(store.outputLanguage); private set
     var loading by mutableStateOf(true); private set
-    var runtimeReady by mutableStateOf(false); private set
+    private var runtimeResources by mutableStateOf(false to false)
+    val runtimeReady get() = runtimeResources.first &&
+        (selectedVoice?.modelDirectory?.startsWith("v5turbo/") != true || runtimeResources.second)
     var connected by mutableStateOf(false); private set
     var state by mutableStateOf(BackendServiceState()); private set
     var draft by mutableStateOf<VoiceDraft?>(null); private set
     var checkpointDraft by mutableStateOf<CheckpointDraft?>(null); private set
     var checkpointError by mutableStateOf<String?>(null); private set
+    var checkpointRecognition by mutableStateOf<String?>(null); private set
+    var officialDownload by mutableStateOf(OfficialDownloadState()); private set
     var choosingVoice by mutableStateOf(false); private set
     var fileBusy by mutableStateOf(false); private set
     var recordingMs by mutableStateOf<Long?>(null); private set
@@ -91,6 +107,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var preview by mutableStateOf(PreviewState()); private set
     var gpuAvailable by mutableStateOf(false); private set
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
+    var acceleration by mutableStateOf(DeviceAccelerationStatus()); private set
+    var deviceAccelerationEnabled by mutableStateOf(settings.deviceAccelerationEnabled); private set
     var theme by mutableStateOf(settings.themeMode); private set
     var apiEnabled by mutableStateOf(settings.apiEnabled); private set
     var apiPort by mutableStateOf(settings.apiPort.toString()); private set
@@ -102,7 +120,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         referenceRecordingError("录音中断，请重试。")
     }
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
-    val busy get() = state.busy || submitting || importing
+    val busy get() = state.busy || submitting || importing || officialDownload.running
     val backend get() = if (gpuAvailable && gpuEnabled) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
     val canGenerate get() = connected && !loading && !busy && !fileBusy && runtimeReady &&
         selectedVoice != null && text.isNotBlank() && modelFor(selectedVoice!!) != null
@@ -142,11 +160,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             service = (binder as GenieBackendService.LocalBinder).getService()
             connected = true
             gpuAvailable = ExecutionBackend.WEBGPU in service!!.supportedBackends()
+            accelerationUpdates?.cancel()
+            val detector = service!!.deviceAcceleration
+            accelerationUpdates = viewModelScope.launch { detector.status.collect { acceleration = it } }
+            downloadUpdates?.cancel()
+            downloadUpdates = viewModelScope.launch { service!!.officialDownload.collect {
+                officialDownload = it
+                if (it.completed || it.error != null) refreshResources()
+            } }
             handledOutput = output?.path
             service!!.addListener(listener)
             syncDefaults()
         }
         override fun onServiceDisconnected(name: ComponentName?) {
+            accelerationUpdates?.cancel()
+            downloadUpdates?.cancel()
+            officialDownload = OfficialDownloadState()
             service = null
             connected = false
             submitting = false
@@ -164,40 +193,46 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }.onFailure { notify("语音服务启动失败，请重新打开应用。") }
     }
 
-    private fun refreshResources() = viewModelScope.launch {
-        loading = true
-        try {
-            val data = withContext(Dispatchers.IO) {
-                val available = modelsRepository.discoverCharacterModels()
-                    .filter { modelsRepository.inspect(it.modelFiles).isComplete }
-                val defaults = available.mapNotNull { model ->
-                    runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
-                        StudioVoice("default:${model.relativeModelDirectory}", modelName(model),
-                            model.relativeModelDirectory, reference.audioFile.absolutePath,
-                            reference.audioFile.name, reference.referenceText.orEmpty(), builtIn = true, referenceLanguage = reference.language)
+    private fun refreshResources() {
+        resourceUpdates?.cancel()
+        resourceUpdates = viewModelScope.launch {
+            loading = true
+            try {
+                val data = withContext(Dispatchers.IO) {
+                    val runtimeReady = runtimeRepository.inspect().isComplete
+                    val vocoderReady = officialCatalog.vocoderReady(requireNotNull(app.getExternalFilesDir(null)))
+                    val available = modelsRepository.discoverCharacterModels()
+                        .filter { modelsRepository.inspect(it.modelFiles).isComplete }
+                        .filter { model -> officialModels.firstOrNull { it.directory == model.relativeModelDirectory }
+                            ?.let { runtimeReady && (it.architecture != "v5turbo" || vocoderReady) } ?: true }
+                    val defaults = available.mapNotNull { model ->
+                        runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
+                            StudioVoice("default:${model.relativeModelDirectory}", model.displayName,
+                                model.relativeModelDirectory, reference.audioFile.absolutePath,
+                                reference.audioFile.name, reference.referenceText.orEmpty(), builtIn = true, referenceLanguage = reference.language)
+                        }
                     }
+                    val voices = (defaults + store.voices()).map { voice ->
+                        if (voice.durationMs > 0) voice else voice.copy(
+                            durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
+                    }
+                    Triple(available, voices, runtimeReady to vocoderReady)
                 }
-                val voices = (defaults + store.voices()).map { voice ->
-                    if (voice.durationMs > 0) voice else voice.copy(
-                        durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
+                models = data.first
+                voices = data.second.map { it.copy(avatarPath = avatars.path(it.id)) }
+                runtimeResources = data.third
+                if (voices.none { it.id == selectedId }) {
+                    selectedId = voices.firstOrNull()?.id.orEmpty()
+                    store.selectedId = selectedId
                 }
-                Triple(available, voices, runtimeRepository.inspect().isComplete)
+                syncDefaults()
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                Log.e("VoiceStudio", "Cannot load voices", error)
+                notify("音色加载失败，请检查本地资源后重试。")
+            } finally {
+                if (isActive) loading = false
             }
-            models = data.first
-            voices = data.second.map { it.copy(referenceLanguage = store.referenceLanguage(it.id, it.referenceLanguage),
-                avatarPath = avatars.path(it.id)) }
-            runtimeReady = data.third
-            if (voices.none { it.id == selectedId }) {
-                selectedId = voices.firstOrNull()?.id.orEmpty()
-                store.selectedId = selectedId
-            }
-            syncDefaults()
-        } catch (error: Exception) {
-            if (error is kotlinx.coroutines.CancellationException) throw error
-            Log.e("VoiceStudio", "Cannot load voices", error)
-            notify("音色加载失败，请检查本地资源后重试。")
-        } finally {
-            loading = false
         }
     }
 
@@ -223,6 +258,23 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         syncDefaults()
     }
     fun modelFor(voice: StudioVoice): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == voice.modelDirectory }
+    fun modelFor(official: OfficialModel): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == official.directory }
+    fun isOfficialDirectory(directory: String) = officialModels.any { it.directory == directory }
+    fun isOfficialCharacter(id: String?) = officialModels.any { it.id == id }
+    fun voiceFor(official: OfficialModel): StudioVoice? = voices.firstOrNull { it.builtIn && it.modelDirectory == official.directory }
+    private fun nameExists(name: String, voiceId: String? = null, modelDirectory: String? = null): Boolean {
+        val names = officialModels.filterNot { it.directory == modelDirectory }.map { it.name } +
+            models.filterNot { it.relativeModelDirectory == modelDirectory }.map { it.displayName } +
+            voices.filterNot { it.id == voiceId || (it.builtIn && it.modelDirectory == modelDirectory) }.map { it.name }
+        return names.any { it.trim().equals(name.trim(), ignoreCase = true) }
+    }
+    fun downloadOfficial(official: OfficialModel) {
+        if (busy || fileBusy) return
+        if (service?.downloadOfficialModel(official.id) != true) notify("引擎正在忙碌，请稍后再试。")
+    }
+    fun cancelOfficialDownload() {
+        if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
+    }
     fun openVoicePicker() { if (!busy && !fileBusy) choosingVoice = true }
     fun closeVoicePicker() { choosingVoice = false }
     fun chooseVoice(voice: StudioVoice) {
@@ -236,8 +288,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         editorError = null
         draft = if (voice == null) VoiceDraft(modelDirectory = selectedVoice?.modelDirectory
             ?: models.firstOrNull()?.relativeModelDirectory.orEmpty())
-        else VoiceDraft(if (voice.builtIn) UUID.randomUUID().toString() else voice.id,
-            if (voice.builtIn) "${voice.name}的参考音色" else voice.name, voice.modelDirectory,
+        else VoiceDraft(voice.id, voice.name, voice.modelDirectory,
             voice.audioPath, voice.audioName, voice.transcript, voice.durationMs, voice.referenceLanguage, voice.avatarPath)
     }
     fun edit(value: VoiceDraft) { draft = value; editorError = null }
@@ -358,8 +409,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun saveVoice() {
         val value = draft ?: return
         if (fileBusy || busy) return
-        if (value.name.isBlank() || value.transcript.isBlank() || value.audioPath.isBlank() || value.modelDirectory.isBlank()) {
+        if (value.name.isBlank() || value.transcript.isBlank() || value.audioPath.isBlank() ||
+            models.none { it.relativeModelDirectory == value.modelDirectory }) {
             editorError = "请填好音色名称、参考音频和对应原文，并选择基础音色。"
+            return
+        }
+        if (nameExists(value.name, voiceId = value.id)) {
+            editorError = "音色名称已存在，请换一个名称。"
             return
         }
         fileBusy = true
@@ -369,18 +425,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 runCatching {
                     val source = File(value.audioPath)
                     require(source.isFile)
-                    // A fresh filename keeps an edited voice's old sample intact until persistence succeeds.
-                    val target = File(referenceRoot, "${UUID.randomUUID()}.${source.extension}")
-                    source.copyTo(target)
+                    val previous = store.voices()
+                    val old = previous.firstOrNull { it.id == value.id }?.audioPath
+                    val target = if (value.audioPath == old) source
+                        else File(referenceRoot, "${UUID.randomUUID()}.${source.extension}")
+                    if (target != source) {
+                        try { source.copyTo(target) }
+                        catch (error: Exception) { target.delete(); throw error }
+                    }
                     val voice = StudioVoice(value.id, value.name.trim(), value.modelDirectory,
                         target.absolutePath, value.audioName, value.transcript.trim(), value.durationMs,
                         referenceLanguage = value.referenceLanguage, avatarPath = value.avatarPath)
-                    val previous = store.voices()
                     store.save(previous.filterNot { it.id == voice.id } + voice)
-                    store.setReferenceLanguage(voice.id, voice.referenceLanguage)
                     avatars.save(voice.id, value.avatarPath)
-                    previous.firstOrNull { it.id == voice.id }?.audioPath?.let { old ->
-                        File(old).takeIf { it.parentFile == referenceRoot }?.delete()
+                    old?.let {
+                        File(it).takeIf { file -> file != target && file.parentFile == referenceRoot }?.delete()
                     }
                     deleteDraftFile(value.audioPath)
                     voice
@@ -445,28 +504,28 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun syncDefaults() {
-        if (!warmupEnabled || busy || !runtimeReady) return
-        val voice = selectedVoice ?: return
-        val model = modelFor(voice) ?: return
+        if (!warmupEnabled || busy) return
+        val voice = selectedVoice
+        val model = voice?.let(::modelFor)
+        if (!runtimeReady || voice == null || model == null) {
+            service?.setActiveDefaults(null)
+            return
+        }
         service?.setActiveDefaults(ActiveDefaults(backend, model.id, outputLanguage, voice.audioPath,
             voice.transcript, 1500, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript)))
     }
 
-    fun importPackage(type: ResourcePackageImporter.PackageType, uri: Uri) {
+    fun importRuntimePackage(uri: Uri) {
         if (busy || fileBusy) return
         importing = true
         importMessage = "正在导入，完成后即可使用。大文件需要一些时间。"
         audio.stop()
-        val accepted = service?.importResourcePackage(type, uri) { result ->
+        val accepted = service?.importRuntimePackage(uri) { result ->
             importing = false
             importMessage = result.fold({ "导入完成，资源已保存在手机上。" }, {
                 Log.e("VoiceStudio", "Resource import failed", it)
                 "导入失败，请选择对应的 Genie ZIP 资源包，并确认手机剩余空间充足。"
             })
-            if (result.isSuccess && type == ResourcePackageImporter.PackageType.CHARACTER) {
-                closeCheckpointImport()
-                tab = 1
-            }
             refreshResources()
         } == true
         if (!accepted) {
@@ -479,6 +538,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         checkpointDraft = CheckpointDraft()
         checkpointError = null
+        checkpointRecognition = null
         importMessage = null
     }
 
@@ -492,6 +552,21 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             referenceLanguage = voice.referenceLanguage, editingCharacterId = model.id,
             modelVersion = model.relativeModelDirectory.substringBefore('/'), avatarPath = voice.avatarPath)
         checkpointError = null
+        checkpointRecognition = modelArchitectureLabel(model.relativeModelDirectory.substringBefore('/'))
+        importMessage = null
+    }
+
+    fun editOfficial(official: OfficialModel) {
+        if (busy || fileBusy) return
+        val model = modelFor(official) ?: return
+        val voice = voiceFor(official)
+        checkpointDraft = CheckpointDraft(name = official.name, gptName = model.gptFilename,
+            sovitsName = model.sovitsFilename, editingCharacterId = model.id, modelVersion = official.architecture,
+            audioPath = voice?.audioPath.orEmpty(), audioName = voice?.audioName.orEmpty(),
+            transcript = voice?.transcript.orEmpty(), durationMs = voice?.durationMs ?: 0,
+            referenceLanguage = voice?.referenceLanguage ?: "auto", avatarPath = voice?.avatarPath.orEmpty())
+        checkpointError = null
+        checkpointRecognition = modelArchitectureLabel(official.architecture)
         importMessage = null
     }
 
@@ -503,6 +578,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             else value.copy(sovits = null, sovitsName = model?.sovitsFilename.orEmpty())
         }
         checkpointError = null
+        checkpointRecognition = checkpointDraft?.takeIf { it.gpt == null && it.sovits == null }
+            ?.let { modelArchitectureLabel(it.modelVersion) }
     }
 
     fun closeCheckpointImport() {
@@ -540,6 +617,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         name = value.name.ifBlank { filename.substringBeforeLast('.').take(80) })
             }
             checkpointError = null
+            val selected = checkpointDraft
+            checkpointRecognition = null
+            if (selected?.gpt != null && selected.sovits != null) {
+                checkpointRecognition = "正在识别…"
+                checkpointRecognition = withContext(Dispatchers.IO) {
+                    runCatching { CheckpointPreview.read(app, selected.sovits) }
+                        .fold({ it?.let(::modelArchitectureLabel) ?: "导入时识别" }, { "无法识别，请检查权重文件" })
+                }
+            }
             fileBusy = false
         }
     }
@@ -550,6 +636,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val editing = value.editingCharacterId != null
         if (value.name.isBlank() || (!editing && (value.gpt == null || value.sovits == null))) {
             checkpointError = "请填写音色名称，并选择配套的 .ckpt 和 .pth 文件。"
+            return
+        }
+        val editedDirectory = value.editingCharacterId?.let { "${value.modelVersion}/$it/tts_models" }
+        if (nameExists(value.name, modelDirectory = editedDirectory)) {
+            checkpointError = "音色名称已存在，请换一个名称。"
             return
         }
         if ((value.gpt == null) != (value.sovits == null)) {
@@ -571,9 +662,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 deleteDraftFile(value.audioPath)
                 checkpointDraft = null
                 importMessage = null
-                selectedId = "default:${value.modelVersion}/${imported.characterId}/tts_models"
+                selectedId = "default:${imported.architecture}/${imported.characterId}/tts_models"
                 store.selectedId = selectedId
-                store.setReferenceLanguage(selectedId, value.referenceLanguage)
                 avatars.save(selectedId, value.avatarPath)
                 refreshResources()
                 tab = if (editing) 1 else 0
@@ -581,7 +671,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }.onFailure {
                 Log.e("VoiceStudio", "Checkpoint import failed", it)
                 checkpointError = it.message?.takeIf { message -> message.any { c -> c in '\u4e00'..'\u9fff' } }
-                    ?: "导入失败，请检查文件是否完整、是否为 V2ProPlus，并确认存储空间充足。"
+                    ?: "导入失败，请检查文件是否完整、是否为支持的模型版本，并确认存储空间充足。"
                 importMessage = null
                 syncDefaults()
             }
@@ -605,6 +695,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         gpuEnabled = enabled
         store.gpuEnabled = enabled
         syncDefaults()
+    }
+    fun setDeviceAcceleration(enabled: Boolean) {
+        if (busy) return
+        deviceAccelerationEnabled = enabled
+        settings.deviceAccelerationEnabled = enabled
+        ContextCompat.startForegroundService(app, GenieBackendService.serviceIntent(app)
+            .setAction(GenieBackendService.ACTION_RELOAD_INFERENCE_SETTINGS))
     }
     fun changeTheme(value: AppSettingsRepository.ThemeMode) { theme = value; settings.themeMode = value }
     fun setApi(enabled: Boolean) {
@@ -649,8 +746,5 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         service?.removeListener(listener)
         if (bound) app.unbindService(connection)
         audio.close()
-        super.onCleared()
     }
 }
-
-fun modelName(model: CharacterModel): String = model.displayName

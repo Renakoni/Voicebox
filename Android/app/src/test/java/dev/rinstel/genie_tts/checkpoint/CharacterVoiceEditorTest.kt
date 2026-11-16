@@ -54,6 +54,19 @@ class CharacterVoiceEditorTest {
         assertTrue("Other emotions still use this audio", newFile.isFile)
     }
 
+    @Test fun addsFirstReferenceToDownloadedBaseWithoutReplacingWeights() {
+        val base = File(temporary.root, "CharacterModels/v5turbo/official-v5turbo")
+        File(base, "tts_models").mkdirs()
+        val weights = File(base, "tts_models/weights.bin").apply { writeText("base weights") }
+        val source = temporary.newFile("reference.wav").apply { writeText("reference audio") }
+        CharacterVoiceEditor(temporary.root).updateReference("official-v5turbo", "官方 V5 Turbo",
+            CheckpointImporter.Reference(source, "参考原文", "zh"), "v5turbo")
+        val prompt = JSONObject(File(base, "prompt_wav.json").readText()).getJSONObject("Normal")
+        assertEquals("参考原文", prompt.getString("text"))
+        assertEquals("reference audio", File(base, "prompt_wav/${prompt.getString("wav")}").readText())
+        assertEquals("base weights", weights.readText())
+    }
+
     @Test fun invalidReferenceOrDirectoryLeavesInstalledFilesUnchanged() {
         val voice = character()
         val manifest = File(voice, "prompt_wav.json")

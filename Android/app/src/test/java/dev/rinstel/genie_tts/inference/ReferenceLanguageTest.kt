@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReferenceLanguageTest {
-    @Test fun oldPackagesUseTranscriptScriptAndExplicitChoiceWins() {
+    @Test fun autoLanguageUsesTranscriptScriptAndExplicitChoiceWins() {
         assertEquals("japanese", ReferenceLanguage.resolve("auto", "えっと、ありがとうございました"))
         assertEquals("chinese", ReferenceLanguage.resolve("auto", "今晚风很轻。"))
         assertEquals("english", ReferenceLanguage.resolve("auto", "Hello, this is a test."))

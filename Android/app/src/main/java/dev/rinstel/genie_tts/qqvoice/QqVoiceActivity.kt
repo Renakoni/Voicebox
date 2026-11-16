@@ -120,7 +120,6 @@ class QqVoiceModel(app: Application) : AndroidViewModel(app) {
     override fun onCleared() {
         if (!busy) session.finish()
         connection?.let { runCatching { it.disconnect() } }
-        super.onCleared()
     }
 }
 
