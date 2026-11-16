@@ -1,4 +1,6 @@
 #include <jni.h>
+#include <android/log.h>
+#include <chrono>
 #include <dlfcn.h>
 #include <cstdlib>
 #include <fstream>
@@ -87,7 +89,24 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
             s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_embed_mode", "1"));
             s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_file_path", cachePath.c_str()));
         }
+        auto started = std::chrono::steady_clock::now();
         s->check(s->api->CreateSession(s->env, (cached ? cachePath : modelPath).c_str(), s->options, &s->session));
+        if (!cachePath.empty()) {
+            if (!cached) {
+                // Keep the same compiled graph, but release the source graph and compilation session.
+                // Otherwise each new shape can retain another full set of FP32 initializers.
+                s->api->ReleaseSession(s->session); s->session = nullptr;
+                __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "v5_qnn_compile_ms=%lld ms",
+                    static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - started).count()));
+                s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_enable", "0"));
+                started = std::chrono::steady_clock::now();
+                s->check(s->api->CreateSession(s->env, cachePath.c_str(), s->options, &s->session));
+            }
+            __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "v5_qnn_load_ms=%lld ms",
+                static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - started).count()));
+        }
         s->api->ReleaseSessionOptions(s->options); s->options = nullptr;
         s->check(s->api->CreateRunOptions(&s->run));
         s->check(s->api->AddRunConfigEntry(s->run, "qnn.htp_perf_mode", mode.c_str()));

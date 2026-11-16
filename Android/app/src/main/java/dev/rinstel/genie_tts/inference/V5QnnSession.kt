@@ -6,7 +6,8 @@ import java.nio.FloatBuffer
 import java.security.MessageDigest
 
 /** Optional Qualcomm runtime; no ORT objects are shared with the WebGPU library. */
-internal class V5QnnSession(runtime: File, model: File, performance: String, frames: Int) : AutoCloseable {
+internal class V5QnnSession(runtime: File, model: File, performance: String, frames: Int,
+                            allowCompilation: Boolean = false) : AutoCloseable {
     private val handle: Long
     private val names: Array<String>
 
@@ -31,10 +32,17 @@ internal class V5QnnSession(runtime: File, model: File, performance: String, fra
         // Retain only this model/runtime's three bounded shape contexts.
         model.parentFile!!.listFiles()?.filter { it.name.startsWith(".v5-htp-") && !it.name.startsWith(".v5-htp-$key-") }
             ?.forEach { it.delete() }
-        handle = try { create(runtime.absolutePath, model.absolutePath, cache.absolutePath, performance, frames) }
-        catch (error: IllegalStateException) {
-            if (!cache.delete()) throw error
+        // Generation loads only a prepared context. Even if it disappears, this
+        // path cannot compile the source graph while rendering an acoustic chunk.
+        fun load() = if (allowCompilation) {
             create(runtime.absolutePath, model.absolutePath, cache.absolutePath, performance, frames)
+        } else {
+            create(runtime.absolutePath, cache.absolutePath, "", performance, frames)
+        }
+        handle = try { load() }
+        catch (error: IllegalStateException) {
+            if (!allowCompilation || !cache.delete()) throw error
+            load()
         }
         names = try { inputNames(handle) }
         catch (error: Throwable) { destroy(handle); throw error }

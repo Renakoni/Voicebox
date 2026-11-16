@@ -37,9 +37,35 @@ internal class V5DiTRuntime(
     private var workspace: Workspace? = null
     private var tailWorkspace: Workspace? = null
     private val qnn = mutableMapOf<Int, V5QnnSession?>()
+    private var npuPrepared = false
     private val hasSplitGraphs = SPLIT_GRAPHS.all { File(directory, it).isFile }
     var lastUsedNpu = false
         private set
+
+    /** Prepare every supported shape before feature extraction and generation begin. */
+    fun prepareNpu(progress: (Int, Int) -> Unit) {
+        if (!hasSplitGraphs || npuPrepared) return
+        val runtime = qnnRuntime() ?: return
+        try {
+            for ((index, bucket) in BUCKETS.withIndex()) {
+                GenerationContext.checkCurrent()
+                if (!qnn.containsKey(bucket)) {
+                    progress(index, BUCKETS.size)
+                    qnn[bucket] = timer.measure("v5_qnn_session_ms") {
+                        V5QnnSession(runtime, File(directory, BODY), qnnPerformance, bucket, allowCompilation = true)
+                    }
+                }
+            }
+            GenerationContext.checkCurrent()
+            npuPrepared = true
+            progress(BUCKETS.size, BUCKETS.size)
+        } catch (error: Exception) {
+            GenerationContext.checkCurrent()
+            qnn.values.forEach { it?.close() }; qnn.clear()
+            android.util.Log.w("VoiceboxV5", "HTP preparation failed, using FP32 WebGPU", error)
+            onNpuUnavailable()
+        }
+    }
 
     fun solve(state: FloatBuffer, condition: OnnxTensor, rope: OnnxTensor, frames: Int, referenceFrames: Int,
               progress: (Int) -> Unit) {
@@ -56,18 +82,17 @@ internal class V5DiTRuntime(
             } finally { releaseSession(TIME) }
         }.also { timeConditions = it }
         val bucket = when { frames <= 512 -> 512; frames <= 768 -> 768; else -> 1000 }
-        if (!qnn.containsKey(bucket)) {
-            qnn[bucket] = null
-            val runtime = qnnRuntime()
-            if (runtime != null && hasSplitGraphs) {
-                qnn[bucket] = timer.measure("v5_qnn_session_ms") {
-                    try { V5QnnSession(runtime, File(directory, BODY), qnnPerformance, bucket) }
-                    catch (error: Exception) {
-                        GenerationContext.checkCurrent()
-                        android.util.Log.w("VoiceboxV5", "HTP unavailable, using FP32 WebGPU", error)
-                        onNpuUnavailable()
-                        null
-                    }
+        val runtime = qnnRuntime()
+        if (npuPrepared && runtime != null && !qnn.containsKey(bucket)) {
+            // Feature preparation and memory trimming can evict live sessions.
+            // Reload their prepared contexts; source compilation is forbidden here.
+            qnn[bucket] = timer.measure("v5_qnn_context_reload_ms") {
+                try { V5QnnSession(runtime, File(directory, BODY), qnnPerformance, bucket) }
+                catch (error: Exception) {
+                    GenerationContext.checkCurrent()
+                    android.util.Log.w("VoiceboxV5", "HTP context unavailable, using FP32 WebGPU", error)
+                    onNpuUnavailable()
+                    null
                 }
             }
         }
@@ -209,6 +234,7 @@ internal class V5DiTRuntime(
     }
 
     companion object {
+        private val BUCKETS = intArrayOf(512, 768, 1000)
         const val GRAPH = "v5-dit-compact.onnx"
         const val TIME = "v5-time.onnx"
         const val STEM = "v5-dit-stem.onnx"

@@ -91,6 +91,10 @@ class OrtSessionRuntime(
             }
             runtimePrepared = true
         }
+        backendEngine.prepareAcceleration { done, total ->
+            request.context.checkCancelled()
+            callbacks?.onStage(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null, "NPU $done/$total")
+        }
         request.context.checkCancelled()
         callbacks?.onStage(GenerationStage.PREPARING_FEATURES, "preparing_features", null, "Preparing features")
         return runtimeFeatureExtractor ?: featureExtractorFactory(backendEngine).also { runtimeFeatureExtractor = it }

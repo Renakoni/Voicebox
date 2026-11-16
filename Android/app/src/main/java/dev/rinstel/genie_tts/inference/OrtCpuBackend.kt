@@ -134,6 +134,10 @@ class OrtCpuBackend(
         // and the character graphs are loaded in disjoint inference phases.
     }
 
+    internal fun prepareAcceleration(progress: (Int, Int) -> Unit) {
+        v5DiT?.prepareNpu(progress)
+    }
+
     private fun createSession(
         modelFile: File,
         role: InferenceModelRole,
