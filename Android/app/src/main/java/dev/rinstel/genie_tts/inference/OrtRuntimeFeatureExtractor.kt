@@ -611,12 +611,6 @@ class OrtRuntimeFeatureExtractor(
             append(characterModel.modelFiles.storageVersion)
             append("|sessions=")
             append(characterModel.modelFiles.sessionModels.joinToString(","))
-            append("|session_variants=")
-            append(
-                characterModel.modelFiles.sessionModelVariants.entries
-                    .sortedBy { it.key }
-                    .joinToString(",") { (base, variant) -> "$base->$variant" },
-            )
             append("|optional_sessions=")
             append(characterModel.modelFiles.optionalSessionModels.joinToString(","))
         }

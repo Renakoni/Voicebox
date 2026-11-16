@@ -25,10 +25,12 @@ internal class V2HtpVocoder(
     private var workspace: Workspace? = null
     var lastUsedNpu = false
         private set
+    private val qnnModel by lazy(LazyThreadSafetyMode.NONE) {
+        QnnSession.Model(requireNotNull(runtime()), File(directory, BODY), File(directory, "vits_fp32.bin"), "v2")
+    }
 
     private fun load(compile: Boolean): QnnSession = QnnSession(
-        requireNotNull(runtime()), File(directory, BODY), performance, V2VocoderWindows.FRAMES,
-        allowCompilation = compile, weights = File(directory, "vits_fp32.bin"), namespace = "v2",
+        qnnModel, performance, V2VocoderWindows.FRAMES, allowCompilation = compile,
     )
 
     fun prepare(progress: (Int, Int) -> Unit) {
@@ -39,7 +41,6 @@ internal class V2HtpVocoder(
             prepared = true
             progress(1, 1)
         } catch (error: Exception) {
-            GenerationContext.checkCurrent()
             unavailable(error)
         }
     }
@@ -82,7 +83,6 @@ internal class V2HtpVocoder(
             trace.event(InferenceTraceEvent.Model(InferenceTraceRecord(InferenceModelRole.VOCODER, InferenceProvider.QNN)))
             return TtsGenerationResult(audio, longArrayOf(audio.size.toLong()))
         } catch (error: Exception) {
-            GenerationContext.checkCurrent()
             unavailable(error)
             return null
         }
@@ -90,6 +90,7 @@ internal class V2HtpVocoder(
 
     private fun unavailable(error: Exception) {
         close()
+        GenerationContext.checkCurrent()
         prepared = false
         android.util.Log.w("VoiceboxV2", "HTP unavailable, using FP32 WebGPU", error)
         onUnavailable()

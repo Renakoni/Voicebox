@@ -11,6 +11,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Assume.assumeNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,15 +50,23 @@ class V2AcousticOptimizationInstrumentedTest {
             V2HtpVocoder(environment, ::session, directory, { File(context.filesDir, "QualcommRuntime") },
                 "balanced", trace, { error("Unexpected HTP failure") }).use { vocoder ->
                 val progress = mutableListOf<Int>()
-                vocoder.prepare { done, total -> assertEquals(1, total); progress += done }
+                val cancelled = GenerationContext()
+                assertThrows(GenerationCancelledException::class.java) {
+                    cancelled.run {
+                        vocoder.prepare { done, total ->
+                            assertEquals(1, total); progress += done
+                            if (done == 1) cancelled.cancel("TEST_CANCEL")
+                            cancelled.checkCancelled()
+                        }
+                    }
+                }
                 assertEquals(listOf(0, 1), progress)
                 vocoder.prepare { _, _ -> error("Repeated source preparation") }
-                vocoder.close()
-                vocoder.prepare { _, _ -> error("Eviction must retain prepared-cache state") }
                 OrtSession.SessionOptions().use { options ->
                     OrtCpuBackend.configureCpuSessionOptions(options)
                     environment.createSession(fixture.getString("encoder"), options).use { encoder ->
                         for (case in listOf("short", "long")) {
+                            vocoder.prepare { _, _ -> error("Eviction must retain prepared-cache state") }
                             val item = File(folder, case)
                             val shapes = JSONObject(File(item, "inputs.json").readText())
                             val inputs = mutableMapOf<String, OnnxTensor>()
@@ -89,9 +98,13 @@ class V2AcousticOptimizationInstrumentedTest {
                                     report.put(JSONObject().put("case", case).put("relative_rms", rms).put("samples", output.audio.size))
                                 }
                             } finally { inputs.values.forEach(OnnxTensor::close) }
+                            vocoder.close()
                         }
                     }
                 }
+                assertEquals(2, (0 until timings.length()).count {
+                    timings.getJSONObject(it).getString("name") == "v2_htp_reload_ms"
+                })
             }
         } finally { sessions.values.forEach(OrtSession::close) }
         File(folder, "result.json").writeText(JSONObject().put("cases", report).put("timings", timings).toString(2))

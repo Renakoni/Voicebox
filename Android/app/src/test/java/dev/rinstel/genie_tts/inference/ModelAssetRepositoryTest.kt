@@ -1,7 +1,6 @@
 package dev.rinstel.genie_tts.inference
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -101,52 +100,6 @@ class ModelAssetRepositoryTest {
         val inspection = ModelAssetRepository(filesRoot).inspect(modelFiles)
 
         assertTrue(inspection.missingFiles.contains("t2s_first_stage_decoder_fp32.onnx"))
-    }
-
-    @Test
-    fun prefersFp32SynthesisGraphsByDefault() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val modelFiles = RequiredModelFiles.v2ProPlusCharacter("mansui")
-        val modelDirectory = File(filesRoot, "CharacterModels/${modelFiles.assetSubdirectory}").apply { mkdirs() }
-        modelFiles.sessionModels.forEach { fileName ->
-            File(modelDirectory, fileName).writeBytes(byteArrayOf(0))
-        }
-        modelFiles.sessionModelVariants.values.forEach { fileName ->
-            File(modelDirectory, fileName).writeBytes(byteArrayOf(0))
-        }
-
-        val selected = modelFiles.sessionModelNames(modelDirectory)
-
-        assertTrue(selected.contains("t2s_first_stage_decoder_fp32.onnx"))
-        assertTrue(selected.contains("t2s_stage_decoder_fp32.onnx"))
-        assertTrue(selected.contains("vits_fp32.onnx"))
-        assertFalse(selected.contains("t2s_first_stage_decoder_fp16.onnx"))
-        assertFalse(selected.contains("t2s_stage_decoder_fp16.onnx"))
-        assertFalse(selected.contains("vits_fp16.onnx"))
-    }
-
-    @Test
-    fun inspectionAcceptsFp16SynthesisGraphsAsSessionReplacements() {
-        val filesRoot = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
-        val modelFiles = RequiredModelFiles.v2ProPlusCharacter("mansui")
-        val modelDirectory = File(filesRoot, "CharacterModels/${modelFiles.assetSubdirectory}").apply { mkdirs() }
-        modelFiles.files.forEach { fileName ->
-            File(modelDirectory, fileName).writeBytes(byteArrayOf(0))
-        }
-        modelFiles.sessionModels
-            .filterNot { it in modelFiles.sessionModelVariants.keys }
-            .forEach { fileName ->
-                File(modelDirectory, fileName).writeBytes(byteArrayOf(0))
-            }
-        modelFiles.sessionModelVariants.values.forEach { fileName ->
-            File(modelDirectory, fileName).writeBytes(byteArrayOf(0))
-        }
-
-        val inspection = ModelAssetRepository(filesRoot).inspect(modelFiles)
-
-        assertFalse(inspection.missingFiles.contains("t2s_first_stage_decoder_fp32.onnx"))
-        assertFalse(inspection.missingFiles.contains("t2s_stage_decoder_fp32.onnx"))
-        assertFalse(inspection.missingFiles.contains("vits_fp32.onnx"))
     }
 
     private fun modelV2ProPlus(id: String): CharacterModel =

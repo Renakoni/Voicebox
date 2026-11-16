@@ -51,6 +51,8 @@ class GenerationPipelineTest {
     fun writesGeneratedAudioToOutputFile() {
         val outputDirectory = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
         var capturedMaxDecoderSteps = -1
+        var runtimeLabel = "ORT CPU + WebGPU"
+        val recordedRuntimes = mutableListOf<InferenceRuntimeLabel>()
         val request = GenerationRequest(
             characterModel = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).first(),
             language = "zh",
@@ -62,6 +64,7 @@ class GenerationPipelineTest {
         val backend = object : PreparedTtsBackend {
             override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult {
                 capturedMaxDecoderSteps = maxDecoderSteps
+                runtimeLabel = "ORT CPU + WebGPU + QNN"
                 return TtsGenerationResult(floatArrayOf(0f, 0.25f, -0.25f), longArrayOf(1L, 1L, 3L), sampleRate = 48000)
             }
         }
@@ -83,7 +86,13 @@ class GenerationPipelineTest {
             inputPreparer = inputPreparer,
             outputDirectory = outputDirectory,
             executionBackend = ExecutionBackend.WEBGPU,
-            runtimeLabel = "ORT CPU + WebGPU",
+            runtimeLabel = { runtimeLabel },
+            traceLogger = object : InferenceTraceLogger {
+                override fun stage(name: String, elapsedMs: Long) = Unit
+                override fun event(event: InferenceTraceEvent) {
+                    if (event is InferenceTraceEvent.Runtime) recordedRuntimes += event.value
+                }
+            },
         ).generate(request)
 
         assertTrue(output.file.exists())
@@ -92,6 +101,8 @@ class GenerationPipelineTest {
         assertEquals(48000, output.sampleRate)
         assertEquals(48000, WavAudioReader.readMonoPcm(output.file).sampleRate)
         assertEquals(123, capturedMaxDecoderSteps)
+        assertEquals(listOf(InferenceRuntimeLabel.QNN), recordedRuntimes)
+        outputDirectory.deleteRecursively()
     }
 
 }

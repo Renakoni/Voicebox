@@ -6,7 +6,7 @@ class GenerationPipeline(
     private val outputDirectory: java.io.File,
     private val traceLogger: InferenceTraceLogger = InferenceTraceLogger.None,
     private val executionBackend: ExecutionBackend? = null,
-    private val runtimeLabel: String? = null,
+    private val runtimeLabel: () -> String? = { null },
     private val progressCallbacks: BackendRuntimeCallbacks? = null,
 ) {
     fun generate(request: GenerationRequest): GeneratedAudioFile {
@@ -15,10 +15,6 @@ class GenerationPipeline(
             validate(request)
             request.context.checkCancelled()
             executionBackend?.let { timer.event(InferenceTraceEvent.Backend(it)) }
-            runtimeLabel?.let { label ->
-                timer.event(InferenceTraceEvent.Runtime(InferenceRuntimeLabel.entries.first { it.wireValue == label }))
-            }
-
             val preparedInput = timer.measure("prepare_total_ms") {
                 inputPreparer.prepare(request)
             }
@@ -33,6 +29,9 @@ class GenerationPipeline(
                 backend.generatePrepared(preparedInput, request.maxDecoderSteps)
             }
             request.context.checkCancelled()
+            runtimeLabel()?.let { label ->
+                timer.event(InferenceTraceEvent.Runtime(InferenceRuntimeLabel.entries.first { it.wireValue == label }))
+            }
             timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.AUDIO_SAMPLES, result.audio.size.toLong()))
             timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.AUDIO_SHAPE, result.shape))
             timer.traceFloatTensor(InferenceTensorMetric.AUDIO_HASH, result.audio)

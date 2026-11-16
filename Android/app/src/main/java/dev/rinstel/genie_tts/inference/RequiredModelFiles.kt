@@ -8,33 +8,15 @@ data class RequiredModelFiles(
     val files: List<String>,
     val sessionModels: List<String>,
     val optionalSessionModels: List<String> = emptyList(),
-    val sessionModelVariants: Map<String, String> = emptyMap(),
     val derivedFiles: List<DerivedModelFile> = emptyList(),
     val storageVersion: Int = 3,
     val maxAuxiliaryReferenceCount: Int = 0,
 ) {
 
-    /** Select a graph variant without making the optimized graph mandatory. */
-    fun sessionModelNames(
-        modelDirectory: File,
-    ): List<String> =
-        (sessionModels.map { modelName ->
-            val variant = sessionModelVariants[modelName]
-            when {
-                variant == null -> modelName
-                File(modelDirectory, modelName).isFile -> modelName
-                File(modelDirectory, variant).isFile -> variant
-                else -> modelName
-            }
-        } + optionalSessionModels.filter { File(modelDirectory, it).isFile }).distinct()
+    fun sessionModelNames(modelDirectory: File): List<String> =
+        sessionModels + optionalSessionModels.filter { File(modelDirectory, it).isFile }
 
     companion object {
-        private val fp16SynthesisVariants = mapOf(
-            "t2s_first_stage_decoder_fp32.onnx" to "t2s_first_stage_decoder_fp16.onnx",
-            "t2s_stage_decoder_fp32.onnx" to "t2s_stage_decoder_fp16.onnx",
-            "vits_fp32.onnx" to "vits_fp16.onnx",
-        )
-
         fun v2ProPlusCharacter(characterId: String): RequiredModelFiles = RequiredModelFiles(
             variantName = "${characterId.replaceFirstChar { it.uppercase() }} (V2ProPlus)",
             assetSubdirectory = "v2ProPlus/$characterId/tts_models",
@@ -52,7 +34,6 @@ data class RequiredModelFiles(
                 "vits_fp32.onnx",
             ),
             optionalSessionModels = listOf("prompt_encoder_multi_fp32.onnx"),
-            sessionModelVariants = fp16SynthesisVariants,
             derivedFiles = listOf(
                 DerivedModelFile("prompt_encoder_fp16.bin", "prompt_encoder_fp32.bin"),
                 DerivedModelFile("t2s_shared_fp16.bin", "t2s_shared_fp32.bin"),
@@ -81,7 +62,6 @@ data class RequiredModelFiles(
                 "t2s_stage_decoder_fp32.onnx",
                 "vits_fp32.onnx",
             ),
-            sessionModelVariants = fp16SynthesisVariants,
             derivedFiles = listOf(
                 DerivedModelFile("t2s_shared_fp16.bin", "t2s_shared_fp32.bin"),
                 DerivedModelFile("vits_fp16.bin", "vits_fp32.bin"),
@@ -94,7 +74,6 @@ data class RequiredModelFiles(
             files = listOf("t2s_encoder_fp32.bin", "t2s_shared_fp32.bin", "v5_sovits_fp32.bin"),
             sessionModels = listOf("t2s_encoder_fp32.onnx", "t2s_first_stage_decoder_fp32.onnx", "t2s_stage_decoder_fp32.onnx",
                 "v5-reference-audio.onnx", "v5-condition.onnx", "v5-static.onnx", "v5-dit.onnx"),
-            sessionModelVariants = fp16SynthesisVariants.filterKeys { it != "vits_fp32.onnx" },
             derivedFiles = listOf(DerivedModelFile("t2s_shared_fp16.bin", "t2s_shared_fp32.bin"),
                 DerivedModelFile("v5_sovits_fp16.bin", "v5_sovits_fp32.bin")),
         )

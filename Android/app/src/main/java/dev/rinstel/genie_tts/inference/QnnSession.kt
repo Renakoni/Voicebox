@@ -6,43 +6,20 @@ import java.nio.FloatBuffer
 import java.security.MessageDigest
 
 /** Optional Qualcomm runtime; no ORT objects are shared with the WebGPU library. */
-internal class QnnSession(runtime: File, model: File, performance: String, frames: Int,
-                          allowCompilation: Boolean = false,
-                          weights: File = File(model.parentFile, "v5_sovits_fp32.bin"),
-                          namespace: String = "v5") : AutoCloseable {
+internal class QnnSession(model: Model, performance: String, frames: Int,
+                          allowCompilation: Boolean = false) : AutoCloseable {
     private val handle: Long
     private val names: Array<String>
 
     init {
         check(NativeDecoderLoop.isAvailable())
-        val digest = MessageDigest.getInstance("SHA-256")
-        // Compiled contexts depend on the native graph-finalization policy.
-        digest.update("htp-finalization-3".toByteArray())
-        digest.update(Build.FINGERPRINT.toByteArray())
-        digest.update(model.readBytes())
-        // Import replaces the model directory atomically. Metadata also invalidates local
-        // weight/runtime replacements without re-reading gigabytes for each shape bucket.
-        val dependencies = listOf(weights) +
-            runtime.listFiles().orEmpty().filter { it.extension == "so" }.sortedBy { it.name }
-        dependencies.forEach { file ->
-            digest.update("\n${file.name}:${file.length()}:${file.lastModified()}".toByteArray())
-        }
-        File(runtime, "libonnxruntime-qnn.so").inputStream().buffered().use { stream ->
-            val buffer = ByteArray(65536)
-            while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
-        }
-        val key = digest.digest().take(12).joinToString("") { "%02x".format(it) }
-        val prefix = ".$namespace-htp-"
-        val cache = File(model.parentFile, "$prefix$key-$frames.onnx")
-        // Retain only this model/runtime's bounded shape contexts.
-        model.parentFile!!.listFiles()?.filter { it.name.startsWith(prefix) && !it.name.startsWith("$prefix$key-") }
-            ?.forEach { it.delete() }
+        val cache = model.cache(frames)
         // Generation loads only a prepared context. Even if it disappears, this
         // path cannot compile the source graph while rendering an acoustic chunk.
         fun load() = if (allowCompilation) {
-            create(runtime.absolutePath, model.absolutePath, cache.absolutePath, performance, frames)
+            create(model.runtime.absolutePath, model.graph.absolutePath, cache.absolutePath, performance, frames)
         } else {
-            create(runtime.absolutePath, cache.absolutePath, "", performance, frames)
+            create(model.runtime.absolutePath, cache.absolutePath, "", performance, frames)
         }
         handle = try { load() }
         catch (error: IllegalStateException) {
@@ -67,6 +44,34 @@ internal class QnnSession(runtime: File, model: File, performance: String, frame
     }
 
     override fun close() = destroy(handle)
+
+    /** Reused across shape buckets and eviction. Import/runtime replacement closes the owner. */
+    class Model(val runtime: File, val graph: File, weights: File, namespace: String) {
+        private val prefix: String
+
+        init {
+            val digest = MessageDigest.getInstance("SHA-256")
+            digest.update("htp-finalization-3".toByteArray())
+            digest.update(Build.FINGERPRINT.toByteArray())
+            digest.update(graph.readBytes())
+            val dependencies = listOf(weights) +
+                runtime.listFiles().orEmpty().filter { it.extension == "so" }.sortedBy { it.name }
+            dependencies.forEach { file ->
+                digest.update("\n${file.name}:${file.length()}:${file.lastModified()}".toByteArray())
+            }
+            File(runtime, "libonnxruntime-qnn.so").inputStream().buffered().use { stream ->
+                val buffer = ByteArray(65536)
+                while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+            }
+            val key = digest.digest().take(12).joinToString("") { "%02x".format(it) }
+            val family = ".$namespace-htp-"
+            prefix = "$family$key-"
+            graph.parentFile!!.listFiles()?.filter { it.name.startsWith(family) && !it.name.startsWith(prefix) }
+                ?.forEach { it.delete() }
+        }
+
+        fun cache(frames: Int) = File(graph.parentFile, "$prefix$frames.onnx")
+    }
 
     companion object {
         /** A real HTP run with CPU fallback disabled; a chip name alone is not proof of support. */

@@ -36,7 +36,7 @@ class OrtSessionRuntime(
                 outputDirectory = runtimeRepository.outputRoot(),
                 traceLogger = traceLogger,
                 executionBackend = backendEngine.backend,
-                runtimeLabel = runtimeLabel,
+                runtimeLabel = { runtimeLabel },
                 progressCallbacks = callbacks,
             ).generate(request)
         } finally {

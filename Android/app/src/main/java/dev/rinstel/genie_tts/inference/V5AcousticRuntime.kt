@@ -13,7 +13,7 @@ import java.util.Random
 internal class V5AcousticRuntime(
     private val environment: OrtEnvironment,
     private val session: (String) -> OrtSession,
-    private val traceLogger: InferenceTraceLogger,
+    traceLogger: InferenceTraceLogger,
     private val accelerated: V5DiTRuntime? = null,
     private val progress: (Int, Int) -> Unit,
 ) {
@@ -55,7 +55,6 @@ internal class V5AcousticRuntime(
                 val length = features.shape[2].toInt()
                 val paddedPrompt = concat(prompt, FloatTensorData(FloatArray(100 * (length - referenceFrames)),
                     longArrayOf(1, 100, (length - referenceFrames).toLong())))
-                if (traceLogger is V5AcousticDiagnostics) traceLogger.acousticCondition(paddedPrompt, features)
                 floatTensor(paddedPrompt).use { promptTensor ->
                     floatTensor(features).use { featuresTensor ->
                         timer.measure("v5_static_ms") {

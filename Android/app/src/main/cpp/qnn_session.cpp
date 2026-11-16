@@ -96,14 +96,14 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
                 // Keep the same compiled graph, but release the source graph and compilation session.
                 // Otherwise each new shape can retain another full set of FP32 initializers.
                 s->api->ReleaseSession(s->session); s->session = nullptr;
-                __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "v5_qnn_compile_ms=%lld ms",
+                __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "qnn_compile_ms=%lld ms",
                     static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - started).count()));
                 s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_enable", "0"));
                 started = std::chrono::steady_clock::now();
                 s->check(s->api->CreateSession(s->env, cachePath.c_str(), s->options, &s->session));
             }
-            __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "v5_qnn_load_ms=%lld ms",
+            __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "qnn_load_ms=%lld ms",
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started).count()));
         }

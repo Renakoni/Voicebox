@@ -31,7 +31,6 @@ import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
 import dev.rinstel.genie_tts.inference.OrtCpuBackend
 import dev.rinstel.genie_tts.inference.InferenceTraceLogger
 import dev.rinstel.genie_tts.inference.InferenceTraceEvent
-import dev.rinstel.genie_tts.inference.V5AcousticDiagnostics
 import dev.rinstel.genie_tts.inference.V5StreamingVocoder
 import dev.rinstel.genie_tts.inference.InferenceTimer
 import dev.rinstel.genie_tts.inference.FloatTensorData
@@ -205,33 +204,10 @@ class CheckpointImportInstrumentedTest {
         val assets = RuntimeAssetRepository(context)
         var timings = JSONObject()
         var providers = linkedSetOf<String>()
-        var captureIndex = 0
-        val trace = object : V5AcousticDiagnostics {
-            private var conditionInputs = emptyMap<String, FloatBuffer>()
-            override fun acousticCondition(prompt: FloatTensorData, features: FloatTensorData) {
-                if (arguments.getString("captureAcoustic") == "1") conditionInputs = mapOf(
-                    "prompt" to FloatBuffer.wrap(prompt.values), "features" to FloatBuffer.wrap(features.values))
-            }
+        val trace = object : InferenceTraceLogger {
             @Synchronized override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
             @Synchronized override fun event(event: InferenceTraceEvent) {
                 if (event is InferenceTraceEvent.Model) providers.add(event.value.provider.wireValue)
-            }
-            override fun acousticInputs(inputs: Map<String, FloatBuffer>, frames: Int, referenceFrames: Int) {
-                if (arguments.getString("captureAcoustic") != "1") return
-                val output = File(source, "acoustic-${captureIndex++}").apply { mkdirs() }
-                File(output, "case.json").writeText(JSONObject().put("frames", frames).put("reference_frames", referenceFrames)
-                    .put("bucket", inputs.getValue("mask").capacity()).toString(2))
-                (inputs + conditionInputs).forEach { (name, value) ->
-                    val bytes = ByteBuffer.allocate(value.capacity() * 4).order(ByteOrder.LITTLE_ENDIAN)
-                    bytes.asFloatBuffer().put(value.duplicate().apply { clear() })
-                    File(output, "$name.f32").writeBytes(bytes.array())
-                }
-            }
-            override fun acousticResult(state: FloatBuffer) {
-                if (arguments.getString("captureAcoustic") != "1") return
-                val bytes = ByteBuffer.allocate(state.capacity() * 4).order(ByteOrder.LITTLE_ENDIAN)
-                bytes.asFloatBuffer().put(state.duplicate().apply { clear() })
-                File(source, "acoustic-${captureIndex - 1}/result.f32").writeBytes(bytes.array())
             }
         }
         val runtime = OrtSessionRuntime(repository, assets, backendEngine = OrtCpuBackend(

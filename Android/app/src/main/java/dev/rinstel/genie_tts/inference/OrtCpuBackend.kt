@@ -69,7 +69,7 @@ class OrtCpuBackend(
         if (multiReferenceCapabilityResolved) return cachedMultiReferenceCapability
         val resolved = when {
             !hasPromptEncoder() -> null
-            !sessionFiles.keys.any { matchesSessionName(it, MULTI_REFERENCE_PROMPT_ENCODER) } ->
+            MULTI_REFERENCE_PROMPT_ENCODER !in sessionFiles ->
                 MultiReferenceCapability(supported = false)
             else -> runCatching {
                 MultiReferenceCapability.fromSession(session(MULTI_REFERENCE_PROMPT_ENCODER))
@@ -494,13 +494,14 @@ class OrtCpuBackend(
 
     /** Keep reusable T2S decoders and VITS for a same-character sentence. */
     fun releaseLoadedSessionsKeepingReusableT2SAndVocoder() {
-        if (!retainVocoderSessionAfterGeneration) v5DiT?.close()
-        if (!retainVocoderSessionAfterGeneration) v2Htp?.close()
+        if (!retainVocoderSessionAfterGeneration) {
+            v5DiT?.close()
+            v2Htp?.close()
+        }
         closeSessions {
             when (roleForSession(it)) {
                 InferenceModelRole.T2S -> !isReusableT2SSession(it)
-                InferenceModelRole.VOCODER -> !retainVocoderSessionAfterGeneration ||
-                    !isReusableVocoderSession(it)
+                InferenceModelRole.VOCODER -> !retainVocoderSessionAfterGeneration
                 else -> true
             }
         }
@@ -656,23 +657,16 @@ class OrtCpuBackend(
     }
 
     private fun session(modelName: String): OrtSession {
-        val loadedEntry = sessions.entries.firstOrNull {
-            matchesSessionName(it.key, modelName)
-        }
-        if (loadedEntry != null) return loadedEntry.value
-
-        val selectedName = sessionFiles.keys.firstOrNull {
-            matchesSessionName(it, modelName)
-        }
-        requireNotNull(selectedName) { "Session is not available: $modelName" }
-        val selectedFile = requireNotNull(sessionFiles[selectedName])
-        val loadedSession = createSession(selectedFile, roleForSession(selectedName))
-        sessions[selectedName] = loadedSession
+        sessions[modelName]?.let { return it }
+        val selectedFile = requireNotNull(sessionFiles[modelName]) { "Session is not available: $modelName" }
+        val role = roleForSession(modelName)
+        val loadedSession = createSession(selectedFile, role)
+        sessions[modelName] = loadedSession
         traceLogger.event(
             InferenceTraceEvent.Model(
                 InferenceTraceRecord(
-                    modelRole = roleForSession(selectedName),
-                    provider = if (backend == ExecutionBackend.WEBGPU && usesWebGpu(selectedName)) InferenceProvider.WEBGPU else InferenceProvider.CPU,
+                    modelRole = role,
+                    provider = if (backend == ExecutionBackend.WEBGPU && usesWebGpu(modelName)) InferenceProvider.WEBGPU else InferenceProvider.CPU,
                 ),
             ),
         )
@@ -690,23 +684,11 @@ class OrtCpuBackend(
         else ModelRoles.roleForModelFile(modelName)
 
     private fun isReusableT2SSession(modelName: String): Boolean =
-        roleForSession(modelName) == InferenceModelRole.T2S &&
-            (matchesSessionName(modelName, T2S_ENCODER) ||
-                matchesSessionName(modelName, T2S_FIRST_STAGE_DECODER) ||
-                matchesSessionName(modelName, T2S_STAGE_DECODER))
-
-    private fun isReusableVocoderSession(modelName: String): Boolean =
-        roleForSession(modelName) == InferenceModelRole.VOCODER &&
-            (modelName.startsWith("v5-") || modelName in V2HtpVocoder.GRAPHS || matchesSessionName(modelName, VITS) || modelName == SplitVocoderAssets.ENCODER || modelName == SplitVocoderAssets.HIFIGAN)
+        modelName == T2S_ENCODER || modelName == T2S_FIRST_STAGE_DECODER || modelName == T2S_STAGE_DECODER
 
     private fun usesWebGpu(modelName: String): Boolean =
         modelName == SplitVocoderAssets.HIFIGAN || modelName == V5AcousticRuntime.VOCODER ||
             modelName == V5DiTRuntime.GRAPH || modelName == V5DiTRuntime.BODY
-
-    private fun matchesSessionName(actualName: String, requestedName: String): Boolean {
-        return actualName.equals(requestedName, ignoreCase = true) ||
-            actualName.equals(requestedName.replace("_fp32.onnx", "_fp16.onnx"), ignoreCase = true)
-    }
 
     private fun createLongTensor(data: LongTensorData): OnnxTensor =
         OnnxTensor.createTensor(environment, LongBuffer.wrap(data.values), data.shape)

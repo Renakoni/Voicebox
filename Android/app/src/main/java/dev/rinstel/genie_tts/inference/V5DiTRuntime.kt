@@ -10,13 +10,6 @@ import java.nio.FloatBuffer
 import kotlin.math.cos
 import kotlin.math.sin
 
-/** Opt-in fixed-input capture for numerical replay; ordinary generation never writes tensors. */
-internal interface V5AcousticDiagnostics : InferenceTraceLogger {
-    fun acousticCondition(prompt: FloatTensorData, features: FloatTensorData) {}
-    fun acousticInputs(inputs: Map<String, FloatBuffer>, frames: Int, referenceFrames: Int)
-    fun acousticResult(state: FloatBuffer) {}
-}
-
 /** Cache timestep-only projections once; keep the four-step solver unchanged. */
 internal class V5DiTRuntime(
     private val environment: OrtEnvironment,
@@ -38,23 +31,24 @@ internal class V5DiTRuntime(
     private var tailWorkspace: Workspace? = null
     private val qnn = mutableMapOf<Int, QnnSession?>()
     private var npuPrepared = false
-    private val hasSplitGraphs = SPLIT_GRAPHS.all { File(directory, it).isFile }
-    // A backend-specific graph shares the weights; the final FP32 step keeps BODY.
-    private val htpBody = File(directory, HTP_BODY).takeIf { it.isFile } ?: File(directory, BODY)
+    private val hasHtpGraphs = (SPLIT_GRAPHS + HTP_BODY).all { File(directory, it).isFile }
+    private val qnnModel by lazy(LazyThreadSafetyMode.NONE) {
+        QnnSession.Model(requireNotNull(qnnRuntime()), File(directory, HTP_BODY),
+            File(directory, "v5_sovits_fp32.bin"), "v5")
+    }
     var lastUsedNpu = false
         private set
 
     /** Prepare every supported shape before feature extraction and generation begin. */
     fun prepareNpu(progress: (Int, Int) -> Unit) {
-        if (!hasSplitGraphs || npuPrepared) return
-        val runtime = qnnRuntime() ?: return
+        if (!hasHtpGraphs || npuPrepared || qnnRuntime() == null) return
         try {
             for ((index, bucket) in BUCKETS.withIndex()) {
                 GenerationContext.checkCurrent()
                 if (!qnn.containsKey(bucket)) {
                     progress(index, BUCKETS.size)
                     qnn[bucket] = timer.measure("v5_qnn_session_ms") {
-                        QnnSession(runtime, htpBody, qnnPerformance, bucket, allowCompilation = true)
+                        QnnSession(qnnModel, qnnPerformance, bucket, allowCompilation = true)
                     }
                 }
             }
@@ -62,8 +56,8 @@ internal class V5DiTRuntime(
             npuPrepared = true
             progress(BUCKETS.size, BUCKETS.size)
         } catch (error: Exception) {
+            close()
             GenerationContext.checkCurrent()
-            qnn.values.forEach { it?.close() }; qnn.clear()
             android.util.Log.w("VoiceboxV5", "HTP preparation failed, using FP32 WebGPU", error)
             onNpuUnavailable()
         }
@@ -84,12 +78,11 @@ internal class V5DiTRuntime(
             } finally { releaseSession(TIME) }
         }.also { timeConditions = it }
         val bucket = when { frames <= 512 -> 512; frames <= 768 -> 768; else -> 1000 }
-        val runtime = qnnRuntime()
-        if (npuPrepared && runtime != null && !qnn.containsKey(bucket)) {
+        if (npuPrepared && qnnRuntime() != null && !qnn.containsKey(bucket)) {
             // Feature preparation and memory trimming can evict live sessions.
             // Reload their prepared contexts; source compilation is forbidden here.
             qnn[bucket] = timer.measure("v5_qnn_context_reload_ms") {
-                try { QnnSession(runtime, htpBody, qnnPerformance, bucket) }
+                try { QnnSession(qnnModel, qnnPerformance, bucket) }
                 catch (error: Exception) {
                     GenerationContext.checkCurrent()
                     android.util.Log.w("VoiceboxV5", "HTP context unavailable, using FP32 WebGPU", error)
@@ -123,8 +116,6 @@ internal class V5DiTRuntime(
         }
         val mask = buffers.getValue("mask")
         for (i in 0 until length) mask.put(i, if (i < frames) 1f else 0f)
-        if (trace is V5AcousticDiagnostics) trace.acousticInputs(
-            listOf("x", "condition", "cos", "sin", "mask").associateWith { buffers.getValue(it) } + ("rope" to angles), frames, referenceFrames)
         trace.event(InferenceTraceEvent.Model(InferenceTraceRecord(InferenceModelRole.VOCODER,
             if (htp == null) InferenceProvider.WEBGPU else InferenceProvider.QNN)))
         val gpu = timer.measure("v5_dit_session_ms") { session(if (refine) BODY else GRAPH) }
@@ -189,7 +180,6 @@ internal class V5DiTRuntime(
             progress(step + 1)
         }
         for (c in 0 until 100) for (f in referenceFrames until frames) state.put(c * frames + f, x.get(c * length + f))
-        if (trace is V5AcousticDiagnostics) trace.acousticResult(state)
     }
 
     private fun runModel(model: OrtSession, inputs: Map<String, OnnxTensor>) {
