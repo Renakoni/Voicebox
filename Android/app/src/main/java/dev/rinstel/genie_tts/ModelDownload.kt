@@ -141,7 +141,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
     val connection = URL(url).openConnection() as HttpURLConnection
     connection.connectTimeout = 15_000
     connection.readTimeout = 15_000
-    connection.setRequestProperty("User-Agent", "Voicebox/1.0")
+    connection.setRequestProperty("User-Agent", "Voicebox/${BuildConfig.VERSION_NAME}")
     var complete = false
     try {
         checkCancelled()

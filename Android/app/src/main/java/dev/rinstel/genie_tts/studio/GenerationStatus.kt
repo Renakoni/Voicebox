@@ -19,6 +19,12 @@ internal fun generationStatus(state: BackendServiceState): GenerationStatus {
     Regex("Decoder (\\d+)/(\\d+)").matchEntire(label)?.let {
         return GenerationStatus("正在生成语音", "已生成 ${it.groupValues[1]} 个语音 token")
     }
+    Regex("NPU (compiling|loading) (\\d+)/(\\d+)").matchEntire(label)?.let {
+        val completed = "已完成 ${it.groupValues[2]}/${it.groupValues[3]} 项"
+        return if (it.groupValues[1] == "compiling") {
+            GenerationStatus("正在编译 NPU 加速", "首次编译耗时较长，完成后自动缓存\n$completed")
+        } else GenerationStatus("正在加载 NPU 缓存", completed)
+    }
     val title = when (label) {
         "Inspecting resources" -> "正在检查模型资源"
         "Preparing model" -> "正在准备音色权重"

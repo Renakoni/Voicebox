@@ -30,7 +30,7 @@ internal class V5DiTRuntime(
     private var workspace: Workspace? = null
     private var tailWorkspace: Workspace? = null
     private val qnn = mutableMapOf<Int, QnnSession?>()
-    private var npuPrepared = false
+    private val preparedBuckets = mutableSetOf<Int>()
     private val hasHtpGraphs = (SPLIT_GRAPHS + HTP_BODY).all { File(directory, it).isFile }
     private val qnnModel by lazy(LazyThreadSafetyMode.NONE) {
         QnnSession.Model(requireNotNull(qnnRuntime()), File(directory, HTP_BODY),
@@ -39,22 +39,23 @@ internal class V5DiTRuntime(
     var lastUsedNpu = false
         private set
 
-    /** Prepare every supported shape before feature extraction and generation begin. */
-    fun prepareNpu(progress: (Int, Int) -> Unit) {
-        if (!hasHtpGraphs || npuPrepared || qnnRuntime() == null) return
+    /** Prepare this utterance's shapes before rendering any acoustic chunk. */
+    fun prepareNpu(buckets: List<Int>, progress: (Int, Int, Boolean) -> Unit) {
+        if (!hasHtpGraphs || qnnRuntime() == null) return
+        val pending = buckets.filterNot { it in preparedBuckets }
+        if (pending.isEmpty()) return
         try {
-            for ((index, bucket) in BUCKETS.withIndex()) {
+            for ((index, bucket) in pending.withIndex()) {
                 GenerationContext.checkCurrent()
-                if (!qnn.containsKey(bucket)) {
-                    progress(index, BUCKETS.size)
-                    qnn[bucket] = timer.measure("v5_qnn_session_ms") {
-                        QnnSession(qnnModel, qnnPerformance, bucket, allowCompilation = true)
-                    }
+                progress(index, pending.size, false)
+                qnn[bucket] = timer.measure("v5_qnn_session_ms") {
+                    QnnSession(qnnModel, qnnPerformance, bucket, allowCompilation = true,
+                        onCompile = { progress(index, pending.size, true) })
                 }
+                preparedBuckets.add(bucket)
             }
             GenerationContext.checkCurrent()
-            npuPrepared = true
-            progress(BUCKETS.size, BUCKETS.size)
+            progress(pending.size, pending.size, false)
         } catch (error: Exception) {
             close()
             GenerationContext.checkCurrent()
@@ -77,8 +78,8 @@ internal class V5DiTRuntime(
                 }
             } finally { releaseSession(TIME) }
         }.also { timeConditions = it }
-        val bucket = when { frames <= 512 -> 512; frames <= 768 -> 768; else -> 1000 }
-        if (npuPrepared && qnnRuntime() != null && !qnn.containsKey(bucket)) {
+        val bucket = bucketFor(frames)
+        if (bucket in preparedBuckets && qnnRuntime() != null && !qnn.containsKey(bucket)) {
             // Feature preparation and memory trimming can evict live sessions.
             // Reload their prepared contexts; source compilation is forbidden here.
             qnn[bucket] = timer.measure("v5_qnn_context_reload_ms") {
@@ -226,7 +227,12 @@ internal class V5DiTRuntime(
     }
 
     companion object {
-        private val BUCKETS = intArrayOf(512, 768, 1000)
+        internal fun requiredBuckets(referenceFrames: Int, targetFrames: Int): List<Int> {
+            val chunkFrames = minOf(1000 - referenceFrames, 640)
+            return listOf(minOf(chunkFrames, targetFrames), targetFrames % chunkFrames)
+                .filter { it > 0 }.map { bucketFor(referenceFrames + it) }.distinct()
+        }
+        private fun bucketFor(frames: Int) = when { frames <= 512 -> 512; frames <= 768 -> 768; else -> 1000 }
         const val GRAPH = "v5-dit-compact.onnx"
         const val TIME = "v5-time.onnx"
         const val STEM = "v5-dit-stem.onnx"

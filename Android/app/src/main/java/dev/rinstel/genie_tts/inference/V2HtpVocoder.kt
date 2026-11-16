@@ -29,17 +29,17 @@ internal class V2HtpVocoder(
         QnnSession.Model(requireNotNull(runtime()), File(directory, BODY), File(directory, "vits_fp32.bin"), "v2")
     }
 
-    private fun load(compile: Boolean): QnnSession = QnnSession(
-        qnnModel, performance, V2VocoderWindows.FRAMES, allowCompilation = compile,
+    private fun load(compile: Boolean, onCompile: () -> Unit = {}): QnnSession = QnnSession(
+        qnnModel, performance, V2VocoderWindows.FRAMES, allowCompilation = compile, onCompile = onCompile,
     )
 
-    fun prepare(progress: (Int, Int) -> Unit) {
+    fun prepare(progress: (Int, Int, Boolean) -> Unit) {
         if (prepared || runtime() == null) return
         try {
-            progress(0, 1)
-            htp = timer.measure("v2_htp_prepare_ms") { load(true) }
+            progress(0, 1, false)
+            htp = timer.measure("v2_htp_prepare_ms") { load(true) { progress(0, 1, true) } }
             prepared = true
-            progress(1, 1)
+            progress(1, 1, false)
         } catch (error: Exception) {
             unavailable(error)
         }

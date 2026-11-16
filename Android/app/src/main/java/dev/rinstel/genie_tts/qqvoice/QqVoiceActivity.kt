@@ -174,7 +174,7 @@ private fun QqVoicePage(vm: QqVoiceModel, settings: () -> Unit, qq: () -> Unit) 
                 }
             }
             HorizontalDivider()
-            Text("进入 QQ 消息列表，点选联系人，打开目标会话后会自动录制占位、替换并发送，请勿操作 QQ。")
+            Text("进入 QQ 消息列表，打开目标会话后会自动录制占位、替换并发送，请勿操作 QQ。")
             Button(onClick = { vm.automate(qq) }, enabled = vm.connected && !vm.busy && vm.canAutomate) { Text("选择联系人并发送") }
             if (vm.hasAudio && !vm.canAutomate) Text("这段语音过长，暂不支持 QQ 自动发送。", style = MaterialTheme.typography.bodySmall)
         }

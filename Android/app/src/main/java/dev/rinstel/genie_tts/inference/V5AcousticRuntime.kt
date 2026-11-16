@@ -15,6 +15,7 @@ internal class V5AcousticRuntime(
     private val session: (String) -> OrtSession,
     traceLogger: InferenceTraceLogger,
     private val accelerated: V5DiTRuntime? = null,
+    private val accelerationProgress: (Int, Int, Boolean) -> Unit,
     private val progress: (Int, Int) -> Unit,
 ) {
     private val timer = InferenceTimer(traceLogger)
@@ -38,6 +39,8 @@ internal class V5AcousticRuntime(
         val targetFrames = target.shape[2].toInt()
         val chunkFrames = minOf(1000 - referenceFrames, 640)
         val chunkCount = (targetFrames + chunkFrames - 1) / chunkFrames
+        accelerated?.prepareNpu(V5DiTRuntime.requiredBuckets(referenceFrames, targetFrames), accelerationProgress)
+        progress(0, chunkCount * 4)
         val results = mutableListOf<FloatTensorData>()
         var rollingMel = ref.mel
         var rollingFeatures = ref.features

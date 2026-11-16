@@ -7,7 +7,7 @@ import java.security.MessageDigest
 
 /** Optional Qualcomm runtime; no ORT objects are shared with the WebGPU library. */
 internal class QnnSession(model: Model, performance: String, frames: Int,
-                          allowCompilation: Boolean = false) : AutoCloseable {
+                          allowCompilation: Boolean = false, onCompile: () -> Unit = {}) : AutoCloseable {
     private val handle: Long
     private val names: Array<String>
 
@@ -17,6 +17,7 @@ internal class QnnSession(model: Model, performance: String, frames: Int,
         // Generation loads only a prepared context. Even if it disappears, this
         // path cannot compile the source graph while rendering an acoustic chunk.
         fun load() = if (allowCompilation) {
+            if (!cache.isFile) onCompile()
             create(model.runtime.absolutePath, model.graph.absolutePath, cache.absolutePath, performance, frames)
         } else {
             create(model.runtime.absolutePath, cache.absolutePath, "", performance, frames)

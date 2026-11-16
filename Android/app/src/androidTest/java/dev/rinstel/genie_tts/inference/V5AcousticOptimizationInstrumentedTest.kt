@@ -55,21 +55,25 @@ class V5AcousticOptimizationInstrumentedTest {
             V5DiTRuntime(environment, ::session, { sessions.remove(it)?.close() }, directory,
                 { File(context.filesDir, "QualcommRuntime") }, "balanced", InferenceTraceLogger.None,
                 { error("NPU unexpectedly unavailable") }).use { dit ->
+                val buckets = listOf(512, 768, 1000)
                 val cancelled = GenerationContext()
                 assertThrows(GenerationCancelledException::class.java) {
                     cancelled.run {
-                        dit.prepareNpu { done, _ ->
+                        dit.prepareNpu(buckets) { done, _, _ ->
                             if (done == 1) cancelled.cancel("TEST_CANCEL")
                             cancelled.checkCancelled()
                         }
                     }
                 }
                 val progress = mutableListOf<Int>()
-                dit.prepareNpu { done, total -> assertEquals(3, total); progress += done }
-                assertEquals(listOf(0, 1, 2, 3), progress)
-                dit.prepareNpu { _, _ -> error("Repeated source preparation") }
+                dit.prepareNpu(buckets) { done, total, compiling ->
+                    assertEquals(2, total)
+                    if (!compiling) progress += done
+                }
+                assertEquals(listOf(0, 1, 2), progress)
+                dit.prepareNpu(buckets) { _, _, _ -> error("Repeated source preparation") }
                 dit.close()
-                dit.prepareNpu { _, _ -> error("Eviction must retain prepared-cache state") }
+                dit.prepareNpu(buckets) { _, _, _ -> error("Eviction must retain prepared-cache state") }
                 for (case in listOf("short", "long")) {
                     val inputDirectory = File(folder, case)
                     val chunks = JSONArray(File(inputDirectory, "chunks.json").readText())

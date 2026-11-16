@@ -122,7 +122,11 @@ class OrtCpuBackend(
                 v5DiT = V5DiTRuntime(environment, ::session, { name -> closeSessions { it == name } },
                     modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger, onNpuUnavailable)
             }
-            v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT) { done, total ->
+            v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT,
+                accelerationProgress = { done, total, compiling ->
+                    reportProgress(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null,
+                        "NPU ${if (compiling) "compiling" else "loading"} $done/$total")
+                }) { done, total ->
                 reportProgress(GenerationStage.RUNNING_INFERENCE, "running_inference", null, "CFM $done/$total")
             }
         } else if (backend == ExecutionBackend.WEBGPU) {
@@ -140,8 +144,7 @@ class OrtCpuBackend(
         // and the character graphs are loaded in disjoint inference phases.
     }
 
-    internal fun prepareAcceleration(progress: (Int, Int) -> Unit) {
-        v5DiT?.prepareNpu(progress)
+    internal fun prepareAcceleration(progress: (Int, Int, Boolean) -> Unit) {
         v2Htp?.prepare(progress)
     }
 

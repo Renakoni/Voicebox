@@ -94,9 +94,10 @@ class OrtSessionRuntime(
         // UI warmup may target a different voice than the next API request.
         // Compile only for an actual request, so background warmup cannot hold
         // the generation queue while preparing an unused voice's NPU contexts.
-        if (callbacks != null) backendEngine.prepareAcceleration { done, total ->
+        if (callbacks != null) backendEngine.prepareAcceleration { done, total, compiling ->
             request.context.checkCancelled()
-            callbacks.onStage(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null, "NPU $done/$total")
+            callbacks.onStage(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null,
+                "NPU ${if (compiling) "compiling" else "loading"} $done/$total")
         }
         request.context.checkCancelled()
         callbacks?.onStage(GenerationStage.PREPARING_FEATURES, "preparing_features", null, "Preparing features")

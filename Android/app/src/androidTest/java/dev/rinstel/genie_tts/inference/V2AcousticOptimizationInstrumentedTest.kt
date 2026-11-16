@@ -53,20 +53,21 @@ class V2AcousticOptimizationInstrumentedTest {
                 val cancelled = GenerationContext()
                 assertThrows(GenerationCancelledException::class.java) {
                     cancelled.run {
-                        vocoder.prepare { done, total ->
-                            assertEquals(1, total); progress += done
+                        vocoder.prepare { done, total, compiling ->
+                            assertEquals(1, total)
+                            if (!compiling) progress += done
                             if (done == 1) cancelled.cancel("TEST_CANCEL")
                             cancelled.checkCancelled()
                         }
                     }
                 }
                 assertEquals(listOf(0, 1), progress)
-                vocoder.prepare { _, _ -> error("Repeated source preparation") }
+                vocoder.prepare { _, _, _ -> error("Repeated source preparation") }
                 OrtSession.SessionOptions().use { options ->
                     OrtCpuBackend.configureCpuSessionOptions(options)
                     environment.createSession(fixture.getString("encoder"), options).use { encoder ->
                         for (case in listOf("short", "long")) {
-                            vocoder.prepare { _, _ -> error("Eviction must retain prepared-cache state") }
+                            vocoder.prepare { _, _, _ -> error("Eviction must retain prepared-cache state") }
                             val item = File(folder, case)
                             val shapes = JSONObject(File(item, "inputs.json").readText())
                             val inputs = mutableMapOf<String, OnnxTensor>()
