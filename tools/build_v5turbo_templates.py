@@ -338,7 +338,7 @@ def assemble_import(output, gpt_path, sovits):
     for name in manifest['files']:
         shutil.copyfile(base/name, output/name)
     for name in ('v5-reference-audio.onnx','v5-condition.onnx','v5-static.onnx','v5-dit.onnx',
-                 'v5-time.onnx','v5-dit-compact.onnx','v5-dit-stem.onnx','v5-dit-body.onnx','v5-dit-head.onnx'):
+                 'v5-time.onnx','v5-dit-compact.onnx','v5-dit-stem.onnx','v5-dit-body.onnx','v5-dit-head.onnx','v5-dit-htp.onnx'):
         manifest['files'][name]=acoustic['files'][name]
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     runtime=output.parent/'RuntimeAssets/v5-vocoder'

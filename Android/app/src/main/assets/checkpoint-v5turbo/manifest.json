@@ -17,7 +17,8 @@
     "v5-dit-compact.onnx": "6d2c77e51f5f2513f123186dda3a1f76d37fc710b970ab7343d58d88ef29f2fe",
     "v5-dit-stem.onnx": "146911406dbc61d4baa22f0441ef70413238f64a385b3de257c54283985a69b7",
     "v5-dit-body.onnx": "d7f67920e5548a5136b39afc07e45a4f64e3f80cf22347245afbf7c611eda345",
-    "v5-dit-head.onnx": "0d4fd3752686476954223a44230b1ecb93d1fcf69c7d72a625b08a927c03858b"
+    "v5-dit-head.onnx": "0d4fd3752686476954223a44230b1ecb93d1fcf69c7d72a625b08a927c03858b",
+    "v5-dit-htp.onnx": "99bcfc150803bf6d1109c9580be5f3a58fbbf1e63bd656ce43793e6c41a704c5"
   },
   "groups": [
     {

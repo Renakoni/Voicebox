@@ -39,6 +39,8 @@ internal class V5DiTRuntime(
     private val qnn = mutableMapOf<Int, V5QnnSession?>()
     private var npuPrepared = false
     private val hasSplitGraphs = SPLIT_GRAPHS.all { File(directory, it).isFile }
+    // A backend-specific graph shares the weights; the final FP32 step keeps BODY.
+    private val htpBody = File(directory, HTP_BODY).takeIf { it.isFile } ?: File(directory, BODY)
     var lastUsedNpu = false
         private set
 
@@ -52,7 +54,7 @@ internal class V5DiTRuntime(
                 if (!qnn.containsKey(bucket)) {
                     progress(index, BUCKETS.size)
                     qnn[bucket] = timer.measure("v5_qnn_session_ms") {
-                        V5QnnSession(runtime, File(directory, BODY), qnnPerformance, bucket, allowCompilation = true)
+                        V5QnnSession(runtime, htpBody, qnnPerformance, bucket, allowCompilation = true)
                     }
                 }
             }
@@ -87,7 +89,7 @@ internal class V5DiTRuntime(
             // Feature preparation and memory trimming can evict live sessions.
             // Reload their prepared contexts; source compilation is forbidden here.
             qnn[bucket] = timer.measure("v5_qnn_context_reload_ms") {
-                try { V5QnnSession(runtime, File(directory, BODY), qnnPerformance, bucket) }
+                try { V5QnnSession(runtime, htpBody, qnnPerformance, bucket) }
                 catch (error: Exception) {
                     GenerationContext.checkCurrent()
                     android.util.Log.w("VoiceboxV5", "HTP context unavailable, using FP32 WebGPU", error)
@@ -239,6 +241,7 @@ internal class V5DiTRuntime(
         const val TIME = "v5-time.onnx"
         const val STEM = "v5-dit-stem.onnx"
         const val BODY = "v5-dit-body.onnx"
+        const val HTP_BODY = "v5-dit-htp.onnx"
         const val HEAD = "v5-dit-head.onnx"
         val SPLIT_GRAPHS = listOf(STEM, BODY, HEAD)
         private fun direct(count: Int): FloatBuffer = ByteBuffer.allocateDirect(count * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
