@@ -14,6 +14,8 @@ internal class V5QnnSession(runtime: File, model: File, performance: String, fra
     init {
         check(NativeDecoderLoop.isAvailable())
         val digest = MessageDigest.getInstance("SHA-256")
+        // Compiled contexts depend on the native graph-finalization policy.
+        digest.update("htp-finalization-3".toByteArray())
         digest.update(Build.FINGERPRINT.toByteArray())
         digest.update(model.readBytes())
         // Import replaces the model directory atomically. Metadata also invalidates local

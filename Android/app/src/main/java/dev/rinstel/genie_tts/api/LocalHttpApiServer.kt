@@ -447,7 +447,8 @@ class LocalHttpApiServer(
         private const val LOOPBACK_ADDRESS = "127.0.0.1"
         private const val MIN_API_PORT = 1024
         private const val MAX_API_PORT = 65535
-        private const val INFER_TIMEOUT_MS = 300_000L
+        // The first V5 request can spend several minutes compiling its NPU contexts.
+        private const val INFER_TIMEOUT_MS = 600_000L
         private const val MAX_REQUEST_BYTES = 1024 * 1024
         private const val MAX_LINE_BYTES = 8192
 

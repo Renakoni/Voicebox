@@ -80,7 +80,7 @@ Java_dev_rinstel_genie_1tts_inference_V5QnnSession_create(
         const auto backendPath = directory + "/libQnnHtp.so";
         const char* keys[] = {"backend_path", "enable_htp_fp16_precision", "htp_performance_mode",
                               "htp_graph_finalization_optimization_mode"};
-        const char* values[] = {backendPath.c_str(), "1", "power_saver", "0"};
+        const char* values[] = {backendPath.c_str(), "1", "power_saver", "3"};
         s->check(s->api->SessionOptionsAppendExecutionProvider(s->options, "QNN", keys, values, 4));
         s->check(s->api->AddSessionConfigEntry(s->options, "session.disable_cpu_ep_fallback", "1"));
         const bool cached = std::ifstream(cachePath).good();
