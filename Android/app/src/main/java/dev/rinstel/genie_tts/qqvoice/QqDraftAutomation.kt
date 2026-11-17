@@ -2,7 +2,7 @@ package dev.rinstel.genie_tts.qqvoice
 
 import java.util.UUID
 
-/** QQ 9.3.75 foreground workflow. The user selects the actual chat in QQ. */
+/** QQ foreground workflow. The user selects the actual chat in QQ. */
 internal class QqDraftAutomation(private val adb: LocalAdb) {
     private var selectedWindow: String? = null
 

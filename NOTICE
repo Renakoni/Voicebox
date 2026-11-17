@@ -1,0 +1,16 @@
+Voicebox
+Copyright (c) 2026 Renakoni
+
+Voicebox's original code and modifications are licensed under the GNU Affero
+General Public License, version 3 only (SPDX-License-Identifier: AGPL-3.0-only).
+You may redistribute and modify this software under those terms; see LICENSE.
+
+This software is distributed WITHOUT ANY WARRANTY, including the implied
+warranties of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+Source code: https://github.com/Renakoni/Voicebox
+
+Third-party components retain their own copyrights and licenses. Notices are
+preserved in licenses/, Android/app/src/main/cpp/third_party/ and the
+*-licenses directories in Android/app/src/main/assets/.
+The original High_Logic MIT notice is preserved in licenses/Genie-TTS-MIT.txt.

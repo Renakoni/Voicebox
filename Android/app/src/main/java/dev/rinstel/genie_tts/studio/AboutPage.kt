@@ -53,7 +53,7 @@ internal fun AboutPage(onBack: () -> Unit, onError: (String) -> Unit, modifier: 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AboutLink("问题反馈", "GitHub Issues", "https://github.com/Renakoni/Voicebox/issues", openLink)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink("开源许可", "MIT License", "https://github.com/Renakoni/Voicebox/blob/main/LICENSE", openLink)
+            AboutLink("开源许可", "AGPL-3.0", "https://github.com/Renakoni/Voicebox/blob/main/LICENSE", openLink)
         }
     }
 }

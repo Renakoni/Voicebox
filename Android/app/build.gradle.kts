@@ -188,6 +188,7 @@ android {
     namespace = "dev.rinstel.genie_tts"
     ndkVersion = "28.2.13676358"
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/languageAssets").get().asFile)
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
     buildFeatures {
         buildConfig = true
         compose = true
@@ -200,8 +201,8 @@ android {
         applicationId = "dev.rinstel.genie_tts"
         minSdk = 30
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.1.0"
+        versionCode = 8
+        versionName = "1.1.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -260,7 +261,12 @@ val syncLanguageAssets = tasks.register<Sync>("syncLanguageAssets") {
         }
     }
 }
-tasks.named("preBuild").configure { dependsOn(syncLanguageAssets) }
+val syncLicenseAssets = tasks.register<Sync>("syncLicenseAssets") {
+    from(rootProject.file("../LICENSE"), rootProject.file("../NOTICE"))
+    from(rootProject.file("../licenses")) { into("third-party") }
+    into(layout.buildDirectory.dir("generated/licenseAssets/voicebox-licenses"))
+}
+tasks.named("preBuild").configure { dependsOn(syncLanguageAssets, syncLicenseAssets) }
 
 tasks.withType<Test>().configureEach {
     maxParallelForks = 1

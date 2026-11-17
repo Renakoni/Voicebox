@@ -98,9 +98,6 @@ class QqVoiceModel(app: Application) : AndroidViewModel(app) {
         action({
             try {
                 val app = getApplication<Application>()
-                check(app.packageManager.getPackageInfo("com.tencent.mobileqq", 0).longVersionCode == 16580L) {
-                    "自动发送目前适配 QQ 9.3.75。"
-                }
                 if (session.status() == null) session.prepare(requireNotNull(source))
                 val status: (String) -> Unit = { text ->
                     viewModelScope.launch {
