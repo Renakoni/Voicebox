@@ -915,7 +915,10 @@ class GenieBackendService : Service() {
                     sendStateTo(message.replyTo)
                 }
                 BackendApiContract.MSG_SYNTHESIZE -> {
-                    val request = message.data.toGenerationRequest() ?: run {
+                    val request = try { message.data.toGenerationRequest() } catch (error: IllegalArgumentException) {
+                        sendErrorTo(message.replyTo, error.message ?: getString(R.string.prototype_service_api_invalid_request))
+                        return
+                    } ?: run {
                         sendErrorTo(message.replyTo, getString(R.string.prototype_service_api_invalid_request))
                         return
                     }
@@ -963,12 +966,14 @@ class GenieBackendService : Service() {
     }
 
     private fun Bundle.toGenerationRequest(): GenerationRequest? {
+        val options = BackendApiContract.synthesisOptions(this)
         val modelId = getString(BackendApiContract.KEY_MODEL_ID) ?: return null
         val characterModel = modelRepository.discoverCharacterModels()
             .firstOrNull { it.id == modelId }
             ?: return null
         return GenerationRequest(
             characterModel = characterModel,
+            synthesisOptions = options,
             language = getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),
             promptLanguage = getString(BackendApiContract.KEY_PROMPT_LANGUAGE)
                 ?.takeIf(String::isNotBlank)

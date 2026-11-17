@@ -172,7 +172,7 @@ class OrtCpuBackend(
         }
     }
 
-    override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult {
+    override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int, options: SynthesisOptions): TtsGenerationResult {
         GenerationContext.checkCurrent()
         require(isInitialized()) { "CPU backend is not initialized." }
 
@@ -183,6 +183,9 @@ class OrtCpuBackend(
         var generationSucceeded = false
 
         try {
+            val samplingValues = options.samplingValues()
+            val sampling = OnnxTensor.createTensor(environment, FloatBuffer.wrap(samplingValues), longArrayOf(4))
+                .also(ownedTensors::add)
             val t2sInputs = timer.measure("t2s_input_tensors_ms") {
                 arrayOf(
                     createLongTensor(input.refSeq).also(ownedTensors::add),
@@ -223,6 +226,7 @@ class OrtCpuBackend(
                     mapOf(
                         "x" to tensorLike(currentEncoderResult, 0),
                         "prompts" to tensorLike(currentEncoderResult, 1),
+                        "sampling" to sampling,
                     ),
                 )
             }
@@ -231,6 +235,7 @@ class OrtCpuBackend(
 
             val stageSession = session(T2S_STAGE_DECODER)
             val stageInputNames = stageSession.inputNames.toList()
+            val stageStateInputNames = stageInputNames.filter { it != "sampling" }
             val stageOutputNames = stageSession.outputNames.toList()
             val decoderProgress = decoderProgressCallback(maxDecoderSteps)
             val nativeDecoderAvailable = useNativeDecoder &&
@@ -262,7 +267,10 @@ class OrtCpuBackend(
                 previousDecoderResult = null
 
                 val outputMapping = IntArray(stageInputNames.size) { index ->
-                    if (stageInputNames[index] == "cache_length") -1 else if (index < 2) index else index + 1
+                    when (stageInputNames[index]) {
+                        "cache_length", "sampling" -> -1
+                        else -> if (index < 2) index else index + 1
+                    }
                 }
                 val nativeProgress = NativeDecoderLoop.DecoderProgressCallback { generated, maximum ->
                     decoderProgress(generated, maximum)
@@ -286,6 +294,7 @@ class OrtCpuBackend(
                             kvShape = kvShape,
                             numKvTensors = numKvTensors,
                             outputMapping = outputMapping,
+                            sampling = samplingValues,
                             maxSteps = maxDecoderSteps,
                             progressCallback = if (retryCount == 0) nativeProgress else null,
                         ) } catch (error: Exception) {
@@ -339,9 +348,10 @@ class OrtCpuBackend(
                             }
 
                             feed.clear()
-                            for (i in stageInputNames.indices) {
-                                feed[stageInputNames[i]] = decoderInputs[i]
+                            for ((i, name) in stageStateInputNames.withIndex()) {
+                                feed[name] = decoderInputs[i]
                             }
+                            feed["sampling"] = sampling
 
                             val stageResult = stageSession.runCancellable(feed)
                             previous.close()
@@ -387,11 +397,13 @@ class OrtCpuBackend(
 
             v5Acoustic?.let { acoustic ->
                 return timer.measure("vocoder_ms") {
-                    acoustic.generate(input, predSemantic, requireNotNull(promptCodes))
+                    acoustic.generate(input, predSemantic, requireNotNull(promptCodes), options.speed)
                 }.also { generationSucceeded = true }
             }
 
             val vocoderInputs = timer.measure("vocoder_input_tensors_ms") {
+                val speed = OnnxTensor.createTensor(environment, java.nio.DoubleBuffer.wrap(doubleArrayOf(options.speed)), longArrayOf(1))
+                    .also(ownedTensors::add)
                 timer.event(InferenceTraceEvent.TensorCount(InferenceTensorMetric.SEMANTIC_TOKENS, predSemantic.info.numElements))
                 timer.event(InferenceTraceEvent.TensorShape(InferenceTensorMetric.SEMANTIC_SHAPE, predSemantic.info.shape))
                 if (timer.tensorDiagnostics) timer.traceLongTensor(InferenceTensorMetric.SEMANTIC_HASH, longTensorValues(predSemantic))
@@ -403,6 +415,7 @@ class OrtCpuBackend(
                         "pred_semantic" to predSemantic,
                         "ge" to ge,
                         "ge_advanced" to geAdvanced,
+                        "speed" to speed,
                     )
                 } else {
                     val refAudio = createFloatTensor(
@@ -412,6 +425,7 @@ class OrtCpuBackend(
                         "text_seq" to textSeq,
                         "pred_semantic" to predSemantic,
                         "ref_audio" to refAudio,
+                        "speed" to speed,
                     )
                 }
             }

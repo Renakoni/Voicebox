@@ -26,7 +26,7 @@ class GenerationPipeline(
                 "T2S encoder",
             )
             val result = timer.measure("backend_total_ms") {
-                backend.generatePrepared(preparedInput, request.maxDecoderSteps)
+                backend.generatePrepared(preparedInput, request.maxDecoderSteps, request.synthesisOptions)
             }
             request.context.checkCancelled()
             runtimeLabel()?.let { label ->

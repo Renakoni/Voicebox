@@ -27,7 +27,17 @@ def split(source: Path, prefix: str) -> tuple[Path, Path]:
     if BOUNDARY not in known:
         graph.graph.value_info.append(onnx.helper.make_tensor_value_info(BOUNDARY, onnx.TensorProto.FLOAT, [1, 192, "latent_frames"]))
     extractor = Extractor(graph)
-    encoder = extractor.extract_model([i.name for i in graph.graph.input], [BOUNDARY])
+    # ONNX Extractor does not follow lexical captures inside If branches.
+    # Keep the pre-resize feature/mask ancestors, then expose only the latent.
+    captures = []
+    if any(i.name == 'speed' for i in graph.graph.input):
+        captures = ['/vq_model/enc_p/encoder2/Mul_1_output_0', '/vq_model/enc_p/ConstantOfShape_output_0']
+        for name in captures:
+            if name not in known:
+                graph.graph.value_info.append(onnx.helper.make_tensor_value_info(name, onnx.TensorProto.FLOAT, [1, None, None]))
+        extractor = Extractor(graph)
+    encoder = extractor.extract_model([i.name for i in graph.graph.input], [BOUNDARY] + captures)
+    del encoder.graph.output[1:]
     hifigan = extractor.extract_model([BOUNDARY, "ge"], [o.name for o in graph.graph.output])
     encoder_path = source.parent / f"{prefix}encoder.onnx"
     hifigan_path = source.parent / f"{prefix}hifigan.onnx"

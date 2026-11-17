@@ -110,6 +110,8 @@ tests/parity/.tmp/
 !/tools/ort-build-requirements.txt
 !/tools/build_v2pro_templates.py
 !/tools/build_v5turbo_templates.py
+!/tools/add_generation_controls.py
+!/tools/test_generation_controls.py
 !/tools/split_v5_dit.py
 !/tools/split_vits_acoustic.py
 !/tools/split_v2_htp.py

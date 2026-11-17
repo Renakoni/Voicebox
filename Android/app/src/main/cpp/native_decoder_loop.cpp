@@ -149,6 +149,7 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
     jfloatArray kvDataJ, jlongArray kvShapeJ,
     jint numKvTensors,
     jintArray outputMappingJ,
+    jfloatArray samplingJ,
     jint maxSteps,
     jobject progressCallback,
     jlong cancellationHandle
@@ -217,8 +218,15 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
     std::vector<OrtValue*> kvValues(numKvTensors, nullptr);
     // A request owns these capacity buffers. Cancel/retry/voice changes never
     // reuse partially updated KV. Only the first two inputs evolve as outputs.
-    const bool sharedCache = numInputs == numKvTensors + 3 &&
-        std::strcmp(inputNames.back(), "cache_length") == 0;
+    int cacheLengthIndex = -1;
+    int samplingIndex = -1;
+    for (int i = 0; i < numInputs; ++i) {
+        if (std::strcmp(inputNames[i], "cache_length") == 0) cacheLengthIndex = i;
+        if (std::strcmp(inputNames[i], "sampling") == 0) samplingIndex = i;
+    }
+    const bool sharedCache = cacheLengthIndex >= 0;
+    float sampling[4];
+    OrtValue* samplingValue = nullptr;
     std::vector<std::vector<float>> sharedKv;
     int32_t cacheLength = 0;
     OrtValue* cacheLengthValue = nullptr;
@@ -271,6 +279,10 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
     };
 
     auto releaseOrtResources = [&]() {
+        if (samplingValue) {
+            api->ReleaseValue(samplingValue);
+            samplingValue = nullptr;
+        }
         if (yValue) {
             api->ReleaseValue(yValue);
             yValue = nullptr;
@@ -305,6 +317,10 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
     };
 
     // --- Create memory info ---
+    if (samplingIndex < 0 || numInputs != numKvTensors + 3 + (sharedCache ? 1 : 0)) {
+        LOGE("Unexpected decoder input contract");
+        return fail();
+    }
     OrtStatus* status = api->CreateCpuMemoryInfo(
         OrtDeviceAllocator, OrtMemTypeDefault, &cpuMemInfo);
     if (status) {
@@ -313,6 +329,17 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
         return fail();
     }
 
+    if (env->GetArrayLength(samplingJ) != 4) return fail();
+    env->GetFloatArrayRegion(samplingJ, 0, 4, sampling);
+    if (env->ExceptionCheck()) return fail();
+    int64_t samplingShape[] = {4};
+    status = api->CreateTensorWithDataAsOrtValue(cpuMemInfo, sampling, sizeof(sampling),
+        samplingShape, 1, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, &samplingValue);
+    if (status) {
+        LOGE("Create sampling controls failed: %s", api->GetErrorMessage(status));
+        api->ReleaseStatus(status);
+        return fail();
+    }
     // --- Create run options ---
     status = api->CreateRunOptions(&runOptions);
     if (status) {
@@ -430,7 +457,8 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
     for (int i = 0; i < numKvTensors; i++) {
         inputs[2 + i] = kvValues[i];
     }
-    if (sharedCache) inputs.back() = cacheLengthValue;
+    if (sharedCache) inputs[cacheLengthIndex] = cacheLengthValue;
+    inputs[samplingIndex] = samplingValue;
 
     int generatedSteps = 0;
     bool stopped = false;
@@ -531,7 +559,7 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
 
             // Map model outputs back to the next step inputs.
             for (int i = 0; i < (sharedCache ? 2 : numInputs); i++) {
-                inputs[i] = prevOutputs[mapping[i]];
+                if (mapping[i] >= 0) inputs[i] = prevOutputs[mapping[i]];
             }
         }
 
@@ -549,29 +577,8 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
             if (prevOutputs[i]) api->ReleaseValue(prevOutputs[i]);
         }
 
-        api->ReleaseValue(yValue);
-        api->ReleaseValue(yEmbValue);
-        for (int i = 0; i < numKvTensors; i++) api->ReleaseValue(kvValues[i]);
-        if (cacheLengthValue) api->ReleaseValue(cacheLengthValue);
-        releaseRunOptions();
-        api->ReleaseMemoryInfo(cpuMemInfo);
-
-        env->ReleaseLongArrayElements(yShapeJ, yShapeArr, JNI_ABORT);
-        env->ReleaseLongArrayElements(yDataJ, yDataRaw, JNI_ABORT);
-        env->ReleaseLongArrayElements(yEmbShapeJ, yEmbShapeArr, JNI_ABORT);
-        env->ReleaseFloatArrayElements(yEmbDataJ, yEmbDataRaw, JNI_ABORT);
-        env->ReleaseLongArrayElements(kvShapeJ, kvShapeArr, JNI_ABORT);
-        env->ReleaseFloatArrayElements(kvDataJ, kvDataRaw, JNI_ABORT);
-        env->ReleaseIntArrayElements(outputMappingJ, mapping, JNI_ABORT);
-
-        for (int i = 0; i < numInputs; i++) {
-            releaseJstr(env, inputJStrs[i], inputNames[i]);
-            env->DeleteLocalRef(inputJStrs[i]);
-        }
-        for (int i = 0; i < numOutputs; i++) {
-            releaseJstr(env, outputJStrs[i], outputNames[i]);
-            env->DeleteLocalRef(outputJStrs[i]);
-        }
+        releaseOrtResources();
+        releaseJavaResources();
 
         return result;
     }

@@ -29,11 +29,11 @@ internal class V5AcousticRuntime(
 
     private var reference: Reference? = null
 
-    fun generate(input: TtsPreparedInput, semantic: OnnxTensor, promptCodes: LongArray): TtsGenerationResult {
+    fun generate(input: TtsPreparedInput, semantic: OnnxTensor, promptCodes: LongArray, speed: Double): TtsGenerationResult {
         val audio = requireNotNull(input.refAudio32k)
         val ref = reference?.takeIf { it.audio === audio.values && it.phones === input.refSeq.values }
             ?: timer.measure("v5_reference_ms") { prepareReference(input, promptCodes) }.also { reference = it }
-        val target = timer.measure("v5_condition_ms") { condition(semantic, input.textSeq, ref.ge) }
+        val target = timer.measure("v5_condition_ms") { condition(semantic, input.textSeq, ref.ge, speed) }
         val dit = if (accelerated == null) timer.measure("v5_dit_session_ms") { session("v5-dit.onnx") } else null
         val referenceFrames = ref.mel.shape[2].toInt()
         val targetFrames = target.shape[2].toInt()
@@ -143,11 +143,13 @@ internal class V5AcousticRuntime(
         }
     }
 
-    private fun condition(codes: OnnxTensor, phones: LongTensorData, ge: FloatTensorData): FloatTensorData =
+    private fun condition(codes: OnnxTensor, phones: LongTensorData, ge: FloatTensorData, speed: Double = 1.0): FloatTensorData =
         OnnxTensor.createTensor(environment, LongBuffer.wrap(phones.values), phones.shape).use { text ->
             floatTensor(ge).use { embedding ->
-                session("v5-condition.onnx").runCancellable(mapOf("codes" to codes, "phones" to text, "ge" to embedding)).use {
-                    copy(it.get(0) as OnnxTensor)
+                OnnxTensor.createTensor(environment, java.nio.DoubleBuffer.wrap(doubleArrayOf(speed)), longArrayOf(1)).use { speedTensor ->
+                    session("v5-condition.onnx").runCancellable(mapOf(
+                        "codes" to codes, "phones" to text, "ge" to embedding, "speed" to speedTensor,
+                    )).use { copy(it.get(0) as OnnxTensor) }
                 }
             }
         }

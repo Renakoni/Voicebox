@@ -55,6 +55,7 @@ object NativeDecoderLoop {
         kvShape: LongArray,
         numKvTensors: Int,
         outputMapping: IntArray,
+        sampling: FloatArray,
         maxSteps: Int,
         progressCallback: DecoderProgressCallback?,
         cancellationHandle: Long,
@@ -72,6 +73,7 @@ object NativeDecoderLoop {
         kvShape: LongArray,
         numKvTensors: Int,
         outputMapping: IntArray,
+        sampling: FloatArray,
         maxSteps: Int,
         progressCallback: DecoderProgressCallback?,
     ): LongArray {
@@ -95,6 +97,7 @@ object NativeDecoderLoop {
                 kvShape,
                 numKvTensors,
                 outputMapping,
+                sampling,
                 maxSteps,
                 progressCallback,
                 cancellationHandle,

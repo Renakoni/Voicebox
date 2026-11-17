@@ -48,6 +48,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -60,6 +61,9 @@ import dev.rinstel.genie_tts.inference.GenerationStage
 import dev.rinstel.genie_tts.inference.ReferenceLanguage
 import dev.rinstel.genie_tts.inference.LanguageNormalizer
 import dev.rinstel.genie_tts.inference.modelArchitectureLabel
+import dev.rinstel.genie_tts.inference.SynthesisOptions
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private enum class StudioDestination(val depth: Int) {
     CREATE(0), VOICES(0), SETTINGS(0), PICKER(1), VOICE_EDITOR(1), CHECKPOINT_EDITOR(1), ABOUT(1),
@@ -218,6 +222,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                         inner()
                     }
                 })
+            AdvancedSynthesisSettings(vm)
             Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("${vm.text.length} 字", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
@@ -276,6 +281,58 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
+}
+
+@Composable
+private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    // Keep drag previews out of requests; busy/collapse restores the committed values.
+    var options by remember(vm.synthesisOptions, vm.busy, expanded) { mutableStateOf(vm.synthesisOptions) }
+    val commit = { vm.changeSynthesisOptions(options) }
+    Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.heightIn(min = 48.dp)
+        .testTag("advanced_settings").semantics { stateDescription = if (expanded) "已展开" else "已收起" },
+        verticalAlignment = Alignment.CenterVertically) {
+        Text("高级设置", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    AnimatedVisibility(expanded, enter = expandVertically(tween(180)) + fadeIn(tween(150)),
+        exit = shrinkVertically(tween(180)) + fadeOut(tween(150))) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+            fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
+            SynthesisSlider("语速", "${number(options.speed.toFloat())}×", options.speed.toFloat(), 0.6f..1.65f, 20, !vm.busy,
+                "synthesis_speed", { options = options.copy(speed = (it * 20).roundToInt() / 20.0) }, commit)
+            SynthesisSlider("随机程度", number(options.temperature), options.temperature, 0f..1f, 99, !vm.busy,
+                "synthesis_temperature", { options = options.copy(temperature = (it * 100).roundToInt() / 100f) }, commit)
+            Text("采样范围", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
+            SynthesisSlider("Top-K", options.topK.toString(), options.topK.toFloat(), 1f..100f, 98, !vm.busy,
+                "synthesis_top_k", { options = options.copy(topK = it.roundToInt()) }, commit)
+            SynthesisSlider("Top-P", number(options.topP), options.topP, 0f..1f, 99, !vm.busy,
+                "synthesis_top_p", { options = options.copy(topP = (it * 100).roundToInt() / 100f) }, commit)
+            SynthesisSlider("重复惩罚", number(options.repetitionPenalty), options.repetitionPenalty, 1f..2f, 99, !vm.busy,
+                "synthesis_repetition_penalty", { options = options.copy(repetitionPenalty = (it * 100).roundToInt() / 100f) }, commit)
+            StudioButton(onClick = { options = SynthesisOptions.Default; commit() }, enabled = !vm.busy && options != SynthesisOptions.Default,
+                style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End).testTag("reset_synthesis_options")) {
+                Text("恢复默认")
+            }
+        }
+    }
+}
+
+@Composable
+private fun SynthesisSlider(label: String, displayValue: String, value: Float, range: ClosedFloatingPointRange<Float>,
+    steps: Int, enabled: Boolean, tag: String, onChange: (Float) -> Unit, onFinished: () -> Unit) {
+    Column {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+            Text(displayValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Slider(value, onChange, enabled = enabled, valueRange = range, steps = steps, onValueChangeFinished = onFinished,
+            modifier = Modifier.fillMaxWidth().testTag(tag).semantics {
+                contentDescription = label
+                stateDescription = displayValue
+            })
     }
 }
 

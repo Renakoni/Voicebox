@@ -19,6 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from subpixel_hifigan import rewrite
+from add_generation_controls import update as add_generation_controls
 
 
 class Reference(nn.Module):
@@ -341,6 +342,7 @@ def assemble_import(output, gpt_path, sovits):
                  'v5-time.onnx','v5-dit-compact.onnx','v5-dit-stem.onnx','v5-dit-body.onnx','v5-dit-head.onnx','v5-dit-htp.onnx'):
         manifest['files'][name]=acoustic['files'][name]
     (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    add_generation_controls(output)
     runtime=output.parent/'RuntimeAssets/v5-vocoder'
     runtime.mkdir(parents=True,exist_ok=True)
     shutil.copyfile(output/'v5-vocoder-subpixel.onnx',runtime/'v5-vocoder-subpixel.onnx')

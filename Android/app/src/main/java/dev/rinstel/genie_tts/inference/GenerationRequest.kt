@@ -10,4 +10,5 @@ data class GenerationRequest(
     val maxDecoderSteps: Int = 500,
     val auxiliaryReferenceAudioPaths: List<String> = emptyList(),
     val context: GenerationContext = GenerationContext(),
+    val synthesisOptions: SynthesisOptions = SynthesisOptions.Default,
 )

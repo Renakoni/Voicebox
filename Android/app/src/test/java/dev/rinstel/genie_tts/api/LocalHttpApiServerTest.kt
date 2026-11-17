@@ -5,6 +5,7 @@ import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.CharacterModelCatalog
 import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationRequest
+import dev.rinstel.genie_tts.inference.SynthesisOptions
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
@@ -14,6 +15,35 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LocalHttpApiServerTest {
+    @Test
+    fun synthesisControlsUseActiveDefaultsAndRejectInvalidOverrides() {
+        val defaults = ActiveDefaults(ExecutionBackend.CPU, "mansui", "zh", FakeBridge.primaryReferencePath,
+            "sample", 500, synthesisOptions = SynthesisOptions(speed = 0.6, temperature = .7f, topK = 30, topP = .9f))
+        val bridge = FakeBridge(defaults = defaults)
+        val server = LocalHttpApiServer(bridge)
+        val response = server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "test", "topK" to "1"))
+        assertEquals(200, response.statusCode)
+        assertEquals(defaults.synthesisOptions.copy(topK = 1), bridge.capturedRequest?.synthesisOptions)
+        val body = """{"modelId":"mansui","language":"zh","text":"test",
+            "referenceAudioPath":"${FakeBridge.primaryReferenceJsonPath}","referenceText":"sample",
+            "speed":1.65,"temperature":0,"topP":0,"repetitionPenalty":2}"""
+        val captured = bridge.capturedRequest
+        assertEquals(400, server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "test", "speed" to "NaN")).statusCode)
+        for (invalid in listOf(
+            body.replace("\"speed\":1.65", "\"speed\":\"NaN\""),
+            body.replace("\"speed\":1.65", "\"speed\":[\"1\"]"),
+            body.replace("\"temperature\":0", "\"topK\":[\"15\"],\"temperature\":0"),
+            "$body trailing",
+        )) {
+            assertEquals(400, server.handleRequestForTest("POST", "/infer", body = invalid).statusCode)
+            assertEquals(captured, bridge.capturedRequest)
+        }
+        assertEquals(200, server.handleRequestForTest("POST", "/infer", body).statusCode)
+        assertEquals(SynthesisOptions(1.65, 0f, 30, 0f, 2f), bridge.capturedRequest?.synthesisOptions)
+        assertEquals(200, server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "next")).statusCode)
+        assertEquals(defaults.synthesisOptions, bridge.capturedRequest?.synthesisOptions)
+    }
+
     @Test
     fun startsOnConfiguredValidPort() {
         val probe = ServerSocket(0)

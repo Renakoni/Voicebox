@@ -19,7 +19,7 @@ class GenerationPipelineTest {
         val sequence = LongTensorData(longArrayOf(1L), longArrayOf(1L, 1L))
         val pipeline = GenerationPipeline(
             backend = object : PreparedTtsBackend {
-                override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int) =
+                override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int, options: SynthesisOptions) =
                     TtsGenerationResult(floatArrayOf(0.25f), longArrayOf(1L, 1L, 1L))
             },
             inputPreparer = object : TtsInputPreparer {
@@ -51,6 +51,7 @@ class GenerationPipelineTest {
     fun writesGeneratedAudioToOutputFile() {
         val outputDirectory = java.nio.file.Files.createTempDirectory("genie-test-").toFile()
         var capturedMaxDecoderSteps = -1
+        var capturedOptions: SynthesisOptions? = null
         var runtimeLabel = "ORT CPU + WebGPU"
         val recordedRuntimes = mutableListOf<InferenceRuntimeLabel>()
         val request = GenerationRequest(
@@ -60,10 +61,12 @@ class GenerationPipelineTest {
             referenceAudioPath = "/tmp/ref.wav",
             referenceText = "reference",
             maxDecoderSteps = 123,
+            synthesisOptions = SynthesisOptions(speed = 1.4, topP = 0.8f),
         )
         val backend = object : PreparedTtsBackend {
-            override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int): TtsGenerationResult {
+            override fun generatePrepared(input: TtsPreparedInput, maxDecoderSteps: Int, options: SynthesisOptions): TtsGenerationResult {
                 capturedMaxDecoderSteps = maxDecoderSteps
+                capturedOptions = options
                 runtimeLabel = "ORT CPU + WebGPU + QNN"
                 return TtsGenerationResult(floatArrayOf(0f, 0.25f, -0.25f), longArrayOf(1L, 1L, 3L), sampleRate = 48000)
             }
@@ -101,6 +104,7 @@ class GenerationPipelineTest {
         assertEquals(48000, output.sampleRate)
         assertEquals(48000, WavAudioReader.readMonoPcm(output.file).sampleRate)
         assertEquals(123, capturedMaxDecoderSteps)
+        assertEquals(request.synthesisOptions, capturedOptions)
         assertEquals(listOf(InferenceRuntimeLabel.QNN), recordedRuntimes)
         outputDirectory.deleteRecursively()
     }

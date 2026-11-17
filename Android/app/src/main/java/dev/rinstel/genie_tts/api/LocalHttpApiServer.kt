@@ -4,6 +4,7 @@ import dev.rinstel.genie_tts.BackendServiceState
 import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationRequest
+import dev.rinstel.genie_tts.inference.SynthesisOptions
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -178,15 +179,21 @@ class LocalHttpApiServer(
     ): HttpResponse = route(method, path, body, queryParams)
 
     private fun infer(body: String): HttpResponse {
-        val payload = runCatching { parseInferPayload(body) }.getOrElse {
-            return HttpResponse(400, errorJson("Invalid JSON body."))
+        val payload = runCatching { parseInferPayload(body,
+            bridge.activeDefaults()?.synthesisOptions ?: SynthesisOptions.Default) }.getOrElse {
+            return HttpResponse(400, errorJson(it.message ?: "Invalid JSON body."))
         }
         return inferWithPayload(payload)
     }
 
     private fun inferGet(params: Map<String, String>): HttpResponse {
         val defaults = bridge.activeDefaults()
+        val options = runCatching { SynthesisOptions.parse(params,
+            defaults?.synthesisOptions ?: SynthesisOptions.Default) }.getOrElse {
+            return HttpResponse(400, errorJson(it.message ?: "Invalid synthesis options."))
+        }
         val payload = InferPayload(
+            synthesisOptions = options,
             backendName = params["backend"] ?: defaults?.backend?.name ?: "",
             modelId = params["modelId"] ?: defaults?.modelId ?: "",
             language = params["language"] ?: defaults?.language ?: "",
@@ -250,6 +257,7 @@ class LocalHttpApiServer(
                 referenceText = payload.referenceText,
                 maxDecoderSteps = payload.maxDecoderSteps,
                 auxiliaryReferenceAudioPaths = payload.auxiliaryReferenceAudioPaths,
+                synthesisOptions = payload.synthesisOptions,
             ),
             timeoutMs = INFER_TIMEOUT_MS,
         )

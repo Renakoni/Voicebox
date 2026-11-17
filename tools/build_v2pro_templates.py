@@ -10,6 +10,7 @@ import torch
 
 from split_vits_acoustic import split, BOUNDARY
 from subpixel_hifigan import rewrite
+from add_generation_controls import update as add_generation_controls
 
 
 def sha(path):
@@ -63,6 +64,7 @@ def build(checkpoint, source, output):
     }, indent=2) + "\n")
     manifest["files"] = {name: sha(output / name) for name in manifest["files"]}
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    add_generation_controls(output)
     print(f"V2Pro: {sum(len(g['tensors']) for g in manifest['groups'])} mappings; {output}")
 
 

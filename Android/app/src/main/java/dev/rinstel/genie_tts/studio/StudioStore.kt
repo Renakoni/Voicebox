@@ -1,6 +1,7 @@
 package dev.rinstel.genie_tts.studio
 
 import android.content.Context
+import dev.rinstel.genie_tts.inference.SynthesisOptions
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -41,6 +42,18 @@ class StudioStore(context: Context) {
     var outputLanguage: String
         get() = preferences.getString("output_language", "zh") ?: "zh"
         set(value) { preferences.edit().putString("output_language", value).apply() }
+
+    var synthesisOptions: SynthesisOptions
+        get() = runCatching { SynthesisOptions(
+            speed = preferences.getString("speed", "1.0")!!.toDouble(),
+            temperature = preferences.getFloat("temperature", 1f),
+            topK = preferences.getInt("topK", 15),
+            topP = preferences.getFloat("topP", 1f),
+            repetitionPenalty = preferences.getFloat("repetitionPenalty", 1.35f),
+        ) }.getOrDefault(SynthesisOptions.Default)
+        set(value) { preferences.edit().putString("speed", value.speed.toString())
+            .putFloat("temperature", value.temperature).putInt("topK", value.topK)
+            .putFloat("topP", value.topP).putFloat("repetitionPenalty", value.repetitionPenalty).apply() }
 
     fun voices(): List<StudioVoice> {
         val array = JSONArray(preferences.getString("voices", "[]"))

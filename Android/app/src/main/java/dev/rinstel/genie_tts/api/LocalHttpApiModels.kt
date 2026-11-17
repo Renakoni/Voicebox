@@ -3,6 +3,7 @@ package dev.rinstel.genie_tts.api
 import dev.rinstel.genie_tts.BackendServiceState
 import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
+import dev.rinstel.genie_tts.inference.SynthesisOptions
 import java.io.File
 
 data class ApiServerStatus(
@@ -21,6 +22,7 @@ data class ActiveDefaults(
     val maxDecoderSteps: Int,
     val promptLanguage: String = language,
     val auxiliaryReferenceAudioPaths: List<String> = emptyList(),
+    val synthesisOptions: SynthesisOptions = SynthesisOptions.Default,
 )
 
 sealed class InferResult {
@@ -47,9 +49,8 @@ internal data class InferPayload(
     val referenceText: String,
     val maxDecoderSteps: Int,
     val auxiliaryReferenceAudioPaths: List<String> = emptyList(),
+    val synthesisOptions: SynthesisOptions = SynthesisOptions.Default,
 )
-
-private const val JSON_ARRAY_SEPARATOR = "\u0000"
 
 internal fun BackendServiceState.toJsonString(): String =
     jsonObject(
@@ -81,8 +82,9 @@ internal fun List<CharacterModel>.toJsonString(): String =
         },
     )
 
-internal fun parseInferPayload(body: String): InferPayload {
-    val values = parseJsonObject(body.ifBlank { "{}" })
+internal fun parseInferPayload(body: String, options: SynthesisOptions = SynthesisOptions.Default): InferPayload {
+    val parsed = parseJsonObject(body.ifBlank { "{}" })
+    val values = parsed.mapValues { it.value as? String }
     return InferPayload(
         backendName = values["backend"].orEmpty(),
         modelId = values["modelId"].orEmpty().trim(),
@@ -93,7 +95,8 @@ internal fun parseInferPayload(body: String): InferPayload {
         referenceAudioPath = values["referenceAudioPath"].orEmpty().trim(),
         referenceText = values["referenceText"].orEmpty().trim(),
         maxDecoderSteps = values["maxDecoderSteps"]?.trim()?.toIntOrNull() ?: 500,
-        auxiliaryReferenceAudioPaths = parseReferencePathList(values["auxReferenceAudioPaths"]),
+        auxiliaryReferenceAudioPaths = parseReferencePathList(parsed["auxReferenceAudioPaths"]),
+        synthesisOptions = SynthesisOptions.parse(values, options),
     )
 }
 
@@ -109,12 +112,12 @@ internal fun jsonObject(vararg entries: Pair<String, Any?>): String =
 internal fun jsonArray(items: List<String>): String =
     items.joinToString(prefix = "[", postfix = "]", separator = ",")
 
-private fun parseReferencePathList(value: String?): List<String> =
-    value
-        ?.split(JSON_ARRAY_SEPARATOR)
-        ?.map(String::trim)
-        ?.filter(String::isNotBlank)
-        .orEmpty()
+private fun parseReferencePathList(value: Any?): List<String> =
+    when (value) {
+        is List<*> -> value.filterIsInstance<String>()
+        is String -> listOf(value)
+        else -> emptyList()
+    }.map(String::trim).filter(String::isNotBlank)
 
 private fun jsonValue(value: Any?): String =
     when (value) {
@@ -149,15 +152,15 @@ private fun quoteJson(value: String): String {
 }
 
 // The localhost API only needs a tiny flat-object parser, so keep it local and dependency-free.
-private fun parseJsonObject(source: String): Map<String, String?> {
+private fun parseJsonObject(source: String): Map<String, Any?> {
     val cursor = JsonCursor(source)
-    val result = linkedMapOf<String, String?>()
+    val result = linkedMapOf<String, Any?>()
     cursor.skipWhitespace()
     cursor.expect('{')
     cursor.skipWhitespace()
     if (cursor.peek() == '}') {
         cursor.expect('}')
-        return result
+        return result.also { cursor.expectEnd() }
     }
     while (true) {
         cursor.skipWhitespace()
@@ -169,7 +172,7 @@ private fun parseJsonObject(source: String): Map<String, String?> {
         cursor.skipWhitespace()
         when (cursor.readDelimiter()) {
             ',' -> continue
-            '}' -> return result
+            '}' -> return result.also { cursor.expectEnd() }
             else -> throw IllegalArgumentException("Malformed JSON object.")
         }
     }
@@ -187,6 +190,11 @@ private class JsonCursor(
     }
 
     fun peek(): Char? = source.getOrNull(index)
+
+    fun expectEnd() {
+        skipWhitespace()
+        require(index == source.length) { "Unexpected content after JSON object." }
+    }
 
     fun expect(expected: Char) {
         val actual = source.getOrNull(index)
@@ -214,7 +222,7 @@ private class JsonCursor(
         }
     }
 
-    fun readPrimitiveOrString(): String? {
+    fun readPrimitiveOrString(): Any? {
         if (peek() == '"') {
             return readString()
         }
@@ -236,12 +244,12 @@ private class JsonCursor(
         }
     }
 
-    private fun readStringArray(): String {
+    private fun readStringArray(): List<String> {
         expect('[')
         skipWhitespace()
         if (peek() == ']') {
             expect(']')
-            return ""
+            return emptyList()
         }
         val values = mutableListOf<String>()
         while (true) {
@@ -250,7 +258,7 @@ private class JsonCursor(
             skipWhitespace()
             when (readDelimiter()) {
                 ',' -> continue
-                ']' -> return values.joinToString(JSON_ARRAY_SEPARATOR)
+                ']' -> return values
                 else -> throw IllegalArgumentException("Malformed JSON array.")
             }
         }

@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts
 
+import android.os.Bundle
+import dev.rinstel.genie_tts.inference.SynthesisOptions
+
 object BackendApiContract {
     const val ACTION_BIND_API = "dev.rinstel.genie_tts.action.BIND_BACKEND_API"
 
@@ -18,6 +21,17 @@ object BackendApiContract {
     const val KEY_REFERENCE_TEXT = "reference_text"
     const val KEY_AUXILIARY_REFERENCE_AUDIO_PATHS = "auxiliary_reference_audio_paths"
     const val KEY_MAX_DECODER_STEPS = "max_decoder_steps"
+    const val KEY_SPEED = "speed"
+    const val KEY_TEMPERATURE = "temperature"
+    const val KEY_TOP_K = "topK"
+    const val KEY_TOP_P = "topP"
+    const val KEY_REPETITION_PENALTY = "repetitionPenalty"
+
+    @Suppress("DEPRECATION") // Accept numeric Bundle primitives and strings, with the same strict parser as HTTP.
+    internal fun synthesisOptions(bundle: Bundle): SynthesisOptions = SynthesisOptions.parse(
+        listOf(KEY_SPEED, KEY_TEMPERATURE, KEY_TOP_K, KEY_TOP_P, KEY_REPETITION_PENALTY)
+            .filter(bundle::containsKey).associateWith { key -> bundle.get(key)?.toString() },
+    )
 
     const val KEY_STAGE = "stage"
     const val KEY_MESSAGE = "message"

@@ -32,6 +32,7 @@ import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.GenerationContext
 import dev.rinstel.genie_tts.inference.GenerationRequest
+import dev.rinstel.genie_tts.inference.SynthesisOptions
 import dev.rinstel.genie_tts.inference.GenerationStage
 import dev.rinstel.genie_tts.inference.ModelAssetRepository
 import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
@@ -82,6 +83,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var selectedId by mutableStateOf(store.selectedId); private set
     var text by mutableStateOf(store.text); private set
     var outputLanguage by mutableStateOf(store.outputLanguage); private set
+    var synthesisOptions by mutableStateOf(store.synthesisOptions); private set
     var loading by mutableStateOf(true); private set
     private var runtimeResources by mutableStateOf(false to false)
     val runtimeReady get() = runtimeResources.first &&
@@ -470,6 +472,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun changeSynthesisOptions(value: SynthesisOptions) {
+        if (busy) return
+        synthesisOptions = value
+        store.synthesisOptions = value
+        syncDefaults()
+    }
+
     fun generate() {
         if (!canGenerate) return
         val voice = selectedVoice ?: return
@@ -486,7 +495,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         generationError = null
         val request = GenerationRequest(model, outputLanguage,
             promptLanguage = promptLanguage, synthesisText = text.trim(),
-            referenceAudioPath = voice.audioPath, referenceText = voice.transcript, maxDecoderSteps = 1500)
+            referenceAudioPath = voice.audioPath, referenceText = voice.transcript, maxDecoderSteps = 1500,
+            synthesisOptions = synthesisOptions)
         pendingRequest = request.context
         pendingVoiceName = voice.name
         pendingText = text.trim()
@@ -512,7 +522,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         service?.setActiveDefaults(ActiveDefaults(backend, model.id, outputLanguage, voice.audioPath,
-            voice.transcript, 1500, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript)))
+            voice.transcript, 1500, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
+            synthesisOptions = synthesisOptions))
     }
 
     fun importRuntimePackage(uri: Uri) {
@@ -610,6 +621,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (it.moveToFirst()) it.getString(0) else null
                     }
                 }.getOrNull() ?: uri.lastPathSegment.orEmpty().substringAfterLast('/')
+            }
+            val extension = if (gpt) ".ckpt" else ".pth"
+            if (!filename.endsWith(extension, ignoreCase = true)) {
+                checkpointError = "${if (gpt) "GPT" else "SoVITS"} 权重请选择以 $extension 结尾的文件。"
+                fileBusy = false
+                return@launch
             }
             checkpointDraft?.let { value ->
                 checkpointDraft = if (gpt) value.copy(gpt = uri, gptName = filename)
