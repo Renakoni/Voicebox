@@ -17,6 +17,7 @@ data class DeviceAccelerationStatus(
 /** Owned by the service; detection and model work run on the same worker. */
 class DeviceAcceleration(private val context: Context) {
     private val mutableStatus = MutableStateFlow(DeviceAccelerationStatus())
+    private val capabilityCache = File(context.noBackupFilesDir, "npu-capability")
     val status = mutableStatus.asStateFlow()
     @Volatile var runtimeDirectory: File? = null
         private set
@@ -41,27 +42,51 @@ class DeviceAcceleration(private val context: Context) {
         val runtime = File(context.filesDir, "QualcommRuntime")
         if (!hasRuntimeFiles(runtime)) { unavailable("未安装 NPU 加速组件"); return }
         mutableStatus.value = DeviceAccelerationStatus(device)
-        val probe = File(context.cacheDir, "qnn-capability.onnx")
-        try {
-            context.assets.open("device-acceleration/probe.onnx").use { input -> probe.outputStream().use(input::copyTo) }
-            QnnSession.probe(runtime, probe)
+        val updatedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
+        val key = capabilityCacheKey(Build.FINGERPRINT, updatedAt, runtime)
+        val available = cachedCapability(capabilityCache, key) {
+            val probe = File(context.cacheDir, "qnn-capability.onnx")
+            try {
+                Log.i("VoiceboxAcceleration", "验证 NPU 能力")
+                context.assets.open("device-acceleration/probe.onnx").use { input -> probe.outputStream().use(input::copyTo) }
+                QnnSession.probe(runtime, probe)
+                true
+            } catch (error: Exception) {
+                Log.w("VoiceboxAcceleration", "NPU capability probe failed", error)
+                false
+            } catch (error: LinkageError) {
+                Log.w("VoiceboxAcceleration", "NPU runtime could not load", error)
+                false
+            } finally { probe.delete() }
+        }
+        if (available) {
             runtimeDirectory = runtime
             mutableStatus.value = DeviceAccelerationStatus(device, true, "NPU 验证通过", checking = false)
-        } catch (error: Exception) {
-            Log.w("VoiceboxAcceleration", "NPU capability probe failed", error)
-            unavailable("NPU 验证未通过")
-        } catch (error: LinkageError) {
-            Log.w("VoiceboxAcceleration", "NPU runtime could not load", error)
-            unavailable("NPU 加速组件不兼容")
-        } finally { probe.delete() }
+        } else unavailable("NPU 验证未通过")
     }
 
     fun modelUnavailable() {
+        capabilityCache.delete()
         runtimeDirectory = null
         mutableStatus.value = mutableStatus.value.copy(available = false, detail = "NPU 验证未通过")
     }
 
     companion object {
+        internal fun capabilityCacheKey(system: String, appUpdatedAt: Long, runtime: File): String =
+            "$system\n$appUpdatedAt\n" + runtime.listFiles().orEmpty().filter { it.isFile && it.extension == "so" }
+                .sortedBy { it.name }.joinToString("\n") { "${it.name}:${it.length()}:${it.lastModified()}" }
+
+        internal fun cachedCapability(cache: File, key: String, probe: () -> Boolean): Boolean {
+            when (runCatching { cache.readText() }.getOrNull()) {
+                "true\n$key" -> return true
+                "false\n$key" -> return false
+            }
+            return probe().also { available ->
+                // An interrupted or unwritable cache only causes a fresh probe next time.
+                runCatching { cache.writeText("$available\n$key") }
+            }
+        }
+
         internal fun isQualcomm(manufacturer: String, hardware: String): Boolean =
             manufacturer.contains("qualcomm", ignoreCase = true) || manufacturer.equals("qti", ignoreCase = true) ||
                 manufacturer.equals("qcom", ignoreCase = true) ||

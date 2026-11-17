@@ -116,8 +116,6 @@ The default build runs inference on CPU. WebGPU acceleration needs a custom ONNX
 
 Voicebox builds on [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS), [Genie-TTS](https://github.com/High-Logic/Genie-TTS) and [RinStel Android](https://github.com/RinStel/Genie-TTS-Android). Mobile optimizations drew on [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp), and some UI components are adapted from [Microsoft Fluent UI Android](https://github.com/microsoft/fluentui-android).
 
-Thanks also to [ONNX Runtime](https://github.com/microsoft/onnxruntime) for the inference runtime, [libadb-android](https://github.com/MuntashirAkon/libadb-android) for wireless debugging connections, and [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) for transcribing the test audio.
-
 The Roxy (洛琪希) voice in the demo videos comes from [Shinowing](https://github.com/Shinowing)'s [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model). Thank you for sharing the model.
 
 Voicebox's original code and modifications are licensed under [GNU AGPL-3.0](LICENSE).

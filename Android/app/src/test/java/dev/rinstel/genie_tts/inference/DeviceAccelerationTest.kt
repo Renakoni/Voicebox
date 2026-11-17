@@ -6,6 +6,37 @@ import java.io.File
 import java.nio.file.Files
 
 class DeviceAccelerationTest {
+    @Test fun reusesProbeResultsUntilEnvironmentChangesOrCacheIsCleared() {
+        val root = Files.createTempDirectory("npu-capability").toFile()
+        try {
+            val runtime = File(root, "runtime").apply { mkdir() }
+            val library = File(runtime, "libQnnHtp.so").apply { writeBytes(byteArrayOf(1)) }
+            val cache = File(root, "capability")
+            var calls = 0
+            var supported = true
+            fun detect(system: String = "system-a", updatedAt: Long = 1): Boolean {
+                val key = DeviceAcceleration.capabilityCacheKey(system, updatedAt, runtime)
+                return DeviceAcceleration.cachedCapability(cache, key) { calls++; supported }
+            }
+            assertTrue(detect())
+            supported = false
+            assertTrue(detect())
+            assertEquals(1, calls)
+            assertFalse(detect("system-b"))
+            assertFalse(detect("system-b"))
+            assertEquals(2, calls)
+            assertFalse(detect("system-b", 2))
+            assertEquals(3, calls)
+            library.appendBytes(byteArrayOf(2))
+            assertFalse(detect("system-b", 2))
+            assertEquals(4, calls)
+            cache.delete()
+            supported = true
+            assertTrue(detect("system-b", 2))
+            assertEquals(5, calls)
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun ignoresPhoneBrandAndRequiresMatchingRuntimePair() {
         assertTrue(DeviceAcceleration.isQualcomm("QUALCOMM", "unknown"))
         assertTrue(DeviceAcceleration.isQualcomm("QTI", "unknown"))

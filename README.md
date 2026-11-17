@@ -118,8 +118,6 @@ cd Android
 
 Voicebox 基于 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)、[Genie-TTS](https://github.com/High-Logic/Genie-TTS) 和 [RinStel Android](https://github.com/RinStel/Genie-TTS-Android) 开发。移动端优化参考了 [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp)，部分界面组件参考 [Microsoft Fluent UI Android](https://github.com/microsoft/fluentui-android)。
 
-同时感谢 [ONNX Runtime](https://github.com/microsoft/onnxruntime) 提供推理运行时、[libadb-android](https://github.com/MuntashirAkon/libadb-android) 提供无线调试连接能力，以及 [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) 支持测试音频的转写核对。
-
 演示视频中的洛琪希（Roxy）音色来自 [Shinowing](https://github.com/Shinowing) 的 [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model)，感谢作者分享模型。
 
 Voicebox 的原创代码与修改采用 [GNU AGPL-3.0](LICENSE) 许可。
