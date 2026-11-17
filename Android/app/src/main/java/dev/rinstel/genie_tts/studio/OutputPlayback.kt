@@ -4,20 +4,17 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.DpSize
 import java.util.Locale
 
 @Composable
@@ -38,7 +35,6 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: Modifier, onSeek: (Int) -> Unit) {
     val duration = (if (preview.durationMs > 0) preview.durationMs.toLong() else durationMs).coerceAtLeast(1)
     var draggedPosition by remember(preview.path) { mutableStateOf<Float?>(null) }
@@ -49,18 +45,14 @@ private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: 
     val position = draggedPosition ?: preview.positionMs.toFloat().coerceIn(0f, duration.toFloat())
     val seekEnabled = preview.path.isNotBlank() && !preview.preparing
     Column(modifier) {
-        Slider(value = position, onValueChange = { draggedPosition = it },
+        StudioSlider(value = position, onValueChange = { draggedPosition = it },
             onValueChangeFinished = {
                 draggedPosition?.let { onSeek(it.toInt()) }
                 draggedPosition = null
             },
             valueRange = 0f..duration.toFloat(), interactionSource = interactions,
             enabled = seekEnabled,
-            thumb = { SliderDefaults.Thumb(interactions, Modifier.clip(CircleShape), enabled = seekEnabled,
-                thumbSize = DpSize(14.dp, 14.dp)) },
-            track = { SliderDefaults.Track(it, Modifier.height(4.dp), enabled = seekEnabled,
-                thumbTrackGapSize = 0.dp, drawStopIndicator = null) },
-            modifier = Modifier.heightIn(min = 48.dp).testTag("playback_seek").semantics { contentDescription = "播放进度" })
+            modifier = Modifier.testTag("playback_seek").semantics { contentDescription = "播放进度" })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(playbackTime(position.toLong()), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.testTag("playback_position"))

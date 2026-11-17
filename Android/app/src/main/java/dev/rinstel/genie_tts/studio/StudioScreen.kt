@@ -305,7 +305,6 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
                 "synthesis_speed", { options = options.copy(speed = (it * 20).roundToInt() / 20.0) }, commit)
             SynthesisSlider("随机程度", number(options.temperature), options.temperature, 0f..1f, 99, !vm.busy,
                 "synthesis_temperature", { options = options.copy(temperature = (it * 100).roundToInt() / 100f) }, commit)
-            Text("采样范围", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
             SynthesisSlider("Top-K", options.topK.toString(), options.topK.toFloat(), 1f..100f, 98, !vm.busy,
                 "synthesis_top_k", { options = options.copy(topK = it.roundToInt()) }, commit)
             SynthesisSlider("Top-P", number(options.topP), options.topP, 0f..1f, 99, !vm.busy,
@@ -326,9 +325,10 @@ private fun SynthesisSlider(label: String, displayValue: String, value: Float, r
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            Text(displayValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(displayValue, style = MaterialTheme.typography.bodyMedium.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Slider(value, onChange, enabled = enabled, valueRange = range, steps = steps, onValueChangeFinished = onFinished,
+        StudioSlider(value, onChange, enabled = enabled, valueRange = range, steps = steps, onValueChangeFinished = onFinished,
             modifier = Modifier.fillMaxWidth().testTag(tag).semantics {
                 contentDescription = label
                 stateDescription = displayValue
