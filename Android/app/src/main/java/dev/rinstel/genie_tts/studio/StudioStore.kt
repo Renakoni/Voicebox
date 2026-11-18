@@ -44,13 +44,15 @@ class StudioStore(context: Context) {
         set(value) { preferences.edit().putString("output_language", value).apply() }
 
     var synthesisOptions: SynthesisOptions
-        get() = runCatching { SynthesisOptions(
-            speed = preferences.getString("speed", "1.0")!!.toDouble(),
-            temperature = preferences.getFloat("temperature", 1f),
-            topK = preferences.getInt("topK", 15),
-            topP = preferences.getFloat("topP", 1f),
-            repetitionPenalty = preferences.getFloat("repetitionPenalty", 1.35f),
-        ) }.getOrDefault(SynthesisOptions.Default)
+        get() = with(SynthesisOptions.Default) {
+            runCatching { copy(
+                speed = preferences.getString("speed", null)?.toDouble() ?: speed,
+                temperature = preferences.getFloat("temperature", temperature),
+                topK = preferences.getInt("topK", topK),
+                topP = preferences.getFloat("topP", topP),
+                repetitionPenalty = preferences.getFloat("repetitionPenalty", repetitionPenalty),
+            ) }.getOrDefault(this)
+        }
         set(value) { preferences.edit().putString("speed", value.speed.toString())
             .putFloat("temperature", value.temperature).putInt("topK", value.topK)
             .putFloat("topP", value.topP).putFloat("repetitionPenalty", value.repetitionPenalty).apply() }

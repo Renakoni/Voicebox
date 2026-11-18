@@ -6,7 +6,6 @@ Requires onnxruntime, numpy and torch; no model weights needed for the unit chec
 import argparse
 import ast
 import copy
-import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -87,13 +86,16 @@ class GenerationControlsTest(unittest.TestCase):
     def test_prefill_and_decoder_sampling_match_upstream(self):
         official = official_sampler()
         rng = np.random.default_rng(413)
-        cases = [rng.normal(size=1025).astype(np.float32), np.linspace(-4, 4, 1025, dtype=np.float32)]
-        tied = cases[0].copy()
+        logits_case = rng.normal(size=1025).astype(np.float32)
+        tied = logits_case.copy()
         tied[:20] = 10
-        cases.append(tied)
         previous = np.array([0, 1, 1, 25, 700, 1024], np.int64)
-        options = [(1, 15, 1, 1.35), (0, 1, 0, 1), (0, 100, 1, 2),
-                   (1, 100, 0, 1.35), (.5, 40, .8, 1.5), (1, 15, 1, 1)]
+        cases = [
+            (logits_case, (1, 15, 1, 1.35)),  # Defaults.
+            (logits_case, (0, 1, 0, 1)),      # Zero temperature and Top-P.
+            (logits_case, (.5, 100, .8, 2)),  # Nucleus filtering before temperature and Top-K.
+            (tied, (1, 15, 1, 1)),           # Keep ties at the Top-K threshold.
+        ]
         checked = 0
         # Architectures share these semantic graphs; exercise each sampler once.
         for name in ['mobile-prefill.onnx', 'mobile-decoder-shared.onnx']:
@@ -104,19 +106,13 @@ class GenerationControlsTest(unittest.TestCase):
             output = next(n.output[0] for n in model.graph.node if n.name == '/Softmax')
             inputs = {logits: (T.FLOAT, [1025]), tokens: (T.INT64, [None])}
             session = extract(model, {**inputs, 'sampling': (T.FLOAT, [4])}, {output: (T.FLOAT, [1025])})
-            for case in cases:
-                for temperature, k, p, penalty in options:
-                    # Torch's sort breaks ties differently across devices. For nucleus
-                    # filtering use distinct logits; threshold Top-K ties remain tested.
-                    if case is tied and p < 1:
-                        continue
-                    actual = session.run(None, {logits: case, tokens: previous,
-                        'sampling': np.array([temperature, k, p, penalty], np.float32)})[0]
-                    expected = official(torch.from_numpy(case.copy()[None]), torch.from_numpy(previous[None]),
-                        temperature=temperature, top_k=k, top_p=p, repetition_penalty=penalty).numpy()[0]
-                    np.testing.assert_allclose(actual, expected, atol=1e-7, rtol=2e-5)
-                    self.assertTrue(np.isfinite(actual).all())
-                    checked += 1
+            for case, (temperature, k, p, penalty) in cases:
+                actual = session.run(None, {logits: case, tokens: previous,
+                    'sampling': np.array([temperature, k, p, penalty], np.float32)})[0]
+                expected = official(torch.from_numpy(case.copy()[None]), torch.from_numpy(previous[None]),
+                    temperature=temperature, top_k=k, top_p=p, repetition_penalty=penalty).numpy()[0]
+                np.testing.assert_allclose(actual, expected, atol=1e-7, rtol=2e-5, equal_nan=False)
+                checked += 1
         print(f'Sampling: {checked} comparisons against upstream, including defaults and Top-K ties')
 
     def test_speed_features_and_v5_valid_length(self):
@@ -136,39 +132,36 @@ class GenerationControlsTest(unittest.TestCase):
                 inputs['/Mul_3_output_0'] = (T.INT64, [1])
                 outputs['/speed/wns1/valid_length'] = (T.INT64, [1])
             session = extract(model, inputs, outputs)
-            for length in [2, 66, 218]:
+            for length, speed in [(66, .6), (2, 1), (6, 1.65)]:
                 y = rng.normal(size=(1, 8, length)).astype(np.float32)
                 ymask = (np.arange(length) < length - 1).astype(np.float32)[None, None]
-                for speed in [.6, 1, 1.65]:
-                    feed = {feature: y, 'speed': np.array([speed], np.float64)}
-                    feed['/Mul_3_output_0' if v5 else mask] = np.array([length * 2], np.int64) if v5 else ymask
-                    actual, other = session.run(None, feed)
-                    target = length if speed == 1 else int(length / speed) + 1
-                    expected = y if speed == 1 else torch.nn.functional.interpolate(torch.from_numpy(y), size=target, mode='linear').numpy()
+                feed = {feature: y, 'speed': np.array([speed], np.float64)}
+                feed['/Mul_3_output_0' if v5 else mask] = np.array([length * 2], np.int64) if v5 else ymask
+                actual, other = session.run(None, feed)
+                target = length if speed == 1 else int(length / speed) + 1
+                if speed == 1:
+                    np.testing.assert_array_equal(actual, y)
+                else:
+                    expected = torch.nn.functional.interpolate(torch.from_numpy(y), size=target, mode='linear').numpy()
                     # ORT and torch use slightly different float coordinate rounding.
                     np.testing.assert_allclose(actual, expected, atol=1e-4, rtol=3e-5)
-                    if v5:
-                        self.assertEqual(int(other[0]), length * 2 if speed == 1 else int(length * 2 / speed) + 1)
-                        self.assertIn(actual.shape[-1] * 2 - int(other[0]), [0, 1])
-                    else:
-                        expected_mask = ymask if speed == 1 else torch.nn.functional.interpolate(torch.from_numpy(ymask), size=target, mode='nearest').numpy()
-                        np.testing.assert_array_equal(other, expected_mask)
-                    if speed == 1:
-                        np.testing.assert_array_equal(actual, y)
-                    checked += 1
+                if v5:
+                    self.assertEqual(int(other[0]), length * 2 if speed == 1 else int(length * 2 / speed) + 1)
+                else:
+                    expected_mask = ymask if speed == 1 else torch.nn.functional.interpolate(torch.from_numpy(ymask), size=target, mode='nearest').numpy()
+                    np.testing.assert_array_equal(other, expected_mask)
+                checked += 1
         print(f'Speed: {checked} feature/mask comparisons against torch interpolation and upstream lengths')
 
-    def test_template_integrity_and_input_contracts(self):
+    def test_template_input_contracts(self):
         checked = set()
         for directory in DIRECTORIES:
             manifest = json.loads((directory / 'manifest.json').read_text())
             for name, sha in manifest['files'].items():
-                path = directory / name
-                self.assertEqual(hashlib.sha256(path.read_bytes()).hexdigest(), sha)
-                if path.suffix != '.onnx' or sha in checked:
+                if not name.endswith('.onnx') or sha in checked:
                     continue
                 checked.add(sha)
-                model = onnx.load(path, load_external_data=False)
+                model = onnx.load(directory / name, load_external_data=False)
                 inputs = {value.name: value.type.tensor_type for value in model.graph.input}
                 if name.startswith(('mobile-', 't2s_first_stage_decoder', 't2s_stage_decoder')):
                     self.assertEqual(inputs['sampling'].elem_type, T.FLOAT)

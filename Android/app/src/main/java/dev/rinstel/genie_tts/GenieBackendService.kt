@@ -21,6 +21,10 @@ import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtException
+import ai.onnxruntime.OrtProvider
+import ai.onnxruntime.OrtSession
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.rinstel.genie_tts.api.ActiveDefaults
@@ -84,7 +88,8 @@ class GenieBackendService : Service() {
     private val runtimes = linkedMapOf<ExecutionBackend, BackendRuntime>()
     // Accessed only by the inference worker. Do not retain two complete voice runtimes.
     private var workerBackend: ExecutionBackend? = null
-    private var apiEnabledBackends: Set<ExecutionBackend> = setOf(ExecutionBackend.CPU)
+    private val enabledBackends = MutableStateFlow<Set<ExecutionBackend>>(emptySet())
+    val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
     private var resourceReloadPending = false
@@ -115,7 +120,7 @@ class GenieBackendService : Service() {
 
                 override fun availableModels(): List<CharacterModel> = modelRepository.discoverCharacterModels()
 
-                override fun supportedBackends(): Set<ExecutionBackend> = apiEnabledBackends
+                override fun supportedBackends(): Set<ExecutionBackend> = this@GenieBackendService.supportedBackends()
 
                 override fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
                     model.modelFiles.maxAuxiliaryReferenceCount > 0 &&
@@ -137,7 +142,7 @@ class GenieBackendService : Service() {
         )
         val traceLogger = LogcatInferenceTraceLogger()
         val executionBackends = mutableListOf(ExecutionBackend.CPU)
-        if (ai.onnxruntime.OrtEnvironment.getAvailableProviders().contains(ai.onnxruntime.OrtProvider.WEBGPU)) {
+        if (OrtProvider.WEBGPU in OrtEnvironment.getAvailableProviders()) {
             executionBackends += ExecutionBackend.WEBGPU
         }
         for (executionBackend in executionBackends) {
@@ -173,11 +178,23 @@ class GenieBackendService : Service() {
                 traceLogger = traceLogger,
             )
         }
-        apiEnabledBackends = runtimes.keys.toSet()
-        worker.execute { deviceAcceleration.detect(ExecutionBackend.WEBGPU in apiEnabledBackends) }
+        worker.execute {
+            val webGpu = ExecutionBackend.WEBGPU in runtimes && canInitializeWebGpu()
+            enabledBackends.value = if (webGpu) runtimes.keys.toSet() else setOf(ExecutionBackend.CPU)
+            deviceAcceleration.detect(webGpu)
+        }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
         syncLocalHttpApiServer()
+    }
+
+    private fun canInitializeWebGpu(): Boolean = try {
+        OrtEnvironment.getEnvironment() // Register ORT's logger before initializing the provider.
+        OrtSession.SessionOptions().use { it.addWebGPU(emptyMap()) }
+        true
+    } catch (error: OrtException) {
+        Log.i(TIMING_LOG_TAG, "WebGPU initialization failed: ${error.message}")
+        false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -259,10 +276,10 @@ class GenieBackendService : Service() {
 
     fun currentState(): BackendServiceState = state
 
-    fun supportedBackends(): Set<ExecutionBackend> = apiEnabledBackends
+    fun supportedBackends(): Set<ExecutionBackend> = enabledBackends.value.ifEmpty { setOf(ExecutionBackend.CPU) }
 
     fun setActiveDefaults(defaults: ActiveDefaults?) {
-        val supportedDefaults = defaults?.takeIf { it.backend in apiEnabledBackends }
+        val supportedDefaults = defaults?.takeIf { it.backend in supportedBackends() }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && (previous.modelId != supportedDefaults?.modelId || previous.backend != supportedDefaults?.backend)) {
@@ -277,7 +294,7 @@ class GenieBackendService : Service() {
         backend: ExecutionBackend,
         request: GenerationRequest,
     ): Boolean {
-        if (backend !in apiEnabledBackends) return false
+        if (backend !in supportedBackends()) return false
         if (!generationGate.tryAcquire(request.context)) {
             return false
         }
@@ -297,7 +314,7 @@ class GenieBackendService : Service() {
         request: GenerationRequest,
         timeoutMs: Long,
     ): InferResult {
-        if (backend !in apiEnabledBackends) {
+        if (backend !in supportedBackends()) {
             return InferResult.Error("Backend is not enabled.")
         }
         if (!generationGate.tryAcquire(request.context)) {

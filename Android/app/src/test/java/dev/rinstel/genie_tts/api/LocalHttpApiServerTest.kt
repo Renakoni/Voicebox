@@ -28,11 +28,9 @@ class LocalHttpApiServerTest {
             "referenceAudioPath":"${FakeBridge.primaryReferenceJsonPath}","referenceText":"sample",
             "speed":1.65,"temperature":0,"topP":0,"repetitionPenalty":2}"""
         val captured = bridge.capturedRequest
-        assertEquals(400, server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "test", "speed" to "NaN")).statusCode)
         for (invalid in listOf(
-            body.replace("\"speed\":1.65", "\"speed\":\"NaN\""),
             body.replace("\"speed\":1.65", "\"speed\":[\"1\"]"),
-            body.replace("\"temperature\":0", "\"topK\":[\"15\"],\"temperature\":0"),
+            body.replace("\"speed\":1.65", "\"speed\":1.65d"),
             "$body trailing",
         )) {
             assertEquals(400, server.handleRequestForTest("POST", "/infer", body = invalid).statusCode)

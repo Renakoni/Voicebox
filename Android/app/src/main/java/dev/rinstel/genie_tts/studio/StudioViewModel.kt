@@ -107,7 +107,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
-    var gpuAvailable by mutableStateOf(false); private set
+    private var availableBackends by mutableStateOf(emptySet<ExecutionBackend>())
+    val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     var acceleration by mutableStateOf(DeviceAccelerationStatus()); private set
     var deviceAccelerationEnabled by mutableStateOf(settings.deviceAccelerationEnabled); private set
@@ -124,7 +125,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
     val busy get() = state.busy || submitting || importing || officialDownload.running
     val backend get() = if (gpuAvailable && gpuEnabled) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
-    val canGenerate get() = connected && !loading && !busy && !fileBusy && runtimeReady &&
+    val canGenerate get() = connected && availableBackends.isNotEmpty() && !loading && !busy && !fileBusy && runtimeReady &&
         selectedVoice != null && text.isNotBlank() && modelFor(selectedVoice!!) != null
 
     private val listener = BackendServiceListener { next ->
@@ -161,18 +162,22 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             service = (binder as GenieBackendService.LocalBinder).getService()
             connected = true
-            gpuAvailable = ExecutionBackend.WEBGPU in service!!.supportedBackends()
+            val backendService = service!!
+            handledOutput = output?.path
+            backendService.addListener(listener)
             accelerationUpdates?.cancel()
-            val detector = service!!.deviceAcceleration
-            accelerationUpdates = viewModelScope.launch { detector.status.collect { acceleration = it } }
+            accelerationUpdates = viewModelScope.launch {
+                launch { backendService.deviceAcceleration.status.collect { acceleration = it } }
+                backendService.backendCapabilities.collect {
+                    availableBackends = it
+                    syncDefaults()
+                }
+            }
             downloadUpdates?.cancel()
             downloadUpdates = viewModelScope.launch { service!!.officialDownload.collect {
                 officialDownload = it
                 if (it.completed || it.error != null) refreshResources()
             } }
-            handledOutput = output?.path
-            service!!.addListener(listener)
-            syncDefaults()
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             accelerationUpdates?.cancel()
@@ -180,6 +185,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             officialDownload = OfficialDownloadState()
             service = null
             connected = false
+            availableBackends = emptySet()
             submitting = false
             state = BackendServiceState()
             generationError = "语音服务已断开，重新打开应用后可重试。"
@@ -514,7 +520,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun syncDefaults() {
-        if (!warmupEnabled || busy) return
+        if (!warmupEnabled || availableBackends.isEmpty() || busy) return
         val voice = selectedVoice
         val model = voice?.let(::modelFor)
         if (!runtimeReady || voice == null || model == null) {

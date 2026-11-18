@@ -217,7 +217,10 @@ private class JsonCursor(
             when (current) {
                 '"' -> return output.toString()
                 '\\' -> output.append(readEscape())
-                else -> output.append(current)
+                else -> {
+                    require(current >= ' ') { "Unescaped control character in JSON string." }
+                    output.append(current)
+                }
             }
         }
     }
@@ -238,10 +241,9 @@ private class JsonCursor(
             index += 1
         }
         val token = source.substring(start, index).trim()
-        return when (token) {
-            "", "null" -> null
-            else -> token
-        }
+        if (token == "null") return null
+        require(token == "true" || token == "false" || JSON_NUMBER.matches(token)) { "Invalid JSON value." }
+        return token
     }
 
     private fun readStringArray(): List<String> {
@@ -285,6 +287,8 @@ private class JsonCursor(
         }
     }
 }
+
+private val JSON_NUMBER = Regex("-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?")
 
 @JvmInline
 internal value class RawJson(
