@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## 快速上手
 
-从 [Releases](https://github.com/Renakoni/Voicebox/releases/latest) 下载 **Voicebox 1.1.1**（72.6 MiB）。
+从 [Releases](https://github.com/Renakoni/Voicebox/releases/latest) 下载 **Voicebox 1.1.2**（72.6 MiB）。
 
 1. **下载模型**：在「音色」页下载官方 V2 Pro Plus 或 V5 Turbo，应用会一并准备所需资源。也可以点「导入音色」，选自己的 `.ckpt` 与 `.pth`。
 2. **克隆音色**：选一个基础模型，长按录音或选择一段参考音频，填写对应原文和参考语言，保存。
@@ -66,9 +66,9 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 下表中，短句约 **4 秒**、长段约 **22 秒**音频，使用官方权重和同一份中文参考录音。模型加载与缓存准备完成后，每种配置、每种长度生成 **10 次**，结果为**均值 ± 标准差**。
 
-参与比较的 GPT-SoVITS 使用[官方仓库](https://github.com/RVC-Boss/GPT-SoVITS)的模型与实现，测试电脑为 **i9-12900H、RTX 3070 Ti Laptop（8 GB 显存）、16 GB RAM**。Voicebox 均在**小米 14（骁龙 8 Gen 3、16 GB RAM）**上测试。
+参与比较的 GPT-SoVITS 使用[官方仓库](https://github.com/RVC-Boss/GPT-SoVITS)的模型与实现，测试电脑为 **i9-12900H、RTX 3070 Ti Laptop（8 GB 显存）、16 GB RAM**。Voicebox 的测试设备为 **小米 14（骁龙 8 Gen 3、16 GB RAM）**。
 
-| 模型 | 实现 / 设备 | 短句耗时（秒） | 短句 RTF ↓ | 长段耗时（秒） | 长段 RTF ↓ |
+| 模型 | 实现 / 设备 | 短句耗时（秒） | 短句 RTF | 长段耗时（秒） | 长段 RTF |
 |---|---|---:|---:|---:|---:|
 | V2 Pro Plus | GPT-SoVITS · i9-12900H | 7.008 ± 0.950 | 1.752 ± 0.249 | 39.173 ± 1.097 | 1.731 ± 0.030 |
 | V2 Pro Plus | GPT-SoVITS · RTX 3070 Ti Laptop | 1.380 ± 0.382 | 0.341 ± 0.089 | 6.153 ± 0.301 | 0.265 ± 0.007 |
@@ -87,7 +87,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 波形误差比较 GPU＋NPU 与官方 PyTorch FP32 的完整声学输出，固定输入和噪声，短句、长段各 1 组。转写一致率使用 SenseVoice 核对上述 160 份音频，每种配置包含短句、长段各 10 次。
 
-| 模型 | RMS 短句 ↓ | RMS 长段 ↓ | 一致率·官方·CPU ↑ | 一致率·官方·CUDA ↑ | 一致率·手机·GPU ↑ | 一致率·手机·GPU＋NPU ↑ |
+| 模型 | RMS 短句 | RMS 长段 | 一致率·官方·CPU | 一致率·官方·CUDA | 一致率·手机·GPU | 一致率·手机·GPU＋NPU |
 |---|---:|---:|---:|---:|---:|---:|
 | V2 Pro Plus | 0.2323% | 0.2351% | 98.87% | 99.06% | 99.34% | 99.72% |
 | V5 Turbo | 1.4489% | 0.6537% | 99.53% | 99.25% | 99.72% | 99.62% |

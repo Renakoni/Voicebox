@@ -41,7 +41,7 @@ Output language and reference language are set separately, so a voice cloned fro
 
 ## Getting started
 
-Download **Voicebox 1.1.1** (72.6 MiB) from [Releases](https://github.com/Renakoni/Voicebox/releases/latest). It needs an **ARM64 device running Android 11 or later**, and installs directly over earlier official releases.
+Download **Voicebox 1.1.2** (72.6 MiB) from [Releases](https://github.com/Renakoni/Voicebox/releases/latest). It needs an **ARM64 device running Android 11 or later**, and installs directly over earlier official releases.
 
 1. **Get a model**: on the 音色 (Voices) tab, download the official V2 Pro Plus or V5 Turbo, and the app prepares the shared resources with it. Or tap 导入音色 (Import) and pick your own `.ckpt` and `.pth`.
 2. **Clone a voice**: choose a base model, hold to record or pick a reference clip, enter its transcript and language, and save.
@@ -66,7 +66,7 @@ Short clips are about **4 s** of audio and long passages about **22 s**, using o
 
 The GPT-SoVITS rows use the models and code from the [official repository](https://github.com/RVC-Boss/GPT-SoVITS) on a laptop with an **i9-12900H, RTX 3070 Ti Laptop (8 GB VRAM) and 16 GB RAM**. All Voicebox rows were measured on a **Xiaomi 14 (Snapdragon 8 Gen 3, 16 GB RAM)**.
 
-| Model | Implementation / device | Short time (s) | Short RTF ↓ | Long time (s) | Long RTF ↓ |
+| Model | Implementation / device | Short time (s) | Short RTF | Long time (s) | Long RTF |
 |---|---|---:|---:|---:|---:|
 | V2 Pro Plus | GPT-SoVITS · i9-12900H | 7.008 ± 0.950 | 1.752 ± 0.249 | 39.173 ± 1.097 | 1.731 ± 0.030 |
 | V2 Pro Plus | GPT-SoVITS · RTX 3070 Ti Laptop | 1.380 ± 0.382 | 0.341 ± 0.089 | 6.153 ± 0.301 | 0.265 ± 0.007 |
@@ -85,7 +85,7 @@ The GPT-SoVITS rows use the models and code from the [official repository](https
 
 Waveform error compares the full acoustic output of GPU + NPU against official PyTorch FP32 with fixed inputs and noise, one short and one long case. Transcription accuracy uses SenseVoice on the 160 clips above, 10 short and 10 long per configuration.
 
-| Model | RMS short ↓ | RMS long ↓ | ASR · official CPU ↑ | ASR · official CUDA ↑ | ASR · phone GPU ↑ | ASR · phone GPU + NPU ↑ |
+| Model | RMS short | RMS long | ASR · official CPU | ASR · official CUDA | ASR · phone GPU | ASR · phone GPU + NPU |
 |---|---:|---:|---:|---:|---:|---:|
 | V2 Pro Plus | 0.2323% | 0.2351% | 98.87% | 99.06% | 99.34% | 99.72% |
 | V5 Turbo | 1.4489% | 0.6537% | 99.53% | 99.25% | 99.72% | 99.62% |
