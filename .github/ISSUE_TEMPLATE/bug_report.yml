@@ -1,0 +1,98 @@
+name: Bug report
+description: Report a problem with voice import, speech generation, playback, QQ sending, or the local API.
+title: "[Bug] "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search [existing issues](https://github.com/Renakoni/Voicebox/issues) before opening a report.
+        Use a title that describes the action and the failure, such as "Importing a V5 Turbo voice stops during conversion".
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the affected feature and how the problem affects your use of Voicebox.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the initial state, relevant settings, and actions. For intermittent problems, describe the most recent occurrence.
+      placeholder: |
+        1. Select the voice or prepare the files.
+        2. Open the affected feature and perform the action.
+        3. Describe where the problem occurs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: results
+    attributes:
+      label: Actual and expected results
+      description: Include the exact error message or progress shown, if available.
+      placeholder: |
+        Actual result:
+        Expected result:
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Voicebox version and installation source
+      description: Give the full version and where you obtained it. For a local build, include the revision and relevant build options.
+      placeholder: "1.1.2 from GitHub Releases"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      description: Include the phone model and Android version. If using an emulator, include its name and CPU architecture.
+      placeholder: "Xiaomi 14, Snapdragon 8 Gen 3, Android 14"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: model
+    attributes:
+      label: Voice model
+      options:
+        - V2 Pro
+        - V2 Pro Plus
+        - V5 Turbo
+        - Not applicable or not sure
+
+  - type: dropdown
+    id: acceleration
+    attributes:
+      label: Acceleration settings
+      description: Select the settings enabled when the problem occurred.
+      options:
+        - CPU
+        - GPU enabled
+        - GPU and NPU enabled
+        - Not applicable or not sure
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Relevant files and settings
+      description: |
+        Include details relevant to this report, such as an official or imported voice, checkpoint file extensions,
+        reference and output languages, generation settings, or the text that triggers the problem.
+        For QQ sending, include the QQ version and wireless debugging state.
+        For API problems, include the endpoint, request, and response.
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots, audio, or logs
+      description: Attach a relevant error excerpt, recording, generated audio sample, or small input that helps reproduce the problem. You can also mention the last version that worked.

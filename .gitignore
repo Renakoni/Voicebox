@@ -5,6 +5,7 @@ Config.txt
 chinese-hubert-base.onnx
 open_jtalk_dic_utf_8-1.11/
 Docs/
+!/docs/
 GenieData/
 CharacterModels/
 UserData/
@@ -99,7 +100,6 @@ tests/parity/.tmp/
 /models.lock.json
 /pyproject.toml
 /requirements.txt
-/README_zh.md
 
 # Only build tools needed by the Android distribution are published.
 /tools/*

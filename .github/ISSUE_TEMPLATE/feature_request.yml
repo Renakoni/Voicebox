@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest an improvement to voice cloning, synthesis, sharing, or app integration.
+title: "[Feature] "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search [existing issues](https://github.com/Renakoni/Voicebox/issues) for similar requests.
+        Describe the task you want to complete and what currently gets in the way.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Use case and current difficulty
+      description: Explain when you need this capability and how you handle the task today.
+      placeholder: "I use Voicebox with an audiobook reader and need to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe what you would like to do and give a concrete example of a successful result.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Suggested approach
+      description: Optionally describe an interaction or implementation. Include relevant constraints such as offline use, device hardware, model family, or another app.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Alternatives and references
+      description: Share a workaround, related issue, screenshot, or example from another tool.

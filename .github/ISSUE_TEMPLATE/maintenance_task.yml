@@ -1,0 +1,40 @@
+name: Maintenance task
+description: Track inference performance, code maintenance, documentation, or build tooling work.
+title: "[Task] "
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search [existing issues](https://github.com/Renakoni/Voicebox/issues) for related work.
+        Keep the task focused on a concrete outcome that can be reviewed.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Current behavior and problem
+      description: Describe the maintenance cost, performance issue, or documentation gap. Distinguish observations from suspected causes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Goal and scope
+      description: Identify the affected flow, such as checkpoint conversion, reference preparation, inference, QQ sending, the local API, or packaging.
+    validations:
+      required: true
+
+  - type: textarea
+    id: completion
+    attributes:
+      label: Completion criteria
+      description: Describe outcomes that can be checked through focused review, existing tests, or relevant device checks.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Technical context and dependencies
+      description: Optionally include relevant code, measurements, proposed changes, tradeoffs, or related issues.
