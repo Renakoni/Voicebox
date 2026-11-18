@@ -9,7 +9,9 @@
   クラウドも外部GPUも不要、Android 端末だけで高品質な音声クローンを実現。
 </p>
 
-[中文](README_ZH.md) · [日本語](README_JA.md) · [English](README.md)
+<p align="center">
+  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README.md">English</a>
+</p>
 
 <p align="center">
   <a href="https://github.com/Renakoni/Voicebox/releases/latest"><img src="https://img.shields.io/github/v/release/Renakoni/Voicebox?style=flat-square&amp;label=release&amp;color=9A4930" alt="最新版"></a>

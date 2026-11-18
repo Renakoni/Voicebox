@@ -9,7 +9,9 @@
   High-quality on-device voice cloning for Android, no cloud or external GPUs required.
 </p>
 
-[中文](README_ZH.md) · [日本語](README_JA.md) · [English](README.md)
+<p align="center">
+  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README.md">English</a>
+</p>
 
 <p align="center">
   <a href="https://github.com/Renakoni/Voicebox/releases/latest"><img src="https://img.shields.io/github/v/release/Renakoni/Voicebox?style=flat-square&amp;label=release&amp;color=9A4930" alt="Latest release"></a>

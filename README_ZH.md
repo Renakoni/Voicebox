@@ -9,7 +9,9 @@
   无需云端与显卡，在 Android 本地实现高质量语音克隆
 </p>
 
-[中文](README_ZH.md) · [日本語](README_JA.md) · [English](README.md)
+<p align="center">
+  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README.md">English</a>
+</p>
 
 
 <p align="center">
