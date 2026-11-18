@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README.md">English</a>
+  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <strong>English</strong>
 </p>
 
 <p align="center">
@@ -45,16 +45,16 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 Download **Voicebox 1.1.3** (72.7 MiB) from [Releases](https://github.com/Renakoni/Voicebox/releases/latest). It requires an **ARM64 device running Android 11 or later** and can be installed over earlier official releases.
 
-1. On the **音色** (Voices) tab, download the official V2 Pro Plus or V5 Turbo model. Voicebox downloads the shared resources with it. To use your own weights, tap **导入音色** (Import voice) and choose the `.ckpt` and `.pth` files.
+1. On the **Voices** tab, download the official V2 Pro Plus or V5 Turbo model. Voicebox downloads the shared resources with it. To use your own weights, tap **Import voice** and choose the `.ckpt` and `.pth` files.
 2. Choose a base model. Press and hold to record a reference clip, or select an existing one. Enter its transcript, choose its language, and save.
-3. On **创作** (Create), choose the voice and output language, enter your text, and tap **生成语音** (Generate speech). You can then play, save, share, or send the audio to QQ.
+3. On the **Create** tab, choose the voice and output language, enter your text, and tap **Generate speech**. You can then play, save, share, or send the audio to QQ.
 
 <details>
 <summary><strong>One-time setup for QQ voice messages</strong></summary>
 
 1. Turn on **Wireless debugging** in Android's developer options.
-2. On the **发送 QQ 语音** page, tap **连接** and enter the six-digit pairing code shown by Android. You only need to pair once.
-3. Tap **选择联系人并发送** and open the chat in QQ. Voicebox records a temporary voice message, replaces it with your audio, and sends it. Leave QQ alone until it finishes.
+2. On the **Send to QQ** page, tap **Connect** and enter the six-digit pairing code shown by Android. You only need to pair once.
+3. Tap **Choose contact and send** and open the chat in QQ. Voicebox records a temporary voice message, replaces it with your audio, and sends it. Leave QQ alone until it finishes.
 
 Each message must be shorter than 60 seconds.
 
@@ -120,7 +120,7 @@ The default build uses the CPU for inference. To enable WebGPU, build the custom
 
 Voicebox builds on [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS), [Genie-TTS](https://github.com/High-Logic/Genie-TTS) and [RinStel Android](https://github.com/RinStel/Genie-TTS-Android). Mobile optimizations drew on [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp), and some UI components are adapted from [Microsoft Fluent UI Android](https://github.com/microsoft/fluentui-android).
 
-The Roxy (洛琪希) voice in the demo videos comes from [Shinowing](https://github.com/Shinowing)'s [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model). Thank you for sharing the model.
+The Roxy voice in the demo videos comes from [Shinowing](https://github.com/Shinowing)'s [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model). Thank you for sharing the model.
 
 Voicebox's original code and modifications are licensed under [GNU AGPL-3.0](LICENSE).
 

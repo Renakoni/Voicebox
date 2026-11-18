@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="README_ZH.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README.md">English</a>
+  <a href="README_ZH.md">中文</a> · <strong>日本語</strong> · <a href="README.md">English</a>
 </p>
 
 <p align="center">
@@ -45,16 +45,16 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 [Releases](https://github.com/Renakoni/Voicebox/releases/latest) から **Voicebox 1.1.3**（72.7 MiB）をダウンロードします。**Android 11 以降の ARM64 端末**に対応しています。以前の公式版には上書きインストールできます。
 
-1. 「音色」タブで公式の V2 Pro Plus または V5 Turbo をダウンロードします。共通データも一緒に取得します。手持ちの重みを使う場合は「导入音色」をタップし、`.ckpt` と `.pth` を選びます。
+1. 「Voices」タブで公式の V2 Pro Plus または V5 Turbo をダウンロードします。共通データも一緒に取得します。手持ちの重みを使う場合は「Import voice」をタップし、`.ckpt` と `.pth` を選びます。
 2. ベースモデルを選びます。長押しで録音するか、参照音声を選んでください。録音で話している内容と、その言語を設定して保存します。
-3. 「创作」タブで声と出力言語を選び、テキストを入力して「生成语音」をタップします。生成した音声は再生、保存、共有、QQ への送信ができます。
+3. 「Create」タブで声と出力言語を選び、テキストを入力して「Generate speech」をタップします。生成した音声は再生、保存、共有、QQ への送信ができます。
 
 <details>
 <summary><strong>QQ にボイスメッセージを送るための初回設定</strong></summary>
 
 1. Android の開発者向けオプションで「ワイヤレス デバッグ」をオンにします。
-2. Voicebox の「发送 QQ 语音」画面で「连接」をタップし、Android に表示された 6 桁のコードを入力します。ペア設定は初回のみです。
-3. 「选择联系人并发送」をタップし、QQ で送信先のチャットを開きます。Voicebox は仮の音声を録音し、生成した音声に差し替えて送信します。送信が終わるまで QQ の操作は控えてください。
+2. Voicebox の「Send to QQ」画面で「Connect」をタップし、Android に表示された 6 桁のコードを入力します。ペア設定は初回のみです。
+3. 「Choose contact and send」をタップし、QQ で送信先のチャットを開きます。Voicebox は仮の音声を録音し、生成した音声に差し替えて送信します。送信が終わるまで QQ の操作は控えてください。
 
 1 件あたりの音声は 60 秒未満にしてください。
 
