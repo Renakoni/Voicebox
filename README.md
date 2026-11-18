@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>把 GPT-SoVITS 装进口袋。</strong><br>
-  无需云端与显卡，在 Android 本地实现高质量语音克隆，中文 · 日本語 · English
+  无需云端与显卡，在 Android 本地实现高质量语音克隆。<br>
+  <a href="README.md">中文</a> · <a href="README_JA.md">日本語</a> · <a href="README_EN.md">English</a>
 </p>
 
 
@@ -22,9 +23,9 @@
   · <a href="#推理性能">性能</a>
   · <a href="#从源码构建">从源码构建</a>
   · <a href="https://github.com/Renakoni/Voicebox/issues">反馈问题</a>
-  · <a href="README_EN.md">English</a>
 </p>
-5 秒样本，即可在本地复刻任意音色。全程离线运行于 Android 端侧，不依赖服务器与桌面显卡，实现快于实时的语音合成。
+
+用约 5 秒的参考录音和对应原文，就能在手机上克隆音色。
 
 https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
@@ -34,12 +35,11 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## 核心特性
 
-- **真·端侧离线**：模型下载完成后，生成全程在手机上进行。GPU 走 WebGPU，高通设备还能叠加 NPU 混合加速；没有可用 GPU 时自动回到 CPU。
-- **原生权重直导**：直接选中 GPT-SoVITS 训练出的 `.ckpt` 和 `.pth`，在手机上转换成可用模型，支持 V2 Pro、V2 Pro Plus 和 V5 Turbo，不用先在电脑上导出。
-- **一键发成 QQ 语音条**：生成完点「去 QQ 发送」，选好联系人，发出去的是对方点开就能听的原生语音消息。 [查看 QQ 发送演示（14 秒）](https://github.com/Renakoni/Voicebox/blob/main/.github/assets/demo-qq.mp4)
-- **本机 HTTP 服务**：在设置中开启本地 API，方便 Tasker、听书软件等第三方客户端调用手机生成语音；电脑端可通过 ADB 端口转发接入。
-
-另外，生成语言和参考录音语言分开设置：用日语录音克隆的音色，照样能说中文和英文。
+- **全链路端侧离线**：模型下载完成后，推理全程在本地执行，无需联网与外部显卡。计算由 WebGPU 驱动，兼容的高通设备可启用 NPU 混合加速。
+- **跨语种克隆合成**：参考录音与生成语言完全解耦，支持跨语种音色迁移（例如使用日语参考音频合成中文或英文）。
+- **原生权重直接导入**：支持直接载入 GPT-SoVITS 训练产出的 `.ckpt` 与 `.pth` 权重，并在端侧一键转换为可用模型，覆盖 V2 Pro、V2 Pro Plus 与 V5 Turbo。
+- **原生 QQ 语音条发送**：生成后可直接发送为 QQ 聊天中的原生语音消息（非文件或录屏播放），支持一键对接目标会话。[查看 QQ 发送演示（14 秒）](https://github.com/Renakoni/Voicebox/blob/main/.github/assets/demo-qq.mp4)
+- **本地 HTTP 服务**：内置轻量 API 服务，方便「阅读」等听书软件、Tasker 或其他客户端直接调度手机合成语音，PC 端亦可通过 ADB 端口转发调用。
 
 ## 快速上手
 
@@ -62,7 +62,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## 推理性能
 
-> **省流**：在小米 14（骁龙 8 Gen 3）上，V2 Pro Plus 生成一句 4 秒的话约需 **2.6 秒**；长段落 RTF 约 **0.51**，生成速度大约是播放速度的两倍。V5 Turbo 开启 NPU 后长段 RTF 降到 **0.95**，同样快于播放。
+> **省流**：在骁龙 8 Gen 3上，V2 Pro Plus 生成一句 4 秒的话约需 **2.6 秒**；长段落 RTF 约 **0.51**，生成速度大约是播放速度的两倍。V5 Turbo 开启 NPU 后长段 RTF 降到 **0.95**，同样快于播放。
 
 下表中，短句约 **4 秒**、长段约 **22 秒**音频，使用官方权重和同一份中文参考录音。模型加载与缓存准备完成后，每种配置、每种长度生成 **10 次**，结果为**均值 ± 标准差**。
 
@@ -79,13 +79,15 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 | V5 Turbo | Voicebox · GPU | 8.173 ± 0.429 | 2.038 ± 0.102 | 40.676 ± 2.589 | 1.816 ± 0.043 |
 | V5 Turbo | Voicebox · GPU＋NPU | 5.367 ± 0.301 | 1.313 ± 0.074 | 21.479 ± 0.867 | 0.954 ± 0.021 |
 
-**RTF = 生成耗时 ÷ 音频时长**，越小越快；小于 1 表示生成快于播放。手机 GPU 为 CPU＋WebGPU，NPU 为 Qualcomm QNN 混合加速。NPU 是可选的实验路径：安装包不附带 QNN 运行库，只有预先配置好兼容运行库并通过验证的设备才会启用，否则使用 GPU。
+- **RTF（实时率）** = 生成耗时 ÷ 音频时长，小于 1 表示生成速度快于实际播放速度。
+- **硬件后端说明**：手机 GPU 路径采用 CPU＋WebGPU 协同运算；GPU＋NPU 路径接入 Qualcomm QNN 引擎进行异构加速（依赖兼容运行库），未启用加速时自动回退至 CPU 推理。
+- 两种模型的计算特性与异构调度方案，详见[实现方案与优化](docs/METHODS.md)。
 
 ## 生成质量
 
-> **省流**：同样的输入和噪声下，V2 Pro Plus 手机输出与官方 PyTorch FP32 的波形误差约 **0.23%**；用语音识别回听 160 份音频，手机生成的转写一致率在 **99%** 以上，与电脑上的官方实现处在同一水平。
+固定输入和噪声后，V2 Pro Plus 在手机上的波形与官方 PyTorch FP32 输出相差约 **0.23% RMS**。在本次短句和长段测试中，手机生成音频的转写一致率均高于 **99%**。
 
-波形误差比较 GPU＋NPU 与官方 PyTorch FP32 的完整声学输出，固定输入和噪声，短句、长段各 1 组。转写一致率使用 SenseVoice 核对上述 160 份音频，每种配置包含短句、长段各 10 次。
+波形对照固定输入和噪声，比较 GPU＋NPU 与官方 PyTorch FP32 的声学输出，短句、长段各一组。朗读内容则用 SenseVoice 核对性能测试中的 160 份音频，每种配置包含短句和长段各 10 次。
 
 | 模型 | RMS 短句 | RMS 长段 | 一致率·官方·CPU | 一致率·官方·CUDA | 一致率·手机·GPU | 一致率·手机·GPU＋NPU |
 |---|---:|---:|---:|---:|---:|---:|
