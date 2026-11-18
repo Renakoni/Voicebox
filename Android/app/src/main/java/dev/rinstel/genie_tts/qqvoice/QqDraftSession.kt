@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.checkUi
+
 import android.content.Context
 import android.util.AtomicFile
 import org.json.JSONArray
@@ -21,7 +25,7 @@ class QqDraftSession(context: Context) {
     }
 
     fun prepare(wav: File) {
-        check(status() == null) { "上一条语音仍在处理中。" }
+        checkUi(status() == null) { UiText(R.string.qq_previous_busy) }
         val encoded = QqSilk.fromWav(wav)
         silk.writeBytes(encoded.bytes)
         save(JSONObject().put("phase", "prepared").put("durationMs", encoded.durationMs))
@@ -44,8 +48,8 @@ class QqDraftSession(context: Context) {
     fun beginSend(adb: LocalAdb, recipient: String) {
         val request = requireNotNull(status())
         check(request.getString("phase") == "replaced" && request.optString("recipient") == recipient)
-        check(QqDraftPolicy.sha256(adb.readFile(request.getString("path"))) == request.getString("replacementHash")) {
-            "草稿内容已变化，未点击发送。请在 QQ 检查。"
+        checkUi(QqDraftPolicy.sha256(adb.readFile(request.getString("path"))) == request.getString("replacementHash")) {
+            UiText(R.string.qq_content_changed)
         }
         // Persist before the tap: a lost ADB reply or process restart must never resend.
         save(request.put("phase", "sending"))
@@ -64,7 +68,7 @@ class QqDraftSession(context: Context) {
         val result = adb.shell("for f in ${QqDraftPolicy.ROOT}/*/ptt/$date/stream_*.slk; do [ -f \"\$f\" ] && stat -c '%n|%s|%Y' \"\$f\"; done; true")
         return result.lineSequence().filter { it.isNotBlank() }.map {
             val fields = it.split('|')
-            check(fields.size == 3 && QqDraftPolicy.validPath(fields[0])) { "QQ 目录格式不兼容。" }
+            checkUi(fields.size == 3 && QqDraftPolicy.validPath(fields[0])) { UiText(R.string.qq_folder_unsupported) }
             QqDraftFile(fields[0], fields[1].toLong(), fields[2].toLong())
         }.toList()
     }
@@ -83,16 +87,16 @@ class QqDraftSession(context: Context) {
 
     fun replace(adb: LocalAdb) {
         val request = requireNotNull(status())
-        check(request.getString("phase") == "armed") { "此草稿已经处理，请勿重复替换。" }
+        checkUi(request.getString("phase") == "armed") { UiText(R.string.qq_draft_already_handled) }
         val rows = request.getJSONArray("before")
         val before = (0 until rows.length()).map { rows.getJSONObject(it).let { row ->
             QqDraftFile(row.getString("path"), row.getLong("size"), row.getLong("modified")) } }
         val candidate = QqDraftPolicy.select(before, scan(adb), request.getLong("started"), adb.shell("date +%s").toLong())
         Thread.sleep(600)
-        check(scan(adb).find { it.path == candidate.path } == candidate) { "录音仍在写入，请在 QQ 停止录音后重试。" }
+        checkUi(scan(adb).find { it.path == candidate.path } == candidate) { UiText(R.string.qq_recording_in_progress) }
         val current = adb.readFile(candidate.path)
-        check(current.size.toLong() == candidate.size && current.take(10).toByteArray().contentEquals(byteArrayOf(2) + "#!SILK_V3".toByteArray())) {
-            "新录音格式或大小不符，已停止。"
+        checkUi(current.size.toLong() == candidate.size && current.take(10).toByteArray().contentEquals(byteArrayOf(2) + "#!SILK_V3".toByteArray())) {
+            UiText(R.string.qq_recording_invalid)
         }
         request.put("path", candidate.path)
             .put("replacementHash", QqDraftPolicy.sha256(silk.readBytes())).put("phase", "writing")
@@ -108,13 +112,13 @@ class QqDraftSession(context: Context) {
         try {
             adb.writeFile(temporary, data)
             val hash = adb.shell("sha256sum ${LocalAdb.quote(path)}").substringBefore(' ')
-            check(hash == expectedHash) { "草稿已改变，未覆盖。" }
+            checkUi(hash == expectedHash) { UiText(R.string.qq_draft_kept) }
             val owner = adb.shell("stat -c %u ${LocalAdb.quote(path)}")
             // Renaming a shell-owned temp file makes the draft unreadable by QQ.
             // Preserve the existing inode/owner. A failed write must never reach Send.
             adb.shell("cat ${LocalAdb.quote(temporary)} > ${LocalAdb.quote(path)}")
-            check(adb.shell("stat -c %u ${LocalAdb.quote(path)}") == owner) { "草稿属主发生变化，已停止。" }
-            check(QqDraftPolicy.sha256(adb.readFile(path)) == QqDraftPolicy.sha256(data)) { "音频校验失败，未发送。请在 QQ 取消该草稿。" }
+            checkUi(adb.shell("stat -c %u ${LocalAdb.quote(path)}") == owner) { UiText(R.string.qq_owner_changed) }
+            checkUi(QqDraftPolicy.sha256(adb.readFile(path)) == QqDraftPolicy.sha256(data)) { UiText(R.string.qq_audio_verification_failed) }
         } finally { runCatching { adb.shell("rm -f ${LocalAdb.quote(temporary)}") } }
     }
 

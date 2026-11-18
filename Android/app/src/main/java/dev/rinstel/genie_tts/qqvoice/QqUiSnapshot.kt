@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.checkUi
+
 import java.io.StringReader
 import javax.xml.parsers.DocumentBuilderFactory
 import org.xml.sax.InputSource
@@ -28,12 +32,12 @@ internal class QqUiSnapshot(xml: String) {
 
     private fun unique(predicate: (QqUiNode) -> Boolean): QqUiNode? {
         val matches = nodes.filter(predicate)
-        check(matches.size <= 1) { "QQ 页面存在重复控件，自动操作已停止。" }
+        checkUi(matches.size <= 1) { UiText(R.string.qq_duplicate_controls) }
         return matches.singleOrNull()
     }
     fun conversationName() = unique { it.id == "com.tencent.mobileqq:id/3o4" }?.text?.takeIf { it.isNotBlank() }
     fun requireConversation(name: String) {
-        check(conversationName() == name) { "QQ 会话已改变，自动操作已停止。" }
+        checkUi(conversationName() == name) { UiText(R.string.qq_conversation_changed) }
     }
     fun isConversationList() = conversationName() == null &&
         nodes.any { it.id == "com.tencent.mobileqq:id/aua" && it.clickable }

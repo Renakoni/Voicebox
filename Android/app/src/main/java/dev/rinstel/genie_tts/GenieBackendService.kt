@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.userMessage
+import dev.rinstel.genie_tts.i18n.userText
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -352,15 +357,15 @@ class GenieBackendService : Service() {
         val catalog = OfficialModelCatalog(this)
         val model = catalog.models.firstOrNull { it.id == id } ?: return false
         val previous = officialDownloadState.value
-        officialDownloadState.value = OfficialDownloadState(id, "准备下载", running = true)
+        officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), running = true)
         val accepted = importOnWorker<Unit>(onComplete = { result ->
             officialDownloadState.value = result.fold(
-                { OfficialDownloadState(id, "已下载", completed = true) },
+                { OfficialDownloadState(id, UiText(R.string.download_complete), completed = true) },
                 { error ->
                     Log.w("OfficialModels", "Model download failed", error)
                     OfficialDownloadState(id, error = if (error is java.util.concurrent.CancellationException)
-                        "已取消下载" else error.message?.takeIf { text -> text.any { it in '\u4e00'..'\u9fff' } }
-                        ?: "下载失败，请检查网络后重试。")
+                        UiText(R.string.download_cancelled) else error.userText()
+                        ?: UiText(R.string.download_failed))
                 })
         }) { context, _ ->
             OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open).install(model, context::checkCancelled) {
@@ -378,14 +383,14 @@ class GenieBackendService : Service() {
     ): Boolean = importOnWorker(onComplete) { context, _ ->
         contentResolver.openInputStream(uri)?.use { input ->
             ResourcePackageImporter(requireNotNull(getExternalFilesDir(null))).importRuntime(input, context::checkCancelled)
-        } ?: error("无法读取资源包，请重新选择文件。")
+        } ?: errorUi(UiText(R.string.resource_open_failed))
     }
 
     fun importCheckpointPair(
         name: String,
         gpt: android.net.Uri,
         sovits: android.net.Uri,
-        onProgress: (String) -> Unit,
+        onProgress: (UiText) -> Unit,
         onComplete: (Result<CheckpointImporter.Result>) -> Unit,
         reference: CheckpointImporter.Reference? = null,
         replaceCharacterId: String? = null,
@@ -396,8 +401,8 @@ class GenieBackendService : Service() {
         CheckpointImporter(requireNotNull(getExternalFilesDir(null))) { file ->
             assets.open(file)
         }.import(name,
-            openGpt = { contentResolver.openInputStream(gpt) ?: error("无法读取 GPT 权重，请重新选择。") },
-            openSovits = { contentResolver.openInputStream(sovits) ?: error("无法读取 SoVITS 权重，请重新选择。") },
+            openGpt = { contentResolver.openInputStream(gpt) ?: errorUi(UiText(R.string.gpt_open_failed)) },
+            openSovits = { contentResolver.openInputStream(sovits) ?: errorUi(UiText(R.string.sovits_open_failed)) },
             progress = progress, checkCancelled = context::checkCancelled, reference = reference,
             replaceCharacterId = replaceCharacterId, gptFilename = gptFilename, sovitsFilename = sovitsFilename,
             architectureHint = architectureHint)
@@ -412,15 +417,15 @@ class GenieBackendService : Service() {
 
     private fun <T> importOnWorker(
         onComplete: (Result<T>) -> Unit,
-        onProgress: (String) -> Unit = {},
-        operation: (GenerationContext, (String) -> Unit) -> T,
+        onProgress: (UiText) -> Unit = {},
+        operation: (GenerationContext, (UiText) -> Unit) -> T,
     ): Boolean {
         if (generationGate.isClaimed() || destroyed) return false
         setActiveDefaults(null)
         val context = GenerationContext()
         if (!generationGate.tryAcquire(context)) return false
         publishState(GenerationStage.INSTALLING_MODEL, true, state.requestedBackend,
-            state.resolvedBackend, state.runtimeLabel, "正在导入资源", context = context)
+            state.resolvedBackend, state.runtimeLabel, getString(R.string.resources_importing), context = context)
         worker.execute {
             val result = runCatching {
                 context.checkCancelled()
@@ -537,9 +542,10 @@ class GenieBackendService : Service() {
                 progressLabel = null,
                 generationDurationMs = SystemClock.elapsedRealtime() - startedAtMs,
                 latestOutputFilePath = null,
-                message = if (cancelled) errorCode else error.message ?: error.javaClass.simpleName,
+                message = if (cancelled) getString(R.string.generation_cancelled)
+                    else error.userMessage(resources) ?: getString(R.string.generation_failed),
             )
-            onComplete?.invoke(InferResult.Error(error.message ?: error.javaClass.simpleName, errorCode))
+            onComplete?.invoke(InferResult.Error(error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName, errorCode))
         } finally {
             Log.i(TIMING_LOG_TAG, "request_total_ms=${SystemClock.elapsedRealtime() - startedAtMs} ms")
             generationGate.release(context)
@@ -644,7 +650,7 @@ class GenieBackendService : Service() {
                 generationDurationMs = null,
                 message = getString(
                     R.string.prototype_cache_clear_failed,
-                    error.message ?: error.javaClass.simpleName,
+                    error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName,
                 ),
             )
         }
@@ -933,7 +939,7 @@ class GenieBackendService : Service() {
                 }
                 BackendApiContract.MSG_SYNTHESIZE -> {
                     val request = try { message.data.toGenerationRequest() } catch (error: IllegalArgumentException) {
-                        sendErrorTo(message.replyTo, error.message ?: getString(R.string.prototype_service_api_invalid_request))
+                        sendErrorTo(message.replyTo, error.userMessage(resources) ?: error.message ?: getString(R.string.prototype_service_api_invalid_request))
                         return
                     } ?: run {
                         sendErrorTo(message.replyTo, getString(R.string.prototype_service_api_invalid_request))

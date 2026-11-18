@@ -1,6 +1,11 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import android.content.Context
+import android.content.res.Resources
+import dev.rinstel.genie_tts.inference.modelArchitectureLabel
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
 import dev.rinstel.genie_tts.checkpoint.DownloadedVocoder
 import dev.rinstel.genie_tts.inference.ModelAssetRepository
@@ -13,6 +18,9 @@ import java.io.InputStream
 data class ModelDownload(val url: String, val bytes: Long, val sha256: String, val mirrors: List<String> = emptyList())
 
 data class OfficialModel(val id: String, val name: String, val architecture: String, val sovits: ModelDownload) {
+    fun displayName(resources: Resources): String =
+        resources.getString(R.string.official_model_name, modelArchitectureLabel(resources, architecture))
+
     val directory get() = "$architecture/$id/tts_models"
     val requiredFiles get() = when (architecture) {
         "v2ProPlus" -> RequiredModelFiles.v2ProPlusCharacter(id)
@@ -50,14 +58,14 @@ class OfficialModelCatalog(json: JSONObject) {
     }
 }
 
-data class OfficialDownloadState(val modelId: String = "", val label: String = "", val percent: Int? = null,
-    val running: Boolean = false, val completed: Boolean = false, val error: String? = null)
+data class OfficialDownloadState(val modelId: String = "", val label: UiText? = null, val percent: Int? = null,
+    val running: Boolean = false, val completed: Boolean = false, val error: UiText? = null)
 
 class OfficialModelInstaller(private val root: File, private val catalog: OfficialModelCatalog,
     private val openAsset: (String) -> InputStream) {
     fun install(model: OfficialModel, checkCancelled: () -> Unit, update: (OfficialDownloadState) -> Unit) {
         val stage = File(root, ".official-download").apply { mkdirs() }
-        fun publish(label: String, percent: Int? = null) =
+        fun publish(label: UiText, percent: Int? = null) =
             update(OfficialDownloadState(model.id, label, percent, running = true))
         try {
             val downloads = catalog.runtime.mapNotNull { (path, source) ->
@@ -70,9 +78,9 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
             val sovits = File(stage, "model.pth")
             downloads += ModelDownloadFile(catalog.gpt, gpt)
             downloads += ModelDownloadFile(model.sovits, sovits)
-            publish("正在选择下载线路")
+            publish(UiText(R.string.download_selecting_source))
             downloadModelFiles(downloads, checkCancelled) { completed, total, percent ->
-                publish("下载资源 $completed/$total", percent)
+                publish(UiText(R.string.download_resources, completed, total), percent)
             }
             checkCancelled()
             val hubertManifest = File(root, "RuntimeAssets/chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json")
@@ -80,20 +88,20 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
                 hubertManifest.outputStream().use(input::copyTo)
             }
             if (vocoder != null) {
-                publish("正在转换 V5 声码器")
+                publish(UiText(R.string.vocoder_converting))
                 DownloadedVocoder(root, openAsset).install(vocoder, checkCancelled)
                 vocoder.delete()
             }
             checkCancelled()
-            publish("校验完成，正在转换")
+            publish(UiText(R.string.download_verified))
             val existing = File(root, "CharacterModels/${model.architecture}/${model.id}").isDirectory
             CheckpointImporter(root, openAsset).import(model.name, { gpt.inputStream() }, { sovits.inputStream() },
                 progress = { publish(it) }, checkCancelled = checkCancelled,
                 replaceCharacterId = model.id.takeIf { existing }, newCharacterId = model.id.takeUnless { existing },
                 gptFilename = "s1v3.ckpt", sovitsFilename = if (model.architecture == "v5turbo") "s2Gv5turbo.pth" else "s2Gv2ProPlus.pth",
                 architectureHint = model.architecture)
-            require(catalog.installed(root, model)) {
-                "模型文件不完整，请重新下载。"
+            requireUi(catalog.installed(root, model)) {
+                UiText(R.string.model_incomplete)
             }
         } finally { stage.deleteRecursively() }
     }

@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -26,7 +29,7 @@ class ReferenceAudioPicker(
                         val count = input.read(buffer)
                         if (count < 0) break
                         total += count
-                        require(total <= 32L * 1024 * 1024) { "请选择不超过 32 MB 的参考音频。" }
+                        requireUi(total <= 32L * 1024 * 1024) { UiText(R.string.reference_size_limit) }
                         output.write(buffer, 0, count)
                     }
                 }

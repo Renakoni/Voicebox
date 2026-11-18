@@ -1,5 +1,7 @@
 package dev.rinstel.genie_tts.inference
 
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import android.content.Context
 
 interface TextFeatureExtractor : AutoCloseable {
@@ -17,7 +19,7 @@ class DefaultTextFeatureExtractor(
     override fun close() { japanese.close(); english.close(); korean.close(); fallback.close() }
     override fun extract(language: String, text: String): TextFeatures {
         val normalized = LanguageNormalizer.normalize(language)
-        LanguageNormalizer.scriptError(normalized, text)?.let { throw IllegalArgumentException(it) }
+        LanguageNormalizer.scriptError(normalized, text)?.let { message -> requireUi(false) { message } }
         return when {
             LanguageNormalizer.isHybridChineseEnglish(normalized) ||
                 LanguageNormalizer.shouldAutoDetectHybrid(normalized, text) ->

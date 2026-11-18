@@ -2,6 +2,9 @@
 
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.i18n.UiText
+import androidx.compose.ui.platform.LocalResources
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,14 +27,15 @@ import dev.rinstel.genie_tts.BuildConfig
 import dev.rinstel.genie_tts.R
 
 @Composable
-internal fun AboutPage(onBack: () -> Unit, onError: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun AboutPage(onBack: () -> Unit, onError: (UiText) -> Unit, modifier: Modifier = Modifier) {
+    val resources = LocalResources.current
     val uriHandler = LocalUriHandler.current
     val openLink: (String) -> Unit = { url ->
-        runCatching { uriHandler.openUri(url) }.onFailure { onError("无法打开链接，请检查浏览器是否可用。") }
+        runCatching { uriHandler.openUri(url) }.onFailure { onError(UiText(R.string.link_open_failed)) }
     }
     Column(modifier.fillMaxHeight()) {
-        TopAppBar(title = { Text("关于", style = MaterialTheme.typography.titleLarge) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回设置") } },
+        TopAppBar(title = { Text(resources.getString(R.string.about), style = MaterialTheme.typography.titleLarge) },
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_settings)) } },
             windowInsets = WindowInsets(0, 0, 0, 0),
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
@@ -39,21 +43,21 @@ internal fun AboutPage(onBack: () -> Unit, onError: (String) -> Unit, modifier: 
                 horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(Modifier.size(80.dp).clip(RoundedCornerShape(20.dp))) {
                     Image(painterResource(R.drawable.ic_launcher_background), null, Modifier.matchParentSize())
-                    Image(painterResource(R.drawable.ic_launcher_foreground), "Voicebox 图标", Modifier.matchParentSize())
+                    Image(painterResource(R.drawable.ic_launcher_foreground), resources.getString(R.string.app_icon), Modifier.matchParentSize())
                 }
                 Text("Voicebox", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 16.dp))
-                Text("版本 ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodyMedium,
+                Text(resources.getString(R.string.app_version, BuildConfig.VERSION_NAME), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
-                Text("本地语音合成与音色克隆", style = MaterialTheme.typography.bodyMedium,
+                Text(resources.getString(R.string.app_description), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 16.dp))
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             AboutLink("GitHub", "github.com/Renakoni/Voicebox", "https://github.com/Renakoni/Voicebox", openLink)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink("问题反馈", "GitHub Issues", "https://github.com/Renakoni/Voicebox/issues", openLink)
+            AboutLink(resources.getString(R.string.report_issue), "GitHub Issues", "https://github.com/Renakoni/Voicebox/issues", openLink)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink("开源许可", "AGPL-3.0", "https://github.com/Renakoni/Voicebox/blob/main/LICENSE", openLink)
+            AboutLink(resources.getString(R.string.open_source_license), "AGPL-3.0", "https://github.com/Renakoni/Voicebox/blob/main/LICENSE", openLink)
         }
     }
 }

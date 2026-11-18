@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -145,10 +148,10 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
     var complete = false
     try {
         checkCancelled()
-        require(connection.responseCode == HttpURLConnection.HTTP_OK) { "下载服务暂时不可用，请稍后重试。" }
+        requireUi(connection.responseCode == HttpURLConnection.HTTP_OK) { UiText(R.string.download_service_unavailable) }
         target.parentFile?.mkdirs()
-        require(target.parentFile?.isDirectory == true) { "无法创建下载目录。" }
-        require(target.parentFile!!.usableSpace > source.bytes) { "存储空间不足，无法下载模型。" }
+        requireUi(target.parentFile?.isDirectory == true) { UiText(R.string.download_directory_failed) }
+        requireUi(target.parentFile!!.usableSpace > source.bytes) { UiText(R.string.download_storage_full) }
         val digest = MessageDigest.getInstance("SHA-256")
         var total = 0L
         var lastPercent = -1
@@ -160,7 +163,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
                 val count = input.read(buffer)
                 if (count < 0) break
                 total += count
-                require(total <= source.bytes) { "下载文件大小不符，请重试。" }
+                requireUi(total <= source.bytes) { UiText(R.string.download_size_mismatch) }
                 digest.update(buffer, 0, count)
                 output.write(buffer, 0, count)
                 val percent = (total * 100 / source.bytes).toInt()
@@ -169,7 +172,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
         } }
         checkCancelled()
         val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-        require(total == source.bytes && hash == source.sha256) { "下载校验未通过，请重新下载。" }
+        requireUi(total == source.bytes && hash == source.sha256) { UiText(R.string.download_checksum_failed) }
         complete = true
     } finally {
         connection.disconnect()

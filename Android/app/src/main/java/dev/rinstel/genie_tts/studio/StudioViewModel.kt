@@ -1,6 +1,13 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.userText
+import dev.rinstel.genie_tts.i18n.requireUi
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import android.app.Application
+import android.content.res.Resources
 import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
@@ -26,7 +33,7 @@ import dev.rinstel.genie_tts.OfficialDownloadState
 import dev.rinstel.genie_tts.api.ActiveDefaults
 import dev.rinstel.genie_tts.checkpoint.CheckpointImporter
 import dev.rinstel.genie_tts.checkpoint.CheckpointPreview
-import dev.rinstel.genie_tts.inference.modelArchitectureLabel
+import dev.rinstel.genie_tts.inference.modelArchitectureText
 import dev.rinstel.genie_tts.inference.DeviceAccelerationStatus
 import dev.rinstel.genie_tts.inference.CharacterModel
 import dev.rinstel.genie_tts.inference.ExecutionBackend
@@ -92,17 +99,17 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var state by mutableStateOf(BackendServiceState()); private set
     var draft by mutableStateOf<VoiceDraft?>(null); private set
     var checkpointDraft by mutableStateOf<CheckpointDraft?>(null); private set
-    var checkpointError by mutableStateOf<String?>(null); private set
-    var checkpointRecognition by mutableStateOf<String?>(null); private set
+    var checkpointError by mutableStateOf<UiText?>(null); private set
+    var checkpointRecognition by mutableStateOf<UiText?>(null); private set
     var officialDownload by mutableStateOf(OfficialDownloadState()); private set
     var choosingVoice by mutableStateOf(false); private set
     var fileBusy by mutableStateOf(false); private set
     var recordingMs by mutableStateOf<Long?>(null); private set
     var importing by mutableStateOf(false); private set
-    var importMessage by mutableStateOf<String?>(null); private set
-    var notice by mutableStateOf<String?>(null); private set
-    var editorError by mutableStateOf<String?>(null); private set
-    var generationError by mutableStateOf<String?>(null); private set
+    var importMessage by mutableStateOf<UiText?>(null); private set
+    var notice by mutableStateOf<UiText?>(null); private set
+    var editorError by mutableStateOf<UiText?>(null); private set
+    var generationError by mutableStateOf<UiText?>(null); private set
     var cancelling by mutableStateOf(false); private set
     var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
@@ -115,12 +122,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var theme by mutableStateOf(settings.themeMode); private set
     var apiEnabled by mutableStateOf(settings.apiEnabled); private set
     var apiPort by mutableStateOf(settings.apiPort.toString()); private set
-    var apiPortError by mutableStateOf<String?>(null); private set
+    var apiPortError by mutableStateOf<UiText?>(null); private set
 
-    val audio = AudioPreview(app, { preview = it }, { notify("暂时无法播放，请检查音频或稍后重试。") })
+    val audio = AudioPreview(app, { preview = it }, { notify(UiText(R.string.audio_play_failed)) })
     private val recorder = ReferenceRecorder(app, referenceRoot, { recordingMs = it }, ::finishReferenceRecording) {
         cancelReferenceRecording()
-        referenceRecordingError("录音中断，请重试。")
+        referenceRecordingError(UiText(R.string.recording_interrupted))
     }
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
     val busy get() = state.busy || submitting || importing || officialDownload.running
@@ -139,15 +146,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 if (next.stage == GenerationStage.ERROR) {
                     Log.e("VoiceStudio", next.message)
                     generationError = if (next.errorCode == "EMPTY_SEMANTIC")
-                        "这次没有生成有效语音，请检查参考原文，或换一段文字再试。"
-                    else "生成没有完成。请检查音色的参考音频和原文；若仍然失败，可在设置中关闭 GPU 加速后重试。"
+                        UiText(R.string.generation_empty)
+                    else UiText(R.string.generation_failed)
                 }
             }
         }
         val path = next.latestOutputFilePath
         if (next.stage == GenerationStage.COMPLETED && path != null && path != handledOutput) {
             handledOutput = path
-            val name = if (ownRequest) pendingVoiceName else "生成语音"
+            val name = if (ownRequest) pendingVoiceName else app.getString(R.string.generate_speech)
             val sourceText = if (ownRequest) pendingText else ""
             viewModelScope.launch {
                 val duration = withContext(Dispatchers.IO) { runCatching { duration(path) }.getOrDefault(0) }
@@ -188,7 +195,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             availableBackends = emptySet()
             submitting = false
             state = BackendServiceState()
-            generationError = "语音服务已断开，重新打开应用后可重试。"
+            generationError = UiText(R.string.service_disconnected)
         }
     }
 
@@ -198,7 +205,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val intent = GenieBackendService.serviceIntent(app)
             ContextCompat.startForegroundService(app, intent)
             bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-        }.onFailure { notify("语音服务启动失败，请重新打开应用。") }
+        }.onFailure { notify(UiText(R.string.service_start_failed)) }
     }
 
     private fun refreshResources() {
@@ -237,7 +244,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 Log.e("VoiceStudio", "Cannot load voices", error)
-                notify("音色加载失败，请检查本地资源后重试。")
+                notify(UiText(R.string.voices_load_failed))
             } finally {
                 if (isActive) loading = false
             }
@@ -268,8 +275,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun modelFor(voice: StudioVoice): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == voice.modelDirectory }
     fun modelFor(official: OfficialModel): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == official.directory }
     fun isOfficialDirectory(directory: String) = officialModels.any { it.directory == directory }
-    fun isOfficialCharacter(id: String?) = officialModels.any { it.id == id }
     fun voiceFor(official: OfficialModel): StudioVoice? = voices.firstOrNull { it.builtIn && it.modelDirectory == official.directory }
+    fun voiceName(voice: StudioVoice, resources: Resources): String =
+        officialModels.firstOrNull { voice.builtIn && it.directory == voice.modelDirectory }
+            ?.displayName(resources) ?: voice.name
     private fun nameExists(name: String, voiceId: String? = null, modelDirectory: String? = null): Boolean {
         val names = officialModels.filterNot { it.directory == modelDirectory }.map { it.name } +
             models.filterNot { it.relativeModelDirectory == modelDirectory }.map { it.displayName } +
@@ -278,7 +287,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun downloadOfficial(official: OfficialModel) {
         if (busy || fileBusy) return
-        if (service?.downloadOfficialModel(official.id) != true) notify("引擎正在忙碌，请稍后再试。")
+        if (service?.downloadOfficialModel(official.id) != true) notify(UiText(R.string.engine_busy))
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -326,7 +335,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     avatars.discard(it.avatarPath)
                     draft = it.copy(avatarPath = path)
                 }
-            }.onFailure { referenceRecordingError("无法读取这张图片，请重新选择。") }
+            }.onFailure { referenceRecordingError(UiText(R.string.image_read_failed)) }
             fileBusy = false
         }
     }
@@ -344,7 +353,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val picked = ReferenceAudioPicker(app).copyToAppCache(uri)
                     try {
                         val milliseconds = duration(picked.cachedFile.absolutePath)
-                        require(milliseconds in 500..30_000) { "请选择 0.5 至 30 秒的音频，建议使用清晰的 3 至 10 秒人声。" }
+                        requireUi(milliseconds in 500..30_000) { UiText(R.string.reference_duration_limit) }
                         val target = File(referenceRoot, "draft-${UUID.randomUUID()}.${picked.cachedFile.extension}")
                         Files.move(picked.cachedFile.toPath(), target.toPath())
                         Triple(target.absolutePath, picked.displayName, milliseconds)
@@ -355,8 +364,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 applyReference(forCheckpoint, path, name, milliseconds)
             }.onFailure {
                 Log.w("VoiceStudio", "Reference import failed", it)
-                val message = if (it is IllegalArgumentException && it.message?.startsWith("请选择") == true)
-                    it.message else "无法读取这段音频，请选择可播放的 WAV、MP3 或 M4A 文件。"
+                val message = it.userText() ?: UiText(R.string.reference_read_failed)
                 if (forCheckpoint) checkpointError = message else editorError = message
             }
             fileBusy = false
@@ -373,7 +381,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun referenceRecordingError(message: String?) {
+    fun referenceRecordingError(message: UiText?) {
         if (checkpointDraft != null) checkpointError = message else editorError = message
     }
 
@@ -385,7 +393,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         runCatching { recorder.start() }.onSuccess {
             fileBusy = true
             recordingMs = 0
-        }.onFailure { referenceRecordingError("无法开始录音，请检查麦克风权限和占用情况。") }
+        }.onFailure { referenceRecordingError(UiText(R.string.recording_start_failed)) }
     }
 
     fun finishReferenceRecording() {
@@ -394,15 +402,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         recordingMs = null
         val recorded = runCatching { recorder.finish() }.getOrElse {
             fileBusy = false
-            referenceRecordingError("录音太短或未完成，请重新录制。")
+            referenceRecordingError(UiText(R.string.recording_incomplete))
             return
         }
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { runCatching {
                 duration(recorded.absolutePath).also { require(it in 500..30_500) }
             } }
-            result.onSuccess { applyReference(forCheckpoint, recorded.absolutePath, "录音.m4a", it) }
-                .onFailure { recorded.delete(); referenceRecordingError("请录制至少半秒的人声。") }
+            result.onSuccess { applyReference(forCheckpoint, recorded.absolutePath, app.getString(R.string.recording_filename), it) }
+                .onFailure { recorded.delete(); referenceRecordingError(UiText(R.string.recording_minimum)) }
             fileBusy = false
         }
     }
@@ -419,11 +427,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (fileBusy || busy) return
         if (value.name.isBlank() || value.transcript.isBlank() || value.audioPath.isBlank() ||
             models.none { it.relativeModelDirectory == value.modelDirectory }) {
-            editorError = "请填好音色名称、参考音频和对应原文，并选择基础音色。"
+            editorError = UiText(R.string.voice_fields_required)
             return
         }
         if (nameExists(value.name, voiceId = value.id)) {
-            editorError = "音色名称已存在，请换一个名称。"
+            editorError = UiText(R.string.voice_name_exists)
             return
         }
         fileBusy = true
@@ -459,8 +467,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 draft = null
                 select(voice)
                 tab = 0
-                notify("音色已保存，可以开始创作了。")
-            }.onFailure { editorError = "音色保存失败，请检查手机剩余空间后重试。" }
+                notify(UiText(R.string.voice_saved))
+            }.onFailure { editorError = UiText(R.string.voice_save_failed) }
         }
     }
 
@@ -494,7 +502,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             ?: LanguageNormalizer.scriptError(promptLanguage, voice.transcript)
         if (languageError != null) { generationError = languageError; return }
         if (!File(voice.audioPath).isFile) {
-            generationError = "参考音频已丢失，请在音色页重新选择。"
+            generationError = UiText(R.string.reference_missing)
             return
         }
         audio.stop()
@@ -504,13 +512,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             referenceAudioPath = voice.audioPath, referenceText = voice.transcript, maxDecoderSteps = 1500,
             synthesisOptions = synthesisOptions)
         pendingRequest = request.context
-        pendingVoiceName = voice.name
+        pendingVoiceName = voiceName(voice, app.resources)
         pendingText = text.trim()
         submitting = true
         if (service?.synthesize(backend, request) != true) {
             submitting = false
             pendingRequest = null
-            generationError = "引擎正在处理其他任务，请稍后重试。"
+            generationError = UiText(R.string.engine_other_task)
         }
     }
 
@@ -535,19 +543,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun importRuntimePackage(uri: Uri) {
         if (busy || fileBusy) return
         importing = true
-        importMessage = "正在导入，完成后即可使用。大文件需要一些时间。"
+        importMessage = UiText(R.string.import_resources_progress)
         audio.stop()
         val accepted = service?.importRuntimePackage(uri) { result ->
             importing = false
-            importMessage = result.fold({ "导入完成，资源已保存在手机上。" }, {
+            importMessage = result.fold({ UiText(R.string.import_resources_complete) }, {
                 Log.e("VoiceStudio", "Resource import failed", it)
-                "导入失败，请选择对应的 Genie ZIP 资源包，并确认手机剩余空间充足。"
+                UiText(R.string.import_resources_failed)
             })
             refreshResources()
         } == true
         if (!accepted) {
             importing = false
-            importMessage = "引擎正在忙碌，请稍后重新导入。"
+            importMessage = UiText(R.string.import_engine_busy)
         }
     }
 
@@ -569,7 +577,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             referenceLanguage = voice.referenceLanguage, editingCharacterId = model.id,
             modelVersion = model.relativeModelDirectory.substringBefore('/'), avatarPath = voice.avatarPath)
         checkpointError = null
-        checkpointRecognition = modelArchitectureLabel(model.relativeModelDirectory.substringBefore('/'))
+        checkpointRecognition = modelArchitectureText(model.relativeModelDirectory.substringBefore('/'))
         importMessage = null
     }
 
@@ -583,7 +591,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             transcript = voice?.transcript.orEmpty(), durationMs = voice?.durationMs ?: 0,
             referenceLanguage = voice?.referenceLanguage ?: "auto", avatarPath = voice?.avatarPath.orEmpty())
         checkpointError = null
-        checkpointRecognition = modelArchitectureLabel(official.architecture)
+        checkpointRecognition = modelArchitectureText(official.architecture)
         importMessage = null
     }
 
@@ -596,7 +604,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         checkpointError = null
         checkpointRecognition = checkpointDraft?.takeIf { it.gpt == null && it.sovits == null }
-            ?.let { modelArchitectureLabel(it.modelVersion) }
+            ?.let { modelArchitectureText(it.modelVersion) }
     }
 
     fun closeCheckpointImport() {
@@ -630,7 +638,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
             val extension = if (gpt) ".ckpt" else ".pth"
             if (!filename.endsWith(extension, ignoreCase = true)) {
-                checkpointError = "${if (gpt) "GPT" else "SoVITS"} 权重请选择以 $extension 结尾的文件。"
+                checkpointError = UiText(R.string.checkpoint_extension, if (gpt) "GPT" else "SoVITS", extension)
                 fileBusy = false
                 return@launch
             }
@@ -643,10 +651,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             val selected = checkpointDraft
             checkpointRecognition = null
             if (selected?.gpt != null && selected.sovits != null) {
-                checkpointRecognition = "正在识别…"
+                checkpointRecognition = UiText(R.string.model_identifying)
                 checkpointRecognition = withContext(Dispatchers.IO) {
                     runCatching { CheckpointPreview.read(app, selected.sovits) }
-                        .fold({ it?.let(::modelArchitectureLabel) ?: "导入时识别" }, { "无法识别，请检查权重文件" })
+                        .fold({ it?.let { modelArchitectureText(it) } ?: UiText(R.string.model_identify_on_import) }, { UiText(R.string.model_identify_failed) })
                 }
             }
             fileBusy = false
@@ -658,25 +666,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         val editing = value.editingCharacterId != null
         if (value.name.isBlank() || (!editing && (value.gpt == null || value.sovits == null))) {
-            checkpointError = "请填写音色名称，并选择配套的 .ckpt 和 .pth 文件。"
+            checkpointError = UiText(R.string.checkpoint_fields_required)
             return
         }
         val editedDirectory = value.editingCharacterId?.let { "${value.modelVersion}/$it/tts_models" }
         if (nameExists(value.name, modelDirectory = editedDirectory)) {
-            checkpointError = "音色名称已存在，请换一个名称。"
+            checkpointError = UiText(R.string.voice_name_exists)
             return
         }
         if ((value.gpt == null) != (value.sovits == null)) {
-            checkpointError = "更换权重时，请同时选择配套的 .ckpt 和 .pth。"
+            checkpointError = UiText(R.string.checkpoint_replace_pair)
             return
         }
         if (value.audioPath.isBlank() || value.transcript.isBlank()) {
-            checkpointError = "请选择配套的参考音频，并填写音频中的原文。"
+            checkpointError = UiText(R.string.checkpoint_reference_required)
             return
         }
         importing = true
         checkpointError = null
-        importMessage = if (editing && value.gpt == null) "正在保存音色" else "正在读取模型"
+        importMessage = if (editing && value.gpt == null) UiText(R.string.voice_saving) else UiText(R.string.model_reading)
         audio.stop()
         val reference = CheckpointImporter.Reference(File(value.audioPath), value.transcript, value.referenceLanguage)
         val onComplete: (Result<CheckpointImporter.Result>) -> Unit = { result ->
@@ -690,11 +698,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 avatars.save(selectedId, value.avatarPath)
                 refreshResources()
                 tab = if (editing) 1 else 0
-                notify(if (editing) "音色已更新。" else "音色已导入，可以开始创作了。")
+                notify(if (editing) UiText(R.string.voice_updated) else UiText(R.string.voice_imported))
             }.onFailure {
                 Log.e("VoiceStudio", "Checkpoint import failed", it)
-                checkpointError = it.message?.takeIf { message -> message.any { c -> c in '\u4e00'..'\u9fff' } }
-                    ?: "导入失败，请检查文件是否完整、是否为支持的模型版本，并确认存储空间充足。"
+                checkpointError = it.userText()
+                    ?: UiText(R.string.checkpoint_import_failed)
                 importMessage = null
                 syncDefaults()
             }
@@ -708,7 +716,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         if (!accepted) {
             importing = false
-            checkpointError = "引擎正在忙碌，请稍后重新导入。"
+            checkpointError = UiText(R.string.import_engine_busy)
             importMessage = null
         }
     }
@@ -735,23 +743,27 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun editPort(value: String) { apiPort = value; apiPortError = null }
     fun applyPort() {
         val port = apiPort.toIntOrNull()
-        if (port == null || port !in 1024..65535) { apiPortError = "端口应为 1024 至 65535。"; return }
+        if (port == null || port !in 1024..65535) { apiPortError = UiText(R.string.port_range); return }
         settings.apiPort = port
         ContextCompat.startForegroundService(app, GenieBackendService.serviceIntent(app))
-        notify("端口已更新。")
+        notify(UiText(R.string.port_updated))
     }
     fun export(uri: Uri, path: String) = viewModelScope.launch {
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 app.contentResolver.openOutputStream(uri)?.use { destination ->
                     File(path).inputStream().use { it.copyTo(destination) }
-                } ?: error("无法写入文件")
+                } ?: errorUi(UiText(R.string.file_write_failed))
             }
         }
-        notify(if (result.isSuccess) "音频已保存。" else "保存失败，请重新选择保存位置。")
+        notify(if (result.isSuccess) UiText(R.string.audio_saved) else UiText(R.string.audio_save_failed))
     }
-    fun notify(message: String) { notice = message }
+    fun notify(message: UiText) { notice = message }
     fun clearNotice() { notice = null }
+    fun clearCheckpointError() { checkpointError = null }
+    fun clearEditorError() { editorError = null }
+    fun clearGenerationError() { generationError = null }
+    fun clearPortError() { apiPortError = null }
 
     private fun deleteDraftFile(path: String) {
         File(path).takeIf { it.parentFile == referenceRoot && it.name.startsWith("draft-") }?.delete()
@@ -760,7 +772,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         it.setDataSource(path)
         require(it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO) == "yes")
         it.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-            ?: error("无法读取音频时长")
+            ?: errorUi(UiText(R.string.audio_duration_failed))
     }
     override fun onCleared() {
         draft?.avatarPath?.let(avatars::discard)

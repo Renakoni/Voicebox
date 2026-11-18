@@ -2,6 +2,12 @@
 
 package dev.rinstel.genie_tts.studio
 
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalAccessibilityManager
+import android.content.res.Resources
+import dev.rinstel.genie_tts.i18n.UiText
+import kotlinx.coroutines.delay
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -19,6 +25,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -80,6 +88,7 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
     saveAudio: (StudioOutput) -> Unit, shareAudio: (StudioOutput) -> Unit,
     sendQqAudio: (StudioOutput) -> Unit, pickCheckpoint: (Boolean) -> Unit = {}, recordReference: () -> Unit = {},
     pickAvatar: () -> Unit = {}, takeAvatarPhoto: () -> Unit = {}) {
+    val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val focus = LocalFocusManager.current
     var showingAbout by rememberSaveable { mutableStateOf(false) }
@@ -93,7 +102,8 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
         vm.tab == 2 -> StudioPage(StudioDestination.SETTINGS)
         else -> StudioPage(StudioDestination.CREATE)
     }
-    LaunchedEffect(vm.notice) { vm.notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
+    val notice = vm.notice?.resolve(resources)
+    LaunchedEffect(notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
     BackHandler(showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
         if (showingAbout) closeAbout()
         else if (vm.recordingMs != null) vm.cancelReferenceRecording()
@@ -111,7 +121,7 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        val labels = listOf("创作", "音色", "设置")
+                        val labels = listOf(resources.getString(R.string.tab_create), resources.getString(R.string.tab_voices), resources.getString(R.string.settings))
                         val icons = listOf(Icons.Outlined.Edit, Icons.Outlined.Face, Icons.Outlined.Settings)
                         labels.forEachIndexed { index, label ->
                             NavigationBarItem(selected = vm.tab == index,
@@ -162,12 +172,13 @@ private fun PageHeader(title: String) {
 @Composable
 private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share: (StudioOutput) -> Unit,
     sendQq: (StudioOutput) -> Unit, pickRuntime: () -> Unit, modifier: Modifier) {
+    val resources = LocalResources.current
     if (vm.voices.isEmpty()) {
         Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
             if (!vm.loading) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("添加你的第一个音色", style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                    StudioButton(onClick = { vm.tab = 1 }) { Text("前往音色") }
+                    Text(resources.getString(R.string.first_voice), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                    StudioButton(onClick = { vm.tab = 1 }) { Text(resources.getString(R.string.go_voices)) }
                 }
             }
         }
@@ -175,20 +186,20 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
     }
     val focus = LocalFocusManager.current
     Column(modifier.fillMaxHeight()) {
-        PageHeader("声音创作")
+        PageHeader(resources.getString(R.string.create_title))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 24.dp)) {
             if (vm.loading) {
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text("正在读取音色…", modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(resources.getString(R.string.voices_loading), modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else if (!vm.runtimeReady) {
                 Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("准备语音引擎", style = MaterialTheme.typography.titleMedium)
+                    Text(resources.getString(R.string.engine_setup), style = MaterialTheme.typography.titleMedium)
                     Text(if (vm.selectedVoice?.modelDirectory?.startsWith("v5turbo/") == true)
-                        "请导入包含 V5 声码器的资源包，或在音色页下载官方 V5 Turbo。"
-                        else "请导入模型资源包，或在音色页下载官方模型。", style = MaterialTheme.typography.bodyMedium)
-                    StudioButton(onClick = pickRuntime, enabled = vm.connected && !vm.busy) { Text("导入资源") }
-                    vm.importMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                        resources.getString(R.string.engine_v5_resources)
+                        else resources.getString(R.string.engine_resources), style = MaterialTheme.typography.bodyMedium)
+                    StudioButton(onClick = pickRuntime, enabled = vm.connected && !vm.busy) { Text(resources.getString(R.string.import_resources)) }
+                    vm.importMessage?.let { Text(it.resolve(resources), style = MaterialTheme.typography.bodyMedium) }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically,
@@ -199,14 +210,14 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                     .heightIn(min = 56.dp).testTag("selected_voice"), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (voice != null) {
-                        VoiceAvatar(voice.name, voice.avatarPath, Modifier.size(36.dp))
-                        Text(voice.name, style = MaterialTheme.typography.titleMedium,
+                        VoiceAvatar(vm.voiceName(voice, resources), voice.avatarPath, Modifier.size(36.dp))
+                        Text(vm.voiceName(voice, resources), style = MaterialTheme.typography.titleMedium,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                    } else Text("选择音色", modifier = Modifier.weight(1f, fill = false))
-                    Icon(Icons.Default.ArrowDropDown, "更换音色", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else Text(resources.getString(R.string.select_voice), modifier = Modifier.weight(1f, fill = false))
+                    Icon(Icons.Default.ArrowDropDown, resources.getString(R.string.change_voice), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 VerticalDivider(Modifier.height(20.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                LanguageMenu("生成语言", vm.outputLanguage, !vm.busy, "output_language", onSelect = vm::changeOutputLanguage)
+                LanguageMenu(resources.getString(R.string.output_language), vm.outputLanguage, !vm.busy, "output_language", onSelect = vm::changeOutputLanguage)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             val writingStyle = MaterialTheme.typography.bodyLarge.copy(fontSize = 18.sp, lineHeight = 30.sp)
@@ -214,40 +225,40 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 textStyle = writingStyle.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), minLines = 4, maxLines = 10,
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp)
-                    .testTag("synthesis_text").semantics { contentDescription = "语音文本" },
+                    .testTag("synthesis_text").semantics { contentDescription = resources.getString(R.string.speech_text) },
                 decorationBox = { inner ->
                     Box {
-                        if (vm.text.isEmpty()) Text("输入要生成语音的文字…", style = writingStyle,
+                        if (vm.text.isEmpty()) Text(resources.getString(R.string.speech_text_hint), style = writingStyle,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                         inner()
                     }
                 })
             AdvancedSynthesisSettings(vm)
-            Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("${vm.text.length} 字", modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
+            FlowRow(Modifier.fillMaxWidth().padding(bottom = 16.dp), itemVerticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                Text(resources.getString(R.string.character_count, vm.text.length), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
                 StudioButton(onClick = { vm.updateText(when (vm.outputLanguage) {
                     "ja" -> "こんにちは。今日は日本語で話しています。よろしくお願いします。"
                     "en" -> "The wind is gentle tonight. We walk slowly along the river, and distant lights shine on the water."
                     else -> "今晚风很轻，我们沿着河边慢慢往前走。远处的灯亮了，像星星落在水面上。"
                 }) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet) {
-                    Text("示例")
+                    Text(resources.getString(R.string.sample_text))
                 }
                 StudioButton(onClick = { focus.clearFocus(); vm.generate() }, enabled = vm.canGenerate,
                     modifier = Modifier.testTag("generate")) {
-                    Text("生成语音")
+                    Text(resources.getString(R.string.generate_speech))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(18.dp))
                 }
             }
             if (vm.busy) {
-                val progress = generationStatus(vm.state)
+                val progress = generationStatus(vm.state, resources)
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(if (vm.importing) "正在导入资源" else if (vm.cancelling) "正在停止…" else progress.title,
+                        Text(if (vm.importing) resources.getString(R.string.resources_importing) else if (vm.cancelling) resources.getString(R.string.stopping) else progress.title,
                             style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).testTag("generation_status"))
                         if (!vm.importing) StudioButton(onClick = vm::cancel, enabled = !vm.cancelling,
-                            style = StudioButtonStyle.Quiet) { Text("停止") }
+                            style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.stop)) }
                     }
                     if (!vm.importing && !vm.cancelling) progress.detail?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("generation_detail"))
@@ -257,27 +268,27 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                     } else LinearProgressIndicator(Modifier.fillMaxWidth())
                 }
             } else if (vm.state.stage == GenerationStage.CANCELLED) {
-                Text("已停止，可以修改文字后重新生成。", style = MaterialTheme.typography.bodyMedium,
+                Text(resources.getString(R.string.generation_stopped), style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            vm.generationError?.let { ErrorMessage(it) }
+            vm.generationError?.let { ErrorMessage(it, vm::clearGenerationError) }
             HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
             val output = vm.output
             if (output != null) {
                 Row(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("最近生成", style = MaterialTheme.typography.titleMedium)
+                    Text(resources.getString(R.string.latest_audio), style = MaterialTheme.typography.titleMedium)
                     Text(output.voiceName, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.weight(1f), textAlign = TextAlign.End)
                     if (output.text.isNotBlank() && output.text.trim() != vm.text.trim()) {
-                        Text("文本已修改", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(resources.getString(R.string.text_changed), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 OutputPlayer(output, vm, save, share, sendQq)
             } else {
-                Text("最近生成", style = MaterialTheme.typography.titleMedium)
-                Text("暂无生成音频", modifier = Modifier.padding(top = 12.dp),
+                Text(resources.getString(R.string.latest_audio), style = MaterialTheme.typography.titleMedium)
+                Text(resources.getString(R.string.no_generated_audio), modifier = Modifier.padding(top = 12.dp),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
@@ -286,14 +297,15 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
 
 @Composable
 private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
+    val resources = LocalResources.current
     var expanded by rememberSaveable { mutableStateOf(false) }
     // Keep drag previews out of requests; busy/collapse restores the committed values.
     var options by remember(vm.synthesisOptions, vm.busy, expanded) { mutableStateOf(vm.synthesisOptions) }
     val commit = { vm.changeSynthesisOptions(options) }
     Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.heightIn(min = 48.dp)
-        .testTag("advanced_settings").semantics { stateDescription = if (expanded) "已展开" else "已收起" },
+        .testTag("advanced_settings").semantics { stateDescription = if (expanded) resources.getString(R.string.expanded) else resources.getString(R.string.collapsed) },
         verticalAlignment = Alignment.CenterVertically) {
-        Text("高级设置", style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+        Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -301,19 +313,19 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
         exit = shrinkVertically(tween(180)) + fadeOut(tween(150))) {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
-            SynthesisSlider("语速", "${number(options.speed.toFloat())}×", options.speed.toFloat(), 0.6f..1.65f, 20, !vm.busy,
+            SynthesisSlider(resources.getString(R.string.speech_speed), "${number(options.speed.toFloat())}×", options.speed.toFloat(), 0.6f..1.65f, 20, !vm.busy,
                 "synthesis_speed", { options = options.copy(speed = (it * 20).roundToInt() / 20.0) }, commit)
-            SynthesisSlider("随机程度", number(options.temperature), options.temperature, 0f..1f, 99, !vm.busy,
+            SynthesisSlider(resources.getString(R.string.temperature), number(options.temperature), options.temperature, 0f..1f, 99, !vm.busy,
                 "synthesis_temperature", { options = options.copy(temperature = (it * 100).roundToInt() / 100f) }, commit)
             SynthesisSlider("Top-K", options.topK.toString(), options.topK.toFloat(), 1f..100f, 98, !vm.busy,
                 "synthesis_top_k", { options = options.copy(topK = it.roundToInt()) }, commit)
             SynthesisSlider("Top-P", number(options.topP), options.topP, 0f..1f, 99, !vm.busy,
                 "synthesis_top_p", { options = options.copy(topP = (it * 100).roundToInt() / 100f) }, commit)
-            SynthesisSlider("重复惩罚", number(options.repetitionPenalty), options.repetitionPenalty, 1f..2f, 99, !vm.busy,
+            SynthesisSlider(resources.getString(R.string.repetition_penalty), number(options.repetitionPenalty), options.repetitionPenalty, 1f..2f, 99, !vm.busy,
                 "synthesis_repetition_penalty", { options = options.copy(repetitionPenalty = (it * 100).roundToInt() / 100f) }, commit)
             StudioButton(onClick = { options = SynthesisOptions.Default; commit() }, enabled = !vm.busy && options != SynthesisOptions.Default,
                 style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End).testTag("reset_synthesis_options")) {
-                Text("恢复默认")
+                Text(resources.getString(R.string.reset_defaults))
             }
         }
     }
@@ -336,16 +348,17 @@ private fun SynthesisSlider(label: String, displayValue: String, value: Float, r
     }
 }
 
-private fun languageName(value: String) = when (LanguageNormalizer.normalize(value)) {
-    "japanese" -> "日语"
-    "english" -> "英语"
-    else -> "中文"
+private fun languageName(resources: Resources, value: String) = when (LanguageNormalizer.normalize(value)) {
+    "japanese" -> resources.getString(R.string.language_japanese)
+    "english" -> resources.getString(R.string.language_english)
+    else -> resources.getString(R.string.language_chinese)
 }
 
 @Composable
 private fun LanguageChoice(title: String, value: String, enabled: Boolean, tag: String,
     autoText: String? = null, onSelect: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    FlowRow(Modifier.fillMaxWidth(), itemVerticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         LanguageMenu(title, value, enabled, tag, autoText, onSelect)
@@ -355,9 +368,10 @@ private fun LanguageChoice(title: String, value: String, enabled: Boolean, tag: 
 @Composable
 private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: String,
     autoText: String? = null, onSelect: (String) -> Unit) {
+    val resources = LocalResources.current
     var expanded by remember { mutableStateOf(false) }
-    val label = if (value == "auto") "按原文 · ${languageName(ReferenceLanguage.resolve(value, autoText.orEmpty()))}"
-        else languageName(value)
+    val label = if (value == "auto") resources.getString(R.string.language_auto, languageName(resources, ReferenceLanguage.resolve(value, autoText.orEmpty())))
+        else languageName(resources, value)
     Box {
         StudioButton(onClick = { expanded = true }, enabled = enabled, style = StudioButtonStyle.Quiet,
             modifier = Modifier.testTag(tag).semantics { contentDescription = "$title：$label" }) {
@@ -365,10 +379,10 @@ private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: St
             Icon(Icons.Default.ArrowDropDown, null)
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-            if (autoText != null) DropdownMenuItem(text = { Text("按参考原文判断") },
+            if (autoText != null) DropdownMenuItem(text = { Text(resources.getString(R.string.language_from_transcript)) },
                 onClick = { onSelect("auto"); expanded = false }, modifier = Modifier.testTag("${tag}_auto"))
             listOf("zh", "ja", "en").forEach { language ->
-                DropdownMenuItem(text = { Text(languageName(language)) },
+                DropdownMenuItem(text = { Text(languageName(resources, language)) },
                     onClick = { onSelect(language); expanded = false }, modifier = Modifier.testTag("${tag}_$language"))
             }
         }
@@ -378,6 +392,7 @@ private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: St
 @Composable
 private fun OutputPlayer(output: StudioOutput, vm: StudioViewModel, save: (StudioOutput) -> Unit,
     share: (StudioOutput) -> Unit, sendQq: (StudioOutput) -> Unit) {
+    val resources = LocalResources.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (output.text.isNotBlank())
             Text(output.text, style = MaterialTheme.typography.bodyMedium,
@@ -385,11 +400,11 @@ private fun OutputPlayer(output: StudioOutput, vm: StudioViewModel, save: (Studi
         OutputPlayback(vm.preview.takeIf { it.path == output.path } ?: PreviewState(), output.durationMs, !vm.busy,
             onToggle = { vm.audio.toggle(output.path) }, onSeek = vm.audio::seek)
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            StudioButton(onClick = { save(output) }, style = StudioButtonStyle.Quiet) { Text("保存音频") }
-            StudioButton(onClick = { share(output) }, style = StudioButtonStyle.Quiet) { Text("分享") }
+            StudioButton(onClick = { save(output) }, style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.save_audio)) }
+            StudioButton(onClick = { share(output) }, style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.share)) }
             StudioButton(onClick = { sendQq(output) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet,
                 modifier = Modifier.testTag("send_qq_voice")) {
-                Text("去 QQ 发送")
+                Text(resources.getString(R.string.send_qq))
             }
         }
     }
@@ -397,17 +412,18 @@ private fun OutputPlayer(output: StudioOutput, vm: StudioViewModel, save: (Studi
 
 @Composable
 private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
+    val resources = LocalResources.current
     Column(modifier.fillMaxHeight()) {
-        PageHeader("我的音色")
-        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 16.dp),
+        PageHeader(resources.getString(R.string.my_voices))
+        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 16.dp).height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             StudioButton(onClick = { vm.beginVoice() }, enabled = !vm.loading && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).testTag("new_voice")) {
-                Text("克隆音色")
+                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight().testTag("new_voice")) {
+                Text(resources.getString(R.string.clone_voice))
             }
             StudioButton(onClick = vm::beginCheckpointImport, enabled = vm.connected && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).testTag("import_voice")) {
-                Text("导入音色")
+                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight().testTag("import_voice")) {
+                Text(resources.getString(R.string.import_voice))
             }
         }
         HorizontalDivider(Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -428,19 +444,17 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                             Column(Modifier.weight(1f)) {
                                 Text(voice.name, style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                if (!available) Text("模型不可用",
+                                Text(modelArchitectureLabel(resources, voice.modelDirectory.substringBefore('/')),
+                                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                if (!available) Text(resources.getString(R.string.model_unavailable),
                                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            if (vm.selectedId == voice.id) Icon(Icons.Default.Check, "已选用",
+                            if (vm.selectedId == voice.id) Icon(Icons.Default.Check, resources.getString(R.string.selected),
                                 modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                         }
-                        Text(modelArchitectureLabel(voice.modelDirectory.substringBefore('/')),
-                            style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.width(90.dp).padding(horizontal = 8.dp))
                         IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy,
                             modifier = Modifier.testTag("edit_voice_${voice.id}")) {
-                            Icon(Icons.Default.Edit, "编辑${voice.name}", modifier = Modifier.size(20.dp),
+                            Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, voice.name), modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -454,6 +468,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
 
 @Composable
 private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialModel) {
+    val resources = LocalResources.current
     val ready = vm.modelFor(model) != null
     val voice = vm.voiceFor(model)
     val status = vm.officialDownload.takeIf { it.modelId == model.id }
@@ -466,35 +481,32 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialModel) {
                     if (voice != null) { vm.select(voice); vm.tab = 0 } else vm.editOfficial(model)
                 }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                VoiceAvatar(model.name, voice?.avatarPath.orEmpty(), Modifier.size(48.dp))
+                VoiceAvatar(model.displayName(resources), voice?.avatarPath.orEmpty(), Modifier.size(48.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(model.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2,
+                    Text(model.displayName(resources), style = MaterialTheme.typography.bodyMedium, maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSurface)
                     val detail = when {
-                        downloading -> status.label + (status.percent?.let { " $it%" } ?: "")
-                        status?.error != null -> status.error
-                        !ready -> "未下载"
+                        downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
+                        status?.error != null -> status.error.resolve(resources)
+                        !ready -> resources.getString(R.string.not_downloaded)
                         else -> null
                     }
                     detail?.let { Text(it, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 }
-                if (voice != null && voice.id == vm.selectedId) Icon(Icons.Default.Check, "已选用",
+                if (voice != null && voice.id == vm.selectedId) Icon(Icons.Default.Check, resources.getString(R.string.selected),
                     Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
             }
-            Text(modelArchitectureLabel(model.architecture), style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.width(90.dp).padding(horizontal = 8.dp))
             IconButton(onClick = {
                 when { downloading -> vm.cancelOfficialDownload(); ready -> vm.editOfficial(model)
                     else -> vm.downloadOfficial(model) }
             }, enabled = downloading || (vm.connected && !vm.loading && !vm.busy && !vm.fileBusy),
                 modifier = Modifier.testTag("official_${model.id}")) {
                 when {
-                    downloading -> Icon(Icons.Default.Close, "取消下载", Modifier.size(20.dp))
-                    ready -> Icon(Icons.Default.Edit, "编辑${model.name}", Modifier.size(20.dp))
-                    else -> Icon(painterResource(R.drawable.ic_download), "下载${model.name}", Modifier.size(22.dp),
+                    downloading -> Icon(Icons.Default.Close, resources.getString(R.string.cancel_download), Modifier.size(20.dp))
+                    ready -> Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, model.displayName(resources)), Modifier.size(20.dp))
+                    else -> Icon(painterResource(R.drawable.ic_download), resources.getString(R.string.download_named_model, model.displayName(resources)), Modifier.size(22.dp),
                         tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
@@ -505,15 +517,16 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialModel) {
 
 @Composable
 private fun VoicePickerPage(vm: StudioViewModel, modifier: Modifier) {
+    val resources = LocalResources.current
     Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = vm::closeVoicePicker) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回创作") }
-            Text("选择音色", style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("voice_picker"))
+            IconButton(onClick = vm::closeVoicePicker) { Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_create)) }
+            Text(resources.getString(R.string.select_voice), style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("voice_picker"))
         }
         vm.voices.forEach { voice ->
             val available = vm.modelFor(voice) != null
-            VoiceChoiceRow(voice.name, voice.avatarPath, if (available) "" else "模型不可用",
+            VoiceChoiceRow(vm.voiceName(voice, resources), voice.avatarPath, if (available) "" else resources.getString(R.string.model_unavailable),
                 voice.id == vm.selectedId, available && !vm.busy) { vm.chooseVoice(voice) }
         }
     }
@@ -521,6 +534,7 @@ private fun VoicePickerPage(vm: StudioViewModel, modifier: Modifier) {
 
 @Composable
 private fun VoiceChoiceRow(name: String, avatarPath: String, status: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val resources = LocalResources.current
     Column {
         Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick)
             .padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
@@ -530,7 +544,7 @@ private fun VoiceChoiceRow(name: String, avatarPath: String, status: String, sel
                 Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (selected) Icon(Icons.Default.Check, "已选用", tint = MaterialTheme.colorScheme.primary)
+            if (selected) Icon(Icons.Default.Check, resources.getString(R.string.selected), tint = MaterialTheme.colorScheme.primary)
             else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -540,42 +554,45 @@ private fun VoiceChoiceRow(name: String, avatarPath: String, status: String, sel
 @Composable
 private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pickCheckpoint: (Boolean) -> Unit, pickReference: () -> Unit,
     recordReference: () -> Unit, pickAvatar: () -> Unit, takeAvatarPhoto: () -> Unit, modifier: Modifier) {
+    val resources = LocalResources.current
     val enabled = !vm.busy && !vm.fileBusy
     val editing = draft.editingCharacterId != null
-    val official = vm.isOfficialCharacter(draft.editingCharacterId)
+    val officialModel = vm.officialModels.firstOrNull { it.id == draft.editingCharacterId }
+    val official = officialModel != null
+    val displayName = officialModel?.displayName(resources) ?: draft.name
     val focus = LocalFocusManager.current
-    VoiceEditorLayout(if (editing) "编辑音色" else "导入音色", vm::closeCheckpointImport, enabled, modifier,
+    VoiceEditorLayout(if (editing) resources.getString(R.string.edit_voice) else resources.getString(R.string.import_voice), vm::closeCheckpointImport, enabled, modifier,
         actions = {
             StudioButton(onClick = { focus.clearFocus(); vm.importCheckpoints() }, enabled = enabled && vm.connected,
                 style = StudioButtonStyle.Quiet,
                 modifier = Modifier.heightIn(min = 48.dp).testTag("import_checkpoints")) {
-                Text(if (editing) { if (vm.importing) "保存中" else "保存" }
-                    else { if (vm.importing) "导入中" else "导入" })
+                Text(if (editing) { if (vm.importing) resources.getString(R.string.saving) else resources.getString(R.string.save) }
+                    else { if (vm.importing) resources.getString(R.string.importing) else resources.getString(R.string.import_action) })
             }
         }) {
-        VoiceAvatarEditor(draft.name, draft.avatarPath, enabled, pickAvatar, takeAvatarPhoto)
-        OutlinedTextField(draft.name, vm::editCheckpointName, label = { Text("音色名称") }, singleLine = true,
+        VoiceAvatarEditor(displayName, draft.avatarPath, enabled, pickAvatar, takeAvatarPhoto)
+        OutlinedTextField(displayName, vm::editCheckpointName, label = { Text(resources.getString(R.string.voice_name)) }, singleLine = true,
             enabled = enabled && !official, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().testTag("checkpoint_name"))
         listOf(true, false).forEach { gpt ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (gpt) "GPT 权重 · ckpt" else "SoVITS 权重 · pth", style = MaterialTheme.typography.titleMedium)
+                Text(if (gpt) resources.getString(R.string.gpt_weights) else resources.getString(R.string.sovits_weights), style = MaterialTheme.typography.titleMedium)
                 StudioButton(onClick = { pickCheckpoint(gpt) }, enabled = enabled && !official, style = StudioButtonStyle.Secondary,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(if (gpt) "pick_ckpt" else "pick_pth")) {
-                    Text((if (gpt) draft.gptName else draft.sovitsName).ifBlank { if (editing) "未记录原始文件名" else "选择文件" },
+                    Text((if (gpt) draft.gptName else draft.sovitsName).ifBlank { if (editing) resources.getString(R.string.original_filename_unknown) else resources.getString(R.string.select_file) },
                         maxLines = 1, softWrap = false, overflow = TextOverflow.MiddleEllipsis,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
                 if (editing && (if (gpt) draft.gpt else draft.sovits) != null) {
                     StudioButton(onClick = { vm.clearCheckpointReplacement(gpt) }, enabled = enabled,
-                        style = StudioButtonStyle.Quiet) { Text("撤销更换") }
+                        style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.undo_replacement)) }
                 }
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("模型版本", style = MaterialTheme.typography.bodyMedium,
+            Text(resources.getString(R.string.model_version), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(vm.checkpointRecognition ?: "待导入",
+            Text(vm.checkpointRecognition?.resolve(resources) ?: resources.getString(R.string.awaiting_import),
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).testTag("checkpoint_version"),
                 color = if (vm.checkpointRecognition == null) MaterialTheme.colorScheme.onSurfaceVariant
                     else MaterialTheme.colorScheme.onSurface,
@@ -583,46 +600,47 @@ private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pi
         }
         ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
             pickReference, recordReference, "checkpoint_reference") {
-            Text("参考音频", style = MaterialTheme.typography.titleMedium)
+            Text(resources.getString(R.string.reference_audio), style = MaterialTheme.typography.titleMedium)
         }
-        LanguageChoice("参考语言", draft.referenceLanguage, enabled, "checkpoint_language",
+        LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, enabled, "checkpoint_language",
             autoText = draft.transcript, onSelect = vm::editCheckpointLanguage)
-        OutlinedTextField(draft.transcript, vm::editCheckpointTranscript, label = { Text("参考文字") },
+        OutlinedTextField(draft.transcript, vm::editCheckpointTranscript, label = { Text(resources.getString(R.string.reference_transcript)) },
             minLines = 3, maxLines = 6,
             enabled = enabled, shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth().testTag("checkpoint_reference_text"))
         if (vm.importing) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        vm.importMessage?.let { Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("checkpoint_progress")) }
-        vm.checkpointError?.let { ErrorMessage(it) }
+        vm.importMessage?.let { Text(it.resolve(resources), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("checkpoint_progress")) }
+        vm.checkpointError?.let { ErrorMessage(it, vm::clearCheckpointError) }
     }
 }
 
 @Composable
 private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: () -> Unit, recordReference: () -> Unit,
     pickAvatar: () -> Unit, takeAvatarPhoto: () -> Unit, modifier: Modifier) {
+    val resources = LocalResources.current
     val focus = LocalFocusManager.current
     val editing = vm.voices.any { it.id == draft.id }
     var confirmDelete by remember { mutableStateOf(false) }
-    VoiceEditorLayout(if (editing) "编辑音色" else "克隆音色", vm::closeEditor, !vm.fileBusy, modifier,
+    VoiceEditorLayout(if (editing) resources.getString(R.string.edit_voice) else resources.getString(R.string.clone_voice), vm::closeEditor, !vm.fileBusy, modifier,
         actions = {
             StudioButton(onClick = { focus.clearFocus(); vm.saveVoice() }, enabled = !vm.fileBusy && !vm.busy,
                 style = StudioButtonStyle.Quiet,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("save_voice")) { Text("保存") }
+                modifier = Modifier.heightIn(min = 48.dp).testTag("save_voice")) { Text(resources.getString(R.string.save)) }
         }) {
         VoiceAvatarEditor(draft.name, draft.avatarPath, !vm.fileBusy && !vm.busy, pickAvatar, takeAvatarPhoto)
-        OutlinedTextField(draft.name, { vm.edit(draft.copy(name = it)) }, label = { Text("音色名称") },
-            placeholder = { Text("给这个声音起个名字") }, singleLine = true, enabled = !vm.fileBusy,
+        OutlinedTextField(draft.name, { vm.edit(draft.copy(name = it)) }, label = { Text(resources.getString(R.string.voice_name)) },
+            placeholder = { Text(resources.getString(R.string.voice_name_hint)) }, singleLine = true, enabled = !vm.fileBusy,
             shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().testTag("voice_name"))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            StepTitle("01", "选择基础音色")
+            StepTitle("01", resources.getString(R.string.select_base_voice))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 vm.officialModels.forEach { model ->
                     val installed = vm.modelFor(model)
                     FilterChip(selected = installed != null && draft.modelDirectory == installed.relativeModelDirectory,
                         onClick = { installed?.let { vm.edit(draft.copy(modelDirectory = it.relativeModelDirectory)) } },
-                        label = { Text(model.name) }, enabled = vm.modelFor(model) != null && !vm.fileBusy && !vm.busy)
+                        label = { Text(model.displayName(resources)) }, enabled = vm.modelFor(model) != null && !vm.fileBusy && !vm.busy)
                 }
                 vm.models.filterNot { vm.isOfficialDirectory(it.relativeModelDirectory) }.forEach { model ->
                     FilterChip(selected = draft.modelDirectory == model.relativeModelDirectory,
@@ -636,39 +654,40 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
         }
         ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
             pickReference, recordReference, "pick_reference") {
-            StepTitle("02", "参考音频")
+            StepTitle("02", resources.getString(R.string.reference_audio))
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            StepTitle("03", "填写对应原文")
-            LanguageChoice("参考语言", draft.referenceLanguage, !vm.fileBusy, "editor_language",
+            StepTitle("03", resources.getString(R.string.enter_transcript))
+            LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, !vm.fileBusy, "editor_language",
                 autoText = draft.transcript, onSelect = { vm.edit(draft.copy(referenceLanguage = it)) })
             OutlinedTextField(draft.transcript, { vm.edit(draft.copy(transcript = it)) },
                 minLines = 3, maxLines = 6,
                 enabled = !vm.fileBusy, shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth().testTag("reference_text"))
         }
-        vm.editorError?.let { ErrorMessage(it) }
+        vm.editorError?.let { ErrorMessage(it, vm::clearEditorError) }
         if (editing) TextButton(onClick = { confirmDelete = true }, enabled = !vm.busy && !vm.fileBusy) {
-            Text("删除音色", color = MaterialTheme.colorScheme.error)
+            Text(resources.getString(R.string.delete_voice), color = MaterialTheme.colorScheme.error)
         }
     }
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
-        title = { Text("删除“${draft.name}”？") },
+        title = { Text(resources.getString(R.string.delete_voice_confirmation, draft.name)) },
         confirmButton = { TextButton(onClick = {
             vm.voices.firstOrNull { it.id == draft.id }?.let(vm::deleteVoice)
             confirmDelete = false
             vm.closeEditor()
-        }) { Text("删除") } },
-        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("保留") } })
+        }) { Text(resources.getString(R.string.delete)) } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(resources.getString(R.string.keep)) } })
 }
 
 @Composable
 private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Boolean, modifier: Modifier,
     actions: @Composable RowScope.() -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val resources = LocalResources.current
     Column(modifier.fillMaxHeight()) {
         TopAppBar(title = { Text(title, style = MaterialTheme.typography.titleLarge) },
             navigationIcon = {
-                IconButton(onClick = onBack, enabled = backEnabled) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回音色") }
+                IconButton(onClick = onBack, enabled = backEnabled) { Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_voices)) }
             }, actions = actions, windowInsets = WindowInsets(0, 0, 0, 0),
             colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())
@@ -679,17 +698,18 @@ private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Bo
 
 @Composable
 private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, modifier: Modifier) {
+    val resources = LocalResources.current
     val uriHandler = LocalUriHandler.current
     var advanced by rememberSaveable { mutableStateOf(false) }
     val advancedRotation by animateFloatAsState(if (advanced) 90f else 0f, tween(180), label = "advanced_settings")
     Column(modifier.fillMaxHeight()) {
-        Text("设置", style = MaterialTheme.typography.titleLarge,
+        Text(resources.getString(R.string.settings), style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).semantics { heading() })
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
             .padding(bottom = 24.dp)) {
             Column(Modifier.padding(top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("界面主题", style = MaterialTheme.typography.titleMedium)
-                val modes = listOf(ThemeMode.SYSTEM to "跟随系统", ThemeMode.LIGHT to "浅色", ThemeMode.DARK to "深色")
+                Text(resources.getString(R.string.appearance), style = MaterialTheme.typography.titleMedium)
+                val modes = listOf(ThemeMode.SYSTEM to resources.getString(R.string.theme_system), ThemeMode.LIGHT to resources.getString(R.string.theme_light), ThemeMode.DARK to resources.getString(R.string.theme_dark))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     modes.forEachIndexed { index, (value, label) ->
                         SegmentedButton(selected = vm.theme == value, onClick = { vm.changeTheme(value) },
@@ -699,15 +719,15 @@ private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, modifier: M
                 }
             }
             Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("GPU 加速", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(resources.getString(R.string.gpu_acceleration), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Switch(checked = vm.gpuEnabled && vm.gpuAvailable, onCheckedChange = vm::setGpu, enabled = vm.gpuAvailable && !vm.busy)
             }
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("设备加速", style = MaterialTheme.typography.titleMedium)
-                    Text(vm.acceleration.device, style = MaterialTheme.typography.bodySmall,
+                    Text(resources.getString(R.string.device_acceleration), style = MaterialTheme.typography.titleMedium)
+                    Text(vm.acceleration.device.ifBlank { resources.getString(R.string.device_loading) }, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(vm.acceleration.detail, style = MaterialTheme.typography.bodySmall,
+                    Text(vm.acceleration.detail.resolve(resources), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("device_acceleration_status"))
                 }
                 Switch(checked = vm.deviceAccelerationEnabled && vm.acceleration.available && vm.gpuEnabled,
@@ -718,39 +738,42 @@ private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, modifier: M
             HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 56.dp).testTag("advanced_settings"),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("高级设置", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, if (advanced) "收起" else "展开",
+                Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, if (advanced) resources.getString(R.string.collapse) else resources.getString(R.string.expand),
                     Modifier.size(22.dp).rotate(advancedRotation), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             AnimatedVisibility(advanced, enter = expandVertically(tween(180)) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
                 Column(Modifier.padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("本机应用接口", modifier = Modifier.weight(1f))
+                        Text(resources.getString(R.string.local_api), modifier = Modifier.weight(1f))
                         Switch(checked = vm.apiEnabled, onCheckedChange = vm::setApi)
                     }
                     if (vm.apiEnabled) {
-                        Text("通过 127.0.0.1 上的 HTTP 接口使用当前音色。", style = MaterialTheme.typography.bodySmall,
+                        Text(resources.getString(R.string.local_api_description), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(vm.apiPort, vm::editPort, label = { Text("端口") }, singleLine = true,
+                        OutlinedTextField(vm.apiPort, vm::editPort, label = { Text(resources.getString(R.string.port)) }, singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = vm.apiPortError != null,
                             trailingIcon = {
                                 IconButton(onClick = vm::applyPort) {
-                                    Icon(Icons.Default.Check, "保存端口", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Icon(Icons.Default.Check, resources.getString(R.string.save_port), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
                                 }
                             },
-                            supportingText = if (vm.apiPortError == null) null else ({ Text(vm.apiPortError.orEmpty()) }),
+                            supportingText = vm.apiPortError?.let { error -> ({
+                                DismissErrorAfterTimeout(error, vm::clearPortError)
+                                Text(error.resolve(resources))
+                            }) },
                             modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
             StarInvitation(onClick = {
                 runCatching { uriHandler.openUri("https://github.com/Renakoni/Voicebox") }
-                    .onFailure { vm.notify("无法打开 GitHub，请检查浏览器是否可用。") }
+                    .onFailure { vm.notify(UiText(R.string.github_open_failed)) }
             })
             Row(Modifier.fillMaxWidth().clickable(onClick = openAbout).heightIn(min = 56.dp).testTag("open_about"),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("关于", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text(resources.getString(R.string.about), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                 Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -767,9 +790,29 @@ private fun StepTitle(number: String, title: String) {
 }
 
 @Composable
-private fun ErrorMessage(message: String) {
-    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(14.dp)) {
-        Text(message, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer,
+private fun ErrorMessage(message: UiText, onDismiss: () -> Unit) {
+    val resources = LocalResources.current
+    val bringIntoView = remember { BringIntoViewRequester() }
+    LaunchedEffect(message) {
+        withFrameNanos { }
+        bringIntoView.bringIntoView()
+    }
+    DismissErrorAfterTimeout(message, onDismiss)
+    Surface(modifier = Modifier.bringIntoViewRequester(bringIntoView),
+        color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(14.dp)) {
+        Text(message.resolve(resources), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer,
             style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun DismissErrorAfterTimeout(message: UiText, onDismiss: () -> Unit) {
+    val dismiss by rememberUpdatedState(onDismiss)
+    val timeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
+        originalTimeoutMillis = 10_000L, containsText = true,
+    ) ?: 10_000L
+    LaunchedEffect(message, timeout) {
+        delay(timeout)
+        dismiss()
     }
 }

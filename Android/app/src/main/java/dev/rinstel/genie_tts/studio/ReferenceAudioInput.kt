@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import androidx.compose.ui.platform.LocalResources
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
@@ -22,27 +25,30 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import java.util.Locale
 
 @Composable
 internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String, durationMs: Long,
     pickAudio: () -> Unit, startRecording: () -> Unit, pickerTag: String, title: @Composable () -> Unit) {
+    val resources = LocalResources.current
     val recording = vm.recordingMs != null
     val enabled = !vm.busy && !vm.fileBusy
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         title()
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             HoldToRecord(enabled, vm.recordingMs, startRecording, vm::finishReferenceRecording,
-                vm::cancelReferenceRecording, Modifier.weight(1f))
+                vm::cancelReferenceRecording, Modifier.weight(1f).fillMaxHeight())
             Surface(onClick = pickAudio, enabled = enabled, shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .38f),
-                modifier = Modifier.weight(1f).height(80.dp).testTag(pickerTag)) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 80.dp).testTag(pickerTag)) {
+                Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Icon(Icons.Default.Add, null, Modifier.size(20.dp))
                     Spacer(Modifier.height(4.dp))
-                    Text("添加音频", style = MaterialTheme.typography.bodyLarge)
+                    Text(resources.getString(R.string.add_audio), style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -57,6 +63,7 @@ internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String
 @Composable
 internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: Long, enabled: Boolean,
     onToggle: () -> Unit) {
+    val resources = LocalResources.current
     val duration = (if (preview.durationMs > 0) preview.durationMs.toLong() else durationMs).coerceAtLeast(0)
     val position = preview.positionMs.toLong()
     val finished = !preview.playing && preview.positionMs >= duration
@@ -71,7 +78,7 @@ internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: 
         }
         StudioButton(onClick = onToggle, enabled = enabled && !preview.preparing, style = StudioButtonStyle.Quiet,
             modifier = Modifier.testTag("play_reference")) {
-            Text(if (preview.preparing) "加载中" else if (preview.playing) "暂停" else "试听")
+            Text(if (preview.preparing) resources.getString(R.string.loading) else if (preview.playing) resources.getString(R.string.pause) else resources.getString(R.string.preview_audio))
         }
     }
 }
@@ -79,6 +86,7 @@ internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: 
 @Composable
 internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Unit, onFinish: () -> Unit,
     onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    val resources = LocalResources.current
     val recording = elapsedMs != null
     val enabledNow by rememberUpdatedState(enabled)
     val start by rememberUpdatedState(onStart)
@@ -90,9 +98,9 @@ internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Uni
     LaunchedEffect(recording) { if (recording) haptic.performHapticFeedback(HapticFeedbackType.LongPress) }
     val colors = MaterialTheme.colorScheme
     val label = when {
-        recording && cancelOnRelease -> "松开取消"
-        recording -> "松开完成"
-        else -> "按住录音"
+        recording && cancelOnRelease -> resources.getString(R.string.record_release_cancel)
+        recording -> resources.getString(R.string.record_release_finish)
+        else -> resources.getString(R.string.record_hold)
     }
     Surface(shape = RoundedCornerShape(12.dp),
         color = when { recording && cancelOnRelease -> colors.errorContainer
@@ -100,7 +108,7 @@ internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Uni
         contentColor = when { recording && cancelOnRelease -> colors.onErrorContainer
             recording -> colors.onPrimaryContainer; !enabled -> colors.onSurface.copy(alpha = .38f)
             else -> colors.onSurface },
-        modifier = modifier.height(80.dp).testTag("record_reference")
+        modifier = modifier.heightIn(min = 80.dp).testTag("record_reference")
             // Keep the gesture alive when recording makes the rest of the form busy.
             .pointerInput(cancelDistance) {
                 var startY = 0f
@@ -121,19 +129,19 @@ internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Uni
                 role = Role.Button
                 if (!enabled && !recording) disabled()
                 // TalkBack can start and finish without holding a pointer down.
-                onClick(if (recording) "完成录音" else "开始录音") {
+                onClick(if (recording) resources.getString(R.string.record_finish) else resources.getString(R.string.record_start)) {
                     if (recording) { finish(); true }
                     else if (enabled) { start(); true } else false
                 }
-                if (recording) customActions = listOf(CustomAccessibilityAction("取消录音") { cancel(); true })
+                if (recording) customActions = listOf(CustomAccessibilityAction(resources.getString(R.string.record_cancel)) { cancel(); true })
             }) {
-        Column(Modifier.padding(horizontal = 8.dp), horizontalAlignment = Alignment.CenterHorizontally,
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
-            if (recording) Text(recordingTime(elapsedMs!!), style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.height(20.dp).testTag("recording_time"))
+            if (recording) Text(recordingTime(elapsedMs), style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.testTag("recording_time"))
             else MicrophoneIcon()
             Spacer(Modifier.height(4.dp))
-            Text(label, style = MaterialTheme.typography.bodyLarge)
+            Text(label, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)
         }
     }
 }

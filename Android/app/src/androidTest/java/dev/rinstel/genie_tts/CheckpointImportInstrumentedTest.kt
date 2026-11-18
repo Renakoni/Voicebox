@@ -18,7 +18,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import dev.rinstel.genie_tts.inference.ModelAssetRepository
-import dev.rinstel.genie_tts.inference.modelArchitectureLabel
+import dev.rinstel.genie_tts.inference.modelArchitectureText
 import dev.rinstel.genie_tts.inference.OptimizedDecoderAssets
 import dev.rinstel.genie_tts.inference.SplitVocoderAssets
 import dev.rinstel.genie_tts.inference.OrtSessionRuntime
@@ -159,7 +159,7 @@ class CheckpointImportInstrumentedTest {
             assertTrue("Service connection timeout", connected.await(30, TimeUnit.SECONDS))
             Handler(Looper.getMainLooper()).post {
                 val accepted = service.get().importCheckpointPair(case?.getString("name") ?: "官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
-                    onProgress = { android.util.Log.i("CheckpointImportTest", it) },
+                    onProgress = { android.util.Log.i("CheckpointImportTest", it.resolve(context.resources)) },
                     onComplete = { imported.set(it); finished.countDown() }, reference = reference,
                     replaceCharacterId = InstrumentationRegistry.getArguments().getString("replaceCharacterId"))
                 if (!accepted) { imported.set(Result.failure(IllegalStateException("Import refused"))); finished.countDown() }
@@ -295,9 +295,9 @@ class CheckpointImportInstrumentedTest {
             onMain { vm.pickCheckpoint(Uri.fromFile(sovits), false) }
             awaitStudio { !vm.fileBusy }
             onMain {
-                assertEquals(modelArchitectureLabel(architecture), vm.checkpointRecognition)
+                assertEquals(modelArchitectureText(architecture).resourceId, vm.checkpointRecognition?.resourceId)
                 vm.importCheckpoints()
-                assertEquals("请选择配套的参考音频，并填写音频中的原文。", vm.checkpointError)
+                assertEquals(R.string.checkpoint_reference_required, vm.checkpointError?.resourceId)
                 assertFalse(vm.importing)
                 vm.pickReference(Uri.fromFile(reference))
             }

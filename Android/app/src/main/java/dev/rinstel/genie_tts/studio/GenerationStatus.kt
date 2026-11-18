@@ -1,50 +1,53 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import android.content.res.Resources
+
 import dev.rinstel.genie_tts.BackendServiceState
 import dev.rinstel.genie_tts.inference.GenerationStage
 
 internal data class GenerationStatus(val title: String, val detail: String? = null, val percent: Int? = null)
 
 /** Legacy progressPercent is a stage estimate. Only counted bytes have a known denominator. */
-internal fun generationStatus(state: BackendServiceState): GenerationStatus {
+internal fun generationStatus(state: BackendServiceState, resources: Resources): GenerationStatus {
     val label = state.progressLabel.orEmpty()
     Regex("Unpacking weights (\\d+)/(\\d+)").matchEntire(label)?.let {
         val done = it.groupValues[1].toLong()
         val total = it.groupValues[2].toLong()
         if (total > 0) {
             val percent = (done.coerceIn(0, total) * 100 / total).toInt()
-            return GenerationStatus("正在展开权重", "当前文件 $percent%", percent)
+            return GenerationStatus(resources.getString(R.string.stage_unpacking), resources.getString(R.string.stage_file_percent, percent), percent)
         }
     }
     Regex("Decoder (\\d+)/(\\d+)").matchEntire(label)?.let {
-        return GenerationStatus("正在生成语音", "已生成 ${it.groupValues[1]} 个语音 token")
+        return GenerationStatus(resources.getString(R.string.stage_generating), resources.getString(R.string.stage_tokens, it.groupValues[1]))
     }
     Regex("NPU (compiling|loading) (\\d+)/(\\d+)").matchEntire(label)?.let {
-        val completed = "已完成 ${it.groupValues[2]}/${it.groupValues[3]} 项"
+        val completed = resources.getString(R.string.stage_completed_items, it.groupValues[2], it.groupValues[3])
         return if (it.groupValues[1] == "compiling") {
-            GenerationStatus("正在编译 NPU 加速", "首次编译耗时较长，完成后自动缓存\n$completed")
-        } else GenerationStatus("正在加载 NPU 缓存", completed)
+            GenerationStatus(resources.getString(R.string.stage_npu_compiling), resources.getString(R.string.stage_npu_first_compile, completed))
+        } else GenerationStatus(resources.getString(R.string.stage_npu_loading), completed)
     }
     val title = when (label) {
-        "Inspecting resources" -> "正在检查模型资源"
-        "Preparing model" -> "正在准备音色权重"
-        "Initializing backend" -> "正在加载推理模型"
-        "Preparing runtime" -> "正在准备公共模型"
-        "Text features" -> "正在解析文字"
-        "Reference conditioning", "Reference audio" -> "正在解析参考录音"
-        "HuBERT" -> "正在提取说话人特征"
-        "Reference ready", "Prompt conditioning" -> "正在准备音色特征"
-        "Features ready", "T2S encoder" -> "正在编码语音条件"
-        "First decoder" -> "正在生成首个语音 token"
-        "Decoder complete", "Vocoder" -> "正在合成音频波形"
-        "Vocoder complete", "Writing output", "Output ready" -> "正在保存音频"
+        "Inspecting resources" -> resources.getString(R.string.stage_checking_model)
+        "Preparing model" -> resources.getString(R.string.stage_preparing_weights)
+        "Initializing backend" -> resources.getString(R.string.stage_loading_model)
+        "Preparing runtime" -> resources.getString(R.string.stage_shared_models)
+        "Text features" -> resources.getString(R.string.stage_text)
+        "Reference conditioning", "Reference audio" -> resources.getString(R.string.stage_reference_audio)
+        "HuBERT" -> resources.getString(R.string.stage_speaker_features)
+        "Reference ready", "Prompt conditioning" -> resources.getString(R.string.stage_voice_features)
+        "Features ready", "T2S encoder" -> resources.getString(R.string.stage_encoding)
+        "First decoder" -> resources.getString(R.string.stage_first_token)
+        "Decoder complete", "Vocoder" -> resources.getString(R.string.stage_waveform)
+        "Vocoder complete", "Writing output", "Output ready" -> resources.getString(R.string.stage_saving)
         else -> when (state.stage) {
-            GenerationStage.INSTALLING_MODEL -> "正在准备音色权重"
-            GenerationStage.INITIALIZING_BACKEND -> "正在加载推理模型"
-            GenerationStage.PREPARING_FEATURES -> "正在解析参考声音"
-            GenerationStage.RUNNING_INFERENCE -> "正在生成语音"
-            GenerationStage.WRITING_OUTPUT -> "正在保存音频"
-            else -> "正在准备生成"
+            GenerationStage.INSTALLING_MODEL -> resources.getString(R.string.stage_preparing_weights)
+            GenerationStage.INITIALIZING_BACKEND -> resources.getString(R.string.stage_loading_model)
+            GenerationStage.PREPARING_FEATURES -> resources.getString(R.string.stage_reference_voice)
+            GenerationStage.RUNNING_INFERENCE -> resources.getString(R.string.stage_generating)
+            GenerationStage.WRITING_OUTPUT -> resources.getString(R.string.stage_saving)
+            else -> resources.getString(R.string.stage_preparing)
         }
     }
     return GenerationStatus(title)

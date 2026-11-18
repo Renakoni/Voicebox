@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import androidx.compose.ui.platform.LocalResources
+
 import android.animation.ValueAnimator
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
@@ -43,6 +46,7 @@ import kotlin.math.sin
 /** A finite, draw-only sequence; no frames are requested after the star settles. */
 @Composable
 internal fun StarInvitation(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val resources = LocalResources.current
     val phase = remember { Animatable(if (ValueAnimator.areAnimatorsEnabled()) 0f else 1f) }
     val owner = LocalLifecycleOwner.current
     var visible by remember { mutableStateOf(false) }
@@ -60,10 +64,10 @@ internal fun StarInvitation(onClick: () -> Unit, modifier: Modifier = Modifier) 
     val colors = MaterialTheme.colorScheme
     val dark = colors.background.luminance() < .5f
     val highlight = if (dark) colors.onSurface else colors.surfaceContainerLow
-    Box(modifier.fillMaxWidth().height(132.dp)
+    Box(modifier.fillMaxWidth().heightIn(min = 132.dp)
         .onGloballyPositioned { visible = it.boundsInWindow().height >= it.size.height * .65f }
         .clickable(interactionSource = interaction, indication = null, role = Role.Button,
-            onClickLabel = "前往 GitHub，为 Voicebox 点 Star", onClick = onClick)) {
+            onClickLabel = resources.getString(R.string.github_star_action), onClick = onClick)) {
         Box(Modifier.matchParentSize().drawWithCache {
             val center = Offset(size.width - 55.dp.toPx(), size.height * .5f)
             val radius = 32.dp.toPx()
@@ -171,10 +175,10 @@ internal fun StarInvitation(onClick: () -> Unit, modifier: Modifier = Modifier) 
                 }
             }
         })
-        Column(Modifier.align(Alignment.CenterStart).padding(end = 115.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("如果它帮到了你", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+        Column(Modifier.align(Alignment.CenterStart).padding(end = 115.dp).padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(resources.getString(R.string.github_star_hint), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("点亮一颗 Star", style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp), color = colors.onSurface,
+                Text(resources.getString(R.string.github_star), style = MaterialTheme.typography.titleMedium.copy(fontSize = 18.sp), color = colors.onSurface,
                     modifier = Modifier.weight(1f, fill = false))
                 Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(16.dp), tint = colors.primary)
             }

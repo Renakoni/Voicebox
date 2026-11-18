@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts.checkpoint
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import dev.rinstel.genie_tts.inference.HalfPrecision
 import org.json.JSONObject
 import java.io.File
@@ -24,7 +29,7 @@ class CheckpointImporter(
         name: String,
         openGpt: () -> InputStream,
         openSovits: () -> InputStream,
-        progress: (String) -> Unit = {},
+        progress: (UiText) -> Unit = {},
         checkCancelled: () -> Unit = {},
         reference: Reference? = null,
         replaceCharacterId: String? = null,
@@ -33,14 +38,14 @@ class CheckpointImporter(
         architectureHint: String? = null,
         newCharacterId: String? = null,
     ): Result {
-        require(name.isNotBlank() && name.length <= 80) { "请填写 1 至 80 字的音色名称。" }
-        require(newCharacterId == null || newCharacterId.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { "无效的音色目录。" }
+        requireUi(name.isNotBlank() && name.length <= 80) { UiText(R.string.voice_name_length) }
+        requireUi(newCharacterId == null || newCharacterId.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { UiText(R.string.voice_directory_invalid) }
         reference?.let {
-            require(it.text.isNotBlank()) { "请填写参考音频对应的原文。" }
-            require(it.audioFile.isFile && it.audioFile.length() in 1..32L * 1024 * 1024) { "请选择有效的参考音频，文件不能超过 32 MB。" }
-            require(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { "参考音频缺少有效的文件扩展名。" }
+            requireUi(it.text.isNotBlank()) { UiText(R.string.transcript_required) }
+            requireUi(it.audioFile.isFile && it.audioFile.length() in 1..32L * 1024 * 1024) { UiText(R.string.reference_file_invalid) }
+            requireUi(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { UiText(R.string.reference_extension_missing) }
         }
-        require(filesRoot.isDirectory || filesRoot.mkdirs()) { "无法创建模型目录。" }
+        requireUi(filesRoot.isDirectory || filesRoot.mkdirs()) { UiText(R.string.model_directory_failed) }
         val staging = File(filesRoot, ".genie-checkpoint-${UUID.randomUUID()}")
         require(staging.mkdir())
         try {
@@ -48,10 +53,10 @@ class CheckpointImporter(
             lateinit var manifestBytes: ByteArray
             lateinit var manifest: JSONObject
             var existing: File? = null
-            progress("读取 GPT 权重")
+            progress(UiText(R.string.reading_gpt))
             val gptFile = File(staging, "source.ckpt")
             val gptHash = copyCheckpoint(openGpt, gptFile, checkCancelled)
-            progress("读取 SoVITS 权重")
+            progress(UiText(R.string.reading_sovits))
             val sovitsFile = File(staging, "source.pth")
             val sovitsHash = copyCheckpoint(openSovits, sovitsFile, checkCancelled)
             val characterId = replaceCharacterId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
@@ -61,7 +66,7 @@ class CheckpointImporter(
                 TorchCheckpoint(sovitsFile).use { sovits ->
                     architecture = validateArchitecture(gpt, sovits, sovitsHash, architectureHint)
                     existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it, architecture) }
-                    progress("读取 $architecture 模型")
+                    progress(UiText(R.string.reading_architecture, architecture))
                     manifestBytes = openAsset("${assetDirectory(architecture)}/manifest.json").use { it.readBytes() }
                     manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
                     val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
@@ -78,8 +83,8 @@ class CheckpointImporter(
                             val entry = entries.getJSONObject(i)
                             val tensor = checkpoints.getValue(entry.getString("checkpoint")).tensor(entry.getString("key"))
                             val expected = entry.getJSONArray("shape").let { array -> List(array.length()) { array.getLong(it) } }
-                            require(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
-                                "权重结构与 $architecture 不匹配：${entry.getString("key")}。请确认选择了配套的完整模型。"
+                            requireUi(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
+                                UiText(R.string.checkpoint_structure_mismatch, architecture, entry.getString("key"))
                             }
                             storedBytes += tensor.elements * if (half) 2 else 4
                             if (half) expandedBytes += tensor.elements * 4
@@ -87,11 +92,11 @@ class CheckpointImporter(
                     }
                     // Check the actual final layout once; source copies are removed before expansion.
                     val remainingBytes = maxOf(storedBytes, storedBytes + expandedBytes - gptFile.length() - sovitsFile.length())
-                    require(filesRoot.usableSpace >= remainingBytes) { "存储空间不足，无法保存并展开此模型。" }
+                    requireUi(filesRoot.usableSpace >= remainingBytes) { UiText(R.string.checkpoint_storage_full) }
                     for (g in 0 until groups.length()) {
                         val group = groups.getJSONObject(g)
                         val half = group.getString("precision") == "fp16"
-                        progress("转换权重 ${g + 1}/${groups.length()}")
+                        progress(UiText(R.string.converting_weights, g + 1, groups.length()))
                         File(models, group.getString("file")).outputStream().buffered(1024 * 1024).use { output ->
                             val entries = group.getJSONArray("tensors")
                             for (i in 0 until entries.length()) {
@@ -105,7 +110,7 @@ class CheckpointImporter(
                     }
                 }
             }
-            progress("安装优化模型")
+            progress(UiText(R.string.installing_optimized_model))
             val templates = manifest.getJSONObject("files")
             for (filename in templates.keys()) {
                 checkCancelled()
@@ -117,7 +122,7 @@ class CheckpointImporter(
                         digest.update(buffer, 0, count); output.write(buffer, 0, count)
                     }
                 } }
-                require(hex(digest.digest()) == templates.getString(filename)) { "内置模型模板损坏，请重新安装应用。" }
+                requireUi(hex(digest.digest()) == templates.getString(filename)) { UiText(R.string.model_template_corrupt) }
             }
             File(character, "checkpoint-import.json").writeText(JSONObject().put("schema_version", 1)
                 .put("architecture", architecture).put("display_name", name.trim())
@@ -126,7 +131,7 @@ class CheckpointImporter(
                 .put("template_sha256", hex(MessageDigest.getInstance("SHA-256").digest(
                     manifestBytes))).toString(2))
             reference?.let {
-                progress("保存音色参考")
+                progress(UiText(R.string.saving_reference))
                 val audioDirectory = File(character, "prompt_wav").apply { mkdirs() }
                 val filename = "reference.${it.audioFile.extension.lowercase()}"
                 it.audioFile.copyTo(File(audioDirectory, filename))
@@ -153,17 +158,17 @@ class CheckpointImporter(
                 checkCancelled()
                 val count = input.read(buffer); if (count < 0) break
                 total += count
-                require(total <= 2L * 1024 * 1024 * 1024) { "单个权重文件不能超过 2 GB。请选择导出的模型权重。" }
+                requireUi(total <= 2L * 1024 * 1024 * 1024) { UiText(R.string.checkpoint_size_limit) }
                 digest.update(buffer, 0, count); output.write(buffer, 0, count)
             }
         } }
         RandomAccessFile(target, "rw").use { file ->
-            require(file.length() >= 4) { "权重文件为空或已损坏。" }
+            requireUi(file.length() >= 4) { UiText(R.string.checkpoint_empty) }
             val first = file.readUnsignedByte(); val second = file.readUnsignedByte()
-            require(file.readUnsignedByte() == 3 && file.readUnsignedByte() == 4) { "请选择 PyTorch ZIP 格式的 .ckpt / .pth 权重。" }
+            requireUi(file.readUnsignedByte() == 3 && file.readUnsignedByte() == 4) { UiText(R.string.checkpoint_zip_required) }
             if (first != 80 || second != 75) {
                 // GPT-SoVITS may replace PK with a two-digit model-version marker.
-                require(first in 48..57 && second in 48..57) { "不支持此权重文件格式。" }
+                requireUi(first in 48..57 && second in 48..57) { UiText(R.string.checkpoint_format_unsupported) }
                 file.seek(0); file.write(byteArrayOf(80, 75))
             }
         }
@@ -173,7 +178,7 @@ class CheckpointImporter(
     private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint, sovitsHash: String, architectureHint: String?): String {
         fun config(checkpoint: TorchCheckpoint, key: String) =
             ((checkpoint.root["config"] as? Map<*, *>)?.get(key) as? Map<*, *>)
-                ?: error("模型缺少结构配置，请选择 GPT-SoVITS 导出的完整权重。")
+                ?: errorUi(UiText(R.string.checkpoint_config_missing))
         val g = config(gpt, "model")
         val s = config(sovits, "model")
         val d = config(sovits, "data")
@@ -181,28 +186,28 @@ class CheckpointImporter(
         val expectedG = mapOf("vocab_size" to 1025L, "phoneme_vocab_size" to 732L, "embedding_dim" to 512L,
             "hidden_dim" to 512L, "head" to 16L, "linear_units" to 2048L, "n_layer" to 24L, "EOS" to 1024L)
         if (sovits.weights.containsKey("cfm.estimator.proj_out.weight")) {
-            require(expectedG.all { (k, v) -> g[k] == v } && s["semantic_frame_rate"] == "25hz" &&
+            requireUi(expectedG.all { (k, v) -> g[k] == v } && s["semantic_frame_rate"] == "25hz" &&
                 d["sampling_rate"] == 32000L && d["filter_length"] == 2048L && d["hop_length"] == 640L &&
                 !sovits.weights.containsKey("cfm.estimator.d_embed.time_mlp.0.weight") && !sovits.root.containsKey("lora_rank")) {
-                "当前只支持 V5 Turbo 完整权重，不支持其他扩散版本或 LoRA。"
+                UiText(R.string.v5_variant_unsupported)
             }
-            require(sovitsHash == "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022" ||
+            requireUi(sovitsHash == "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022" ||
                 s["version"] == "v5turbo" || architectureHint == "v5turbo") {
-                "此权重结构属于 V5，但缺少 Dev/Turbo 标记；请由导入调用方明确指定 v5turbo。"
+                UiText(R.string.v5_variant_ambiguous)
             }
             return "v5turbo"
         }
         val expectedS = mapOf("inter_channels" to 192L, "hidden_channels" to 192L, "filter_channels" to 768L,
             "n_heads" to 2L, "n_layers" to 6L, "kernel_size" to 3L, "gin_channels" to 1024L,
             "upsample_initial_channel" to if (pro) 512L else 768L)
-        require(expectedG.all { (k, v) -> g[k] == v } && expectedS.all { (k, v) -> s[k] == v } &&
+        requireUi(expectedG.all { (k, v) -> g[k] == v } && expectedS.all { (k, v) -> s[k] == v } &&
             s["semantic_frame_rate"] == "25hz" && s["resblock"] == "1" &&
             s["upsample_rates"] == listOf(10L, 8L, 2L, 2L, 2L) &&
             s["upsample_kernel_sizes"] == listOf(if (pro) 16L else 20L, 16L, 8L, 2L, 2L) &&
             s["resblock_kernel_sizes"] == listOf(3L, 7L, 11L) &&
             s["resblock_dilation_sizes"] == List(3) { listOf(1L, 3L, 5L) } &&
             d["sampling_rate"] == 32000L && d["filter_length"] == 2048L && d["hop_length"] == 640L) {
-            "当前支持标准 V2Pro / V2ProPlus 完整模型；普通 V2、扩散模型和 LoRA 暂不支持。"
+            UiText(R.string.v2_variant_unsupported)
         }
         return if (pro) "v2Pro" else "v2ProPlus"
     }
@@ -216,10 +221,10 @@ class CheckpointImporter(
             checkCancelled()
             val count = minOf(remaining, buffer.size.toLong()).toInt()
             var read = 0
-            while (read < count) { val n = input.read(buffer, read, count - read); require(n > 0) { "权重文件已截断。" }; read += n }
+            while (read < count) { val n = input.read(buffer, read, count - read); requireUi(n > 0) { UiText(R.string.checkpoint_truncated) }; read += n }
             if (half && tensor.storage.type == "HalfStorage") {
                 for (index in 1 until count step 2) {
-                    require(buffer[index].toInt() and 0x7c != 0x7c) { "权重包含 NaN 或无穷大，请检查模型文件。" }
+                    requireUi(buffer[index].toInt() and 0x7c != 0x7c) { UiText(R.string.checkpoint_nonfinite) }
                 }
                 output.write(buffer, 0, count)
                 remaining -= count
@@ -233,10 +238,10 @@ class CheckpointImporter(
                     "BFloat16Storage" -> Float.fromBits((bytes.short.toInt() and 65535) shl 16)
                     else -> bytes.float
                 }
-                require(value.isFinite()) { "权重包含 NaN 或无穷大，请检查模型文件。" }
+                requireUi(value.isFinite()) { UiText(R.string.checkpoint_nonfinite) }
                 if (half) {
                     val bits = floatToHalf(value)
-                    require(bits and 0x7c00 != 0x7c00) { "权重超出 FP16 范围，无法使用当前部署格式。" }
+                    requireUi(bits and 0x7c00 != 0x7c00) { UiText(R.string.checkpoint_fp16_range) }
                     converted.putShort(bits.toShort())
                 } else converted.putFloat(value)
             }

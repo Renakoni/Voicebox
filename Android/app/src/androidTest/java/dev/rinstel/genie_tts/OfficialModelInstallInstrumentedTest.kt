@@ -25,9 +25,10 @@ class OfficialModelInstallInstrumentedTest {
         try {
             var lastLabel = ""
             OfficialModelInstaller(root, catalog, context.assets::open).install(model, {}) { state ->
-                if (state.label != lastLabel || state.percent == 100) {
-                    Log.i("OfficialInstallTest", "${state.label} ${state.percent ?: ""}")
-                    lastLabel = state.label
+                val label = state.label?.resolve(context.resources).orEmpty()
+                if (label != lastLabel || state.percent == 100) {
+                    Log.i("OfficialInstallTest", "$label ${state.percent ?: ""}")
+                    lastLabel = label
                 }
             }
             assertTrue(catalog.installed(root, model))

@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.checkpoint
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
@@ -23,12 +27,12 @@ class DownloadedVocoder(private val root: File, private val openAsset: (String) 
                         val entry = tensors.getJSONObject(index)
                         val tensor = checkpoint.tensor(entry.getString("key"))
                         val expected = entry.getJSONArray("shape").let { shape -> List(shape.length()) { shape.getLong(it) } }
-                        require(tensor.shape == expected) { "V5 声码器权重形状不匹配。" }
+                        requireUi(tensor.shape == expected) { UiText(R.string.vocoder_shape_mismatch) }
                         checkpoint.open(tensor).use { converter.writeTensor(it, output, tensor, false, checkCancelled) }
                     }
                 }
             }
-            require(CheckpointImporter.hex(digest.digest()) == manifest.getString("weights_sha256")) { "V5 声码器转换校验失败。" }
+            requireUi(CheckpointImporter.hex(digest.digest()) == manifest.getString("weights_sha256")) { UiText(R.string.vocoder_checksum_failed) }
             openAsset("official-runtime/v5-vocoder-subpixel.onnx").use { input ->
                 File(stage, "v5-vocoder-subpixel.onnx").outputStream().use(input::copyTo)
             }

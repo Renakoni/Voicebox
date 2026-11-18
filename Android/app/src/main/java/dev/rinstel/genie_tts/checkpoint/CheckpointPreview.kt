@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts.checkpoint
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import android.content.Context
 import android.net.Uri
 import java.io.File
@@ -18,7 +23,7 @@ internal object CheckpointPreview {
             }
             bytes.copyOf(size)
         }
-            ?: error("无法读取权重文件。")
+            ?: errorUi(UiText(R.string.checkpoint_read_failed))
         identifyHeader(prefix)?.let { return it }
         // Some document providers expose a pipe. In that case defer recognition to
         // import rather than copying an entire checkpoint just to render a label.
@@ -41,8 +46,8 @@ internal object CheckpointPreview {
     }
 
     internal fun identifyHeader(prefix: ByteArray): String? {
-        require(prefix.size >= 4 && prefix[2] == 3.toByte() && prefix[3] == 4.toByte()) {
-            "请选择完整的 PyTorch 权重文件。"
+        requireUi(prefix.size >= 4 && prefix[2] == 3.toByte() && prefix[3] == 4.toByte()) {
+            UiText(R.string.checkpoint_complete_required)
         }
         // Upstream process_ckpt.py fingerprints the first 8192 bytes of official weights.
         val hash = MessageDigest.getInstance("MD5").digest(prefix).joinToString("") { "%02x".format(it) }

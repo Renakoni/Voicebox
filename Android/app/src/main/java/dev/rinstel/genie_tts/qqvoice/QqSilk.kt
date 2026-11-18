@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import dev.rinstel.genie_tts.inference.ReferenceAudioResampler
 import dev.rinstel.genie_tts.inference.WavAudioReader
 import java.io.File
@@ -14,11 +18,11 @@ object QqSilk {
 
     fun fromWav(file: File): Encoded {
         val audio = WavAudioReader.readMonoPcm(file)
-        require(audio.samples.isNotEmpty() && audio.samples.size.toLong() <= audio.sampleRate.toLong() * 60) {
-            "QQ 语音实验目前支持 60 秒以内的音频。"
+        requireUi(audio.samples.isNotEmpty() && audio.samples.size.toLong() <= audio.sampleRate.toLong() * 60) {
+            UiText(R.string.qq_duration_limit)
         }
         val samples = ReferenceAudioResampler.resample(audio.samples, audio.sampleRate, 24000)
-        require(samples.all(Float::isFinite)) { "音频包含无效采样。" }
+        requireUi(samples.all(Float::isFinite)) { UiText(R.string.audio_samples_invalid) }
         val pcm = ShortArray(samples.size) { (samples[it] * 32768).roundToInt().coerceIn(-32768, 32767).toShort() }
         val waveform = ByteArray(30) { bin ->
             val start = bin * samples.size / 30

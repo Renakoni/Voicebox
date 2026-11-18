@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import dev.rinstel.genie_tts.checkpoint.CharacterVoiceEditor
 import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
 import java.io.BufferedInputStream
@@ -12,9 +15,9 @@ import java.util.zip.ZipInputStream
 /** Imports the runtime ZIP; voices use the checkpoint importer. */
 class ResourcePackageImporter(private val filesRoot: File) {
     fun importRuntime(input: InputStream, checkCancelled: () -> Unit = {}) {
-        require(filesRoot.isDirectory || filesRoot.mkdirs()) { "无法创建应用资源目录。" }
+        requireUi(filesRoot.isDirectory || filesRoot.mkdirs()) { UiText(R.string.resource_root_failed) }
         val stage = File(filesRoot, ".genie-import-${UUID.randomUUID()}")
-        require(stage.mkdir()) { "无法创建资源导入临时目录。" }
+        requireUi(stage.mkdir()) { UiText(R.string.resource_staging_failed) }
         try {
             val seen = HashSet<String>()
             val buffer = ByteArray(128 * 1024)
@@ -25,30 +28,30 @@ class ResourcePackageImporter(private val filesRoot: File) {
                     val entry = zip.nextEntry ?: break
                     val path = entry.name.replace('\\', '/').trimEnd('/')
                     val parts = path.split('/')
-                    require(parts.first() == "RuntimeAssets" && parts.none { it.isBlank() || it == "." || it == ".." || ':' in it }) {
-                        "资源包必须位于 RuntimeAssets/ 内，且不能包含非法路径。"
+                    requireUi(parts.first() == "RuntimeAssets" && parts.none { it.isBlank() || it == "." || it == ".." || ':' in it }) {
+                        UiText(R.string.resource_invalid_path)
                     }
-                    require(seen.add(path) && seen.size <= 100_000) { "资源包文件重复或数量过多。" }
+                    requireUi(seen.add(path) && seen.size <= 100_000) { UiText(R.string.resource_duplicate_files) }
                     val output = File(stage, path)
                     if (entry.isDirectory) {
-                        require(output.mkdirs() || output.isDirectory) { "无法创建资源目录。" }
+                        requireUi(output.mkdirs() || output.isDirectory) { UiText(R.string.resource_directory_failed) }
                         continue
                     }
-                    require(output.parentFile!!.mkdirs() || output.parentFile!!.isDirectory) { "无法创建资源目录。" }
+                    requireUi(output.parentFile!!.mkdirs() || output.parentFile!!.isDirectory) { UiText(R.string.resource_directory_failed) }
                     output.outputStream().buffered().use { destination ->
                         while (true) {
                             checkCancelled()
                             val count = zip.read(buffer)
                             if (count < 0) break
                             bytes += count
-                            require(bytes <= 4L * 1024 * 1024 * 1024) { "资源包解压内容超过 4 GiB 限制。" }
+                            requireUi(bytes <= 4L * 1024 * 1024 * 1024) { UiText(R.string.resource_extraction_limit) }
                             destination.write(buffer, 0, count)
                         }
                     }
                 }
             }
             val missing = RuntimeAssetRepository(stage).inspect().missingFiles
-            require(missing.isEmpty()) { "资源包缺少文件：${missing.joinToString("、")}" }
+            requireUi(missing.isEmpty()) { UiText(R.string.resource_missing_files, missing.joinToString(", ")) }
             checkCancelled()
             val source = File(stage, "RuntimeAssets")
             val target = File(filesRoot, "RuntimeAssets")

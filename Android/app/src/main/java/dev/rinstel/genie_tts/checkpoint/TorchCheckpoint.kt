@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts.checkpoint
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.File
@@ -11,7 +16,7 @@ internal data class TorchStorage(val type: String, val key: String, val count: L
     val bytesPerElement: Int get() = when (type) {
         "HalfStorage", "BFloat16Storage" -> 2
         "FloatStorage" -> 4
-        else -> error("不支持的权重精度：$type")
+        else -> errorUi(UiText(R.string.checkpoint_precision_unsupported, type))
     }
 }
 
@@ -21,13 +26,13 @@ internal data class TorchTensor(
     val elements: Long get() = shape.fold(1L, Math::multiplyExact)
 
     fun validate() {
-        require(shape.size == stride.size && shape.size <= 8 && shape.all { it > 0 }) { "权重张量形状无效。" }
+        requireUi(shape.size == stride.size && shape.size <= 8 && shape.all { it > 0 }) { UiText(R.string.tensor_shape_invalid) }
         var contiguous = 1L
         for (index in shape.indices.reversed()) {
-            require(shape[index] == 1L || stride[index] == contiguous) { "暂不支持非连续存储的权重，请使用 GPT-SoVITS 导出的完整模型。" }
+            requireUi(shape[index] == 1L || stride[index] == contiguous) { UiText(R.string.tensor_noncontiguous) }
             contiguous = Math.multiplyExact(contiguous, shape[index])
         }
-        require(offset >= 0 && Math.addExact(offset, elements) <= storage.count) { "权重张量超出文件范围。" }
+        requireUi(offset >= 0 && Math.addExact(offset, elements) <= storage.count) { UiText(R.string.tensor_out_of_bounds) }
     }
 }
 
@@ -40,26 +45,26 @@ internal class TorchPickle(private val bytes: ByteArray) {
     private var position = 0
     private val stack = arrayListOf<Any?>()
     private val memo = hashMapOf<Int, Any?>()
-    private fun byte(): Int { require(position < bytes.size) { "权重元数据已截断。" }; return bytes[position++].toInt() and 255 }
+    private fun byte(): Int { requireUi(position < bytes.size) { UiText(R.string.metadata_truncated) }; return bytes[position++].toInt() and 255 }
     private fun unsigned(count: Int): Long {
         var value = 0L
         repeat(count) { value = value or (byte().toLong() shl (it * 8)) }
         return value
     }
     private fun text(length: Int): String {
-        require(length in 0..1_048_576 && length <= bytes.size - position) { "权重元数据长度无效。" }
+        requireUi(length in 0..1_048_576 && length <= bytes.size - position) { UiText(R.string.metadata_length_invalid) }
         return bytes.copyOfRange(position, position + length).toString(Charsets.UTF_8).also { position += length }
     }
     private fun line(): String {
         val start = position
         while (position < bytes.size && bytes[position] != 10.toByte()) position++
-        require(position < bytes.size && position - start <= 4096) { "权重元数据格式无效。" }
+        requireUi(position < bytes.size && position - start <= 4096) { UiText(R.string.metadata_format_invalid) }
         return bytes.copyOfRange(start, position++).toString(Charsets.UTF_8)
     }
-    private fun pop(): Any? { require(stack.isNotEmpty()) { "权重元数据栈为空。" }; return stack.removeAt(stack.lastIndex) }
+    private fun pop(): Any? { requireUi(stack.isNotEmpty()) { UiText(R.string.metadata_stack_empty) }; return stack.removeAt(stack.lastIndex) }
     private fun marked(): List<Any?> {
         val index = stack.indexOfLast { it === marker }
-        require(index >= 0) { "权重元数据缺少标记。" }
+        requireUi(index >= 0) { UiText(R.string.metadata_marker_missing) }
         val values = stack.subList(index + 1, stack.size).toList()
         stack.subList(index, stack.size).clear()
         return values
@@ -71,11 +76,11 @@ internal class TorchPickle(private val bytes: ByteArray) {
         stack.add(values)
     }
     private fun symbol(module: String, name: String): Symbol {
-        require((module == "collections" && name == "OrderedDict") ||
+        requireUi((module == "collections" && name == "OrderedDict") ||
             (module == "torch._utils" && name in setOf("_rebuild_tensor", "_rebuild_tensor_v2")) ||
             isParams(Symbol(module, name)) ||
             (module == "torch" && name in setOf("HalfStorage", "FloatStorage", "BFloat16Storage"))) {
-            "该文件包含不支持的对象，请使用 GPT-SoVITS 导出的完整 .ckpt / .pth 权重。"
+            UiText(R.string.checkpoint_object_unsupported)
         }
         return Symbol(module, name)
     }
@@ -84,11 +89,11 @@ internal class TorchPickle(private val bytes: ByteArray) {
         require(bytes.size <= 16 * 1024 * 1024)
         var operations = 0
         while (position < bytes.size) {
-            require(++operations < 2_000_000 && stack.size < 100_000 && memo.size < 1_000_000) { "权重元数据过大。" }
+            requireUi(++operations < 2_000_000 && stack.size < 100_000 && memo.size < 1_000_000) { UiText(R.string.metadata_too_large) }
             when (val opcode = byte()) {
-                0x80 -> require(byte() in 2..5) { "不支持此 PyTorch 保存格式。" }
+                0x80 -> requireUi(byte() in 2..5) { UiText(R.string.pytorch_format_unsupported) }
                 0x95 -> require(unsigned(8) in 0..(bytes.size - position).toLong())
-                '.'.code -> { require(stack.size == 1); return pop() as? Map<*, *> ?: error("权重根目录格式无效。") }
+                '.'.code -> { require(stack.size == 1); return pop() as? Map<*, *> ?: errorUi(UiText(R.string.checkpoint_root_invalid)) }
                 '('.code -> stack.add(marker)
                 ')'.code -> stack.add(emptyList<Any?>())
                 ']'.code -> stack.add(arrayListOf<Any?>())
@@ -119,7 +124,7 @@ internal class TorchPickle(private val bytes: ByteArray) {
                 0x81 -> {
                     val args = pop() as List<*>
                     val type = pop() as Symbol
-                    require(isParams(type) && args.isEmpty()) { "不支持此配置对象。" }
+                    requireUi(isParams(type) && args.isEmpty()) { UiText(R.string.config_object_unsupported) }
                     stack.add(Params()) // A plain map, never a Python constructor.
                 }
                 'c'.code -> stack.add(symbol(line(), line()))
@@ -145,7 +150,7 @@ internal class TorchPickle(private val bytes: ByteArray) {
                             TorchTensor(args[0] as TorchStorage, args[1] as Long,
                                 (args[2] as List<*>).map { it as Long }, (args[3] as List<*>).map { it as Long })
                         }
-                        else -> error("不支持的权重对象。")
+                        else -> errorUi(UiText(R.string.weight_object_unsupported))
                     })
                 }
                 's'.code -> { val value = pop(); val key = pop(); require(key is String || key is Long); (stack.last() as MutableMap<Any?, Any?>)[key] = value }
@@ -157,7 +162,7 @@ internal class TorchPickle(private val bytes: ByteArray) {
                 'a'.code -> { val item = pop(); (stack.last() as MutableList<Any?>).add(item) }
                 'e'.code -> { val items = marked(); (stack.last() as MutableList<Any?>).addAll(items) }
                 'b'.code -> {
-                    val state = pop() as? Map<*, *> ?: error("不支持的权重元数据。")
+                    val state = pop() as? Map<*, *> ?: errorUi(UiText(R.string.metadata_unsupported))
                     val target = stack.last()
                     if (target is Params) {
                         require(state.keys.all { it is String })
@@ -167,10 +172,10 @@ internal class TorchPickle(private val bytes: ByteArray) {
                         require(target is MutableMap<*, *> && state.keys.all { it == "_metadata" })
                     }
                 }
-                else -> error("不支持的权重保存格式（指令 $opcode），请使用 GPT-SoVITS 导出的完整权重。")
+                else -> errorUi(UiText(R.string.checkpoint_opcode_unsupported, opcode))
             }
         }
-        error("权重元数据未完整结束。")
+        errorUi(UiText(R.string.metadata_unterminated))
     }
 }
 
@@ -182,26 +187,26 @@ internal class TorchCheckpoint(file: File, weightsKey: String? = "weight") : Clo
     init {
         try {
             val entries = zip.fileHeaders
-            require(entries.size <= 20_000 && entries.map { it.fileName }.distinct().size == entries.size) { "权重 ZIP 目录无效。" }
-            val metadata = entries.singleOrNull { it.fileName.endsWith("/data.pkl") } ?: error("请选择 PyTorch ZIP 格式的完整权重。")
-            require(metadata.uncompressedSize in 1..16 * 1024 * 1024) { "权重元数据过大。" }
+            requireUi(entries.size <= 20_000 && entries.map { it.fileName }.distinct().size == entries.size) { UiText(R.string.checkpoint_zip_invalid) }
+            val metadata = entries.singleOrNull { it.fileName.endsWith("/data.pkl") } ?: errorUi(UiText(R.string.pytorch_zip_required))
+            requireUi(metadata.uncompressedSize in 1..16 * 1024 * 1024) { UiText(R.string.metadata_too_large) }
             prefix = metadata.fileName.removeSuffix("data.pkl")
             zip.getFileHeader(prefix + "byteorder")?.let { entry ->
-                require(entry.uncompressedSize in 1..16 && zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) } == "little") { "暂不支持大端权重。" }
+                requireUi(entry.uncompressedSize in 1..16 && zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) } == "little") { UiText(R.string.checkpoint_big_endian) }
             }
             root = TorchPickle(zip.getInputStream(metadata).use { input ->
                 ByteArray(metadata.uncompressedSize.toInt()).also { DataInputStream(input).readFully(it); require(input.read() == -1) }
             }).read()
             weights = if (weightsKey == null) root else root[weightsKey] as? Map<*, *>
-                ?: error("缺少 weight，请选择 GPT-SoVITS 导出的模型，而非训练过程快照。")
+                ?: errorUi(UiText(R.string.checkpoint_weight_missing))
         } catch (error: Throwable) { zip.close(); throw error }
     }
 
     fun tensor(key: String): TorchTensor = (weights[key] as? TorchTensor
-        ?: error("模型与 V2ProPlus 不匹配，缺少权重：$key")).also { tensor ->
+        ?: errorUi(UiText(R.string.checkpoint_key_missing, key))).also { tensor ->
         tensor.validate()
-        val entry = zip.getFileHeader(prefix + "data/" + tensor.storage.key) ?: error("权重数据缺失：$key")
-        require(entry.uncompressedSize == Math.multiplyExact(tensor.storage.count, tensor.storage.bytesPerElement.toLong())) { "权重数据长度不匹配：$key" }
+        val entry = zip.getFileHeader(prefix + "data/" + tensor.storage.key) ?: errorUi(UiText(R.string.weight_data_missing, key))
+        requireUi(entry.uncompressedSize == Math.multiplyExact(tensor.storage.count, tensor.storage.bytesPerElement.toLong())) { UiText(R.string.weight_length_mismatch, key) }
     }
 
     fun open(tensor: TorchTensor): InputStream {

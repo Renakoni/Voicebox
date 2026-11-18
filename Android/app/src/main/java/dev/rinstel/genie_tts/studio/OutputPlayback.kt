@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import androidx.compose.ui.platform.LocalResources
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,6 +23,7 @@ import java.util.Locale
 @Composable
 internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Boolean,
     onToggle: () -> Unit, onSeek: (Int) -> Unit) {
+    val resources = LocalResources.current
     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FilledIconButton(onClick = onToggle, enabled = enabled && !preview.preparing,
             shape = StudioControlShape,
@@ -28,7 +32,7 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
             modifier = Modifier.size(48.dp).padding(4.dp).testTag("play_output")) {
             if (preview.preparing) CircularProgressIndicator(Modifier.size(24.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
             else if (preview.playing) PauseIcon()
-            else Icon(Icons.Default.PlayArrow, "播放生成语音")
+            else Icon(Icons.Default.PlayArrow, resources.getString(R.string.play_generated))
         }
         PlaybackTimeline(preview, durationMs, Modifier.weight(1f), onSeek)
     }
@@ -36,6 +40,7 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
 
 @Composable
 private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: Modifier, onSeek: (Int) -> Unit) {
+    val resources = LocalResources.current
     val duration = (if (preview.durationMs > 0) preview.durationMs.toLong() else durationMs).coerceAtLeast(1)
     var draggedPosition by remember(preview.path) { mutableStateOf<Float?>(null) }
     val interactions = remember { MutableInteractionSource() }
@@ -52,7 +57,7 @@ private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: 
             },
             valueRange = 0f..duration.toFloat(), interactionSource = interactions,
             enabled = seekEnabled,
-            modifier = Modifier.testTag("playback_seek").semantics { contentDescription = "播放进度" })
+            modifier = Modifier.testTag("playback_seek").semantics { contentDescription = resources.getString(R.string.playback_position) })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(playbackTime(position.toLong()), style = MaterialTheme.typography.labelMedium,
                 modifier = Modifier.testTag("playback_position"))
@@ -63,8 +68,9 @@ private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: 
 
 @Composable
 private fun PauseIcon() {
+    val resources = LocalResources.current
     val color = LocalContentColor.current
-    Canvas(Modifier.size(24.dp).semantics { contentDescription = "暂停播放" }) {
+    Canvas(Modifier.size(24.dp).semantics { contentDescription = resources.getString(R.string.pause_playback) }) {
         drawLine(color, Offset(size.width * .35f, size.height * .22f), Offset(size.width * .35f, size.height * .78f), 4.dp.toPx())
         drawLine(color, Offset(size.width * .65f, size.height * .22f), Offset(size.width * .65f, size.height * .78f), 4.dp.toPx())
     }

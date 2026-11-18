@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+import dev.rinstel.genie_tts.i18n.checkUi
+
 import android.content.Context
 import android.os.Build
 import android.util.AtomicFile
@@ -61,12 +66,12 @@ class LocalAdb(context: Context) : AbsAdbConnectionManager() {
     override fun getDeviceName() = "Voicebox"
 
     fun pairLocal(port: Int, code: String) {
-        require(port in 1024..65535 && code.matches(Regex("[0-9]{6}"))) { "请输入有效端口和六位配对码。" }
-        check(pair("127.0.0.1", port, code)) { "配对失败，请重新打开系统配对窗口。" }
+        requireUi(port in 1024..65535 && code.matches(Regex("[0-9]{6}"))) { UiText(R.string.adb_pairing_input) }
+        checkUi(pair("127.0.0.1", port, code)) { UiText(R.string.adb_pairing_failed) }
     }
 
     fun pairLocal(code: String) {
-        require(code.matches(Regex("[0-9]{6}"))) { "请输入六位配对码。" }
+        requireUi(code.matches(Regex("[0-9]{6}"))) { UiText(R.string.adb_pairing_code_invalid) }
         pairLocal(discoverLocalPort(AdbMdns.SERVICE_TYPE_TLS_PAIRING), code)
     }
 
@@ -85,18 +90,18 @@ class LocalAdb(context: Context) : AbsAdbConnectionManager() {
         }
         discovery.start()
         try {
-            check(found.await(10, TimeUnit.SECONDS)) {
-                if (serviceType == AdbMdns.SERVICE_TYPE_TLS_PAIRING) "请保持系统配对码弹窗打开后重试。"
-                else "未找到本机无线调试，请开启后重试。"
+            checkUi(found.await(10, TimeUnit.SECONDS)) {
+                if (serviceType == AdbMdns.SERVICE_TYPE_TLS_PAIRING) UiText(R.string.adb_pairing_dialog_required)
+                else UiText(R.string.adb_not_found)
             }
             return port.get()
         } finally { discovery.stop() }
     }
 
     fun connectLocal(port: Int) {
-        require(port in 1024..65535) { "请输入无线调试页面的连接端口。" }
+        requireUi(port in 1024..65535) { UiText(R.string.adb_port_required) }
         disconnect()
-        check(connect("127.0.0.1", port)) { "连接失败，请确认无线调试已开启、端口正确。" }
+        checkUi(connect("127.0.0.1", port)) { UiText(R.string.adb_connect_failed) }
     }
 
     internal fun shell(command: String, input: ByteArray? = null, timeoutSeconds: Long = 15): String {
@@ -126,12 +131,12 @@ class LocalAdb(context: Context) : AbsAdbConnectionManager() {
                         val count = try { reader.read(buffer) }
                         catch (e: IOException) { if (stream.isClosed) break else throw e }
                         if (count < 0) break
-                        check(output.size() + count <= 2 * 1024 * 1024) { "命令返回数据过多，已停止。" }
+                        checkUi(output.size() + count <= 2 * 1024 * 1024) { UiText(R.string.adb_output_limit) }
                         output.write(buffer, 0, count)
                     }
                 }
                 val text = output.toString("UTF-8").replace("\r\n", "\n")
-                check(text.endsWith("\nGENIE_EXIT:0\n")) { "文件操作未完成，请检查连接或 QQ 目录权限。" }
+                checkUi(text.endsWith("\nGENIE_EXIT:0\n")) { UiText(R.string.adb_file_operation_failed) }
                 text.removeSuffix("\nGENIE_EXIT:0\n").trimEnd()
             }
         } finally { deadline.cancel(false) }
@@ -142,8 +147,8 @@ class LocalAdb(context: Context) : AbsAdbConnectionManager() {
     internal fun writeFile(path: String, data: ByteArray) {
         val encoded = Base64.encode(data, Base64.NO_WRAP)
         shell("umask 007; head -c ${encoded.size} | base64 -d > ${quote(path)}", encoded)
-        check(shell("sha256sum ${quote(path)}").substringBefore(' ') == QqDraftPolicy.sha256(data)) {
-            "写入校验失败，原草稿尚未替换。"
+        checkUi(shell("sha256sum ${quote(path)}").substringBefore(' ') == QqDraftPolicy.sha256(data)) {
+            UiText(R.string.adb_write_verification_failed)
         }
     }
 

@@ -1,5 +1,7 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.i18n.UiText
+
 import android.content.ClipData
 import android.content.Intent
 import android.Manifest
@@ -38,7 +40,7 @@ class MainActivity : ComponentActivity() {
     }
     private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         // The permission dialog ends the hold gesture. Recording needs a new press after granting.
-        studio.referenceRecordingError(if (granted) null else "需要麦克风权限才能录音，也可以直接选择音频。")
+        studio.referenceRecordingError(if (granted) null else UiText(R.string.microphone_permission))
     }
     private val referencePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(studio::pickReference)
@@ -105,7 +107,7 @@ class MainActivity : ComponentActivity() {
                 // Older devices use their gallery app, not the document/file picker fallback.
                 galleryPicker.launch(Intent(Intent.ACTION_PICK).setDataAndType(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, "image/*"))
             }
-        }.onFailure { studio.referenceRecordingError("无法打开相册，请检查是否安装了相册应用。") }
+        }.onFailure { studio.referenceRecordingError(UiText(R.string.gallery_unavailable)) }
     }
 
     private fun takeAvatarPhoto() {
@@ -117,7 +119,7 @@ class MainActivity : ComponentActivity() {
         }.onFailure {
             avatarCameraPath?.let { File(it).delete() }
             avatarCameraPath = null
-            studio.referenceRecordingError("无法打开相机，请检查是否安装了相机应用。")
+            studio.referenceRecordingError(UiText(R.string.camera_unavailable))
         }
     }
 
@@ -127,11 +129,11 @@ class MainActivity : ComponentActivity() {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "audio/wav"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                clipData = ClipData.newRawUri("Voicebox 音频", uri)
+                clipData = ClipData.newRawUri(getString(R.string.audio_clip_label), uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            startActivity(Intent.createChooser(intent, "分享语音"))
-        }.onFailure { studio.notify("无法分享这段音频，请先保存到文件。") }
+            startActivity(Intent.createChooser(intent, getString(R.string.share_audio)))
+        }.onFailure { studio.notify(UiText(R.string.share_failed)) }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

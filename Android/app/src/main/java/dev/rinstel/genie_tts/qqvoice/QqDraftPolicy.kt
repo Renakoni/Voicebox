@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.checkUi
+
 import java.security.MessageDigest
 
 data class QqDraftFile(val path: String, val size: Long, val modified: Long)
@@ -11,10 +15,10 @@ object QqDraftPolicy {
     fun sha256(data: ByteArray) = MessageDigest.getInstance("SHA-256").digest(data).joinToString("") { "%02x".format(it) }
 
     fun select(before: List<QqDraftFile>, after: List<QqDraftFile>, started: Long, now: Long): QqDraftFile {
-        check(now >= started && now - started <= 180) { "准备已过期，请取消 QQ 草稿后重新开始。" }
+        checkUi(now >= started && now - started <= 180) { UiText(R.string.qq_draft_expired) }
         val existing = before.map { it.path }.toSet()
         val candidates = after.filter { validPath(it.path) && it.path !in existing && it.modified >= started && it.size in 11..512000 }
-        check(candidates.size == 1) { "未找到唯一的新录音。请只在目标会话录一段未发送的草稿。" }
+        checkUi(candidates.size == 1) { UiText(R.string.qq_draft_ambiguous) }
         return candidates.single()
     }
 }

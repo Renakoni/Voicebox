@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.inference
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+
 import android.content.Context
 import android.os.Build
 import android.util.Log
@@ -8,9 +11,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 data class DeviceAccelerationStatus(
-    val device: String = "正在读取设备信息…",
+    val device: String = "",
     val available: Boolean = false,
-    val detail: String = "正在验证 NPU",
+    val detail: UiText = UiText(R.string.npu_checking),
     val checking: Boolean = true,
 )
 
@@ -32,7 +35,7 @@ class DeviceAcceleration(private val context: Context) {
         fun unavailable(reason: String) {
             Log.i("VoiceboxAcceleration", reason)
             runtimeDirectory = null
-            mutableStatus.value = DeviceAccelerationStatus(device, detail = "NPU 验证未通过", checking = false)
+            mutableStatus.value = DeviceAccelerationStatus(device, detail = UiText(R.string.npu_unavailable), checking = false)
         }
         if (!qualcomm || "arm64-v8a" !in Build.SUPPORTED_ABIS) {
             unavailable("未检测到兼容的高通 NPU")
@@ -61,14 +64,14 @@ class DeviceAcceleration(private val context: Context) {
         }
         if (available) {
             runtimeDirectory = runtime
-            mutableStatus.value = DeviceAccelerationStatus(device, true, "NPU 验证通过", checking = false)
-        } else unavailable("NPU 验证未通过")
+            mutableStatus.value = DeviceAccelerationStatus(device, true, UiText(R.string.npu_available), checking = false)
+        } else unavailable("NPU capability check failed")
     }
 
     fun modelUnavailable() {
         capabilityCache.delete()
         runtimeDirectory = null
-        mutableStatus.value = mutableStatus.value.copy(available = false, detail = "NPU 验证未通过")
+        mutableStatus.value = mutableStatus.value.copy(available = false, detail = UiText(R.string.npu_unavailable))
     }
 
     companion object {

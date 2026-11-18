@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.inference
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+
 object LanguageNormalizer {
     private val languageMap = mapOf(
         "chinese" to "chinese",
@@ -48,12 +51,12 @@ object LanguageNormalizer {
     fun isHybridChineseEnglish(language: String): Boolean =
         normalize(language) == "hybrid-chinese-english"
 
-    fun scriptError(language: String, text: String): String? = when {
+    fun scriptError(language: String, text: String): UiText? = when {
         (isChinese(language) || isHybridChineseEnglish(language)) &&
             text.any { it in '\u3040'..'\u30ff' || it in '\uff66'..'\uff9d' } ->
-            "文字包含日语假名，请将对应语言改为日语。"
+            UiText(R.string.language_contains_kana)
         isEnglish(language) && text.any { it in '\u3000'..'\u9fff' && it.isLetter() } ->
-            "英语模式不能读取中日文，请将对应语言改为中文或日语。"
+            UiText(R.string.language_not_english)
         else -> null
     }
 

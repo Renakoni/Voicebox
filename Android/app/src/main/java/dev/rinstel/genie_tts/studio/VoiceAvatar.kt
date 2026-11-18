@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.R
+import androidx.compose.ui.platform.LocalResources
+
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
@@ -29,6 +32,7 @@ import kotlinx.coroutines.withContext
 
 @Composable
 internal fun VoiceAvatar(name: String, path: String = "", modifier: Modifier = Modifier.size(48.dp)) {
+    val resources = LocalResources.current
     val bitmap by produceState<ImageBitmap?>(null, path) {
         value = null
         if (path.isNotBlank()) value = withContext(Dispatchers.IO) {
@@ -36,7 +40,7 @@ internal fun VoiceAvatar(name: String, path: String = "", modifier: Modifier = M
         }
     }
     Box(modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
-        if (bitmap != null) Image(bitmap!!, if (name.isBlank()) "音色头像" else "$name 的头像",
+        if (bitmap != null) Image(bitmap!!, if (name.isBlank()) resources.getString(R.string.voice_avatar) else resources.getString(R.string.named_voice_avatar, name),
             Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else {
             val color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .75f)
@@ -55,11 +59,12 @@ internal fun VoiceAvatar(name: String, path: String = "", modifier: Modifier = M
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
 internal fun VoiceAvatarEditor(name: String, path: String, enabled: Boolean, pickPhoto: () -> Unit, takePhoto: () -> Unit) {
+    val resources = LocalResources.current
     var choosing by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
         Box(Modifier.size(96.dp).testTag("edit_avatar")
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 52.dp),
-                enabled = enabled, role = Role.Button, onClickLabel = "更换头像") { choosing = true }) {
+                enabled = enabled, role = Role.Button, onClickLabel = resources.getString(R.string.change_avatar)) { choosing = true }) {
             VoiceAvatar(name, path, Modifier.fillMaxSize())
             Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(28.dp).align(Alignment.BottomEnd)) {
@@ -70,7 +75,7 @@ internal fun VoiceAvatarEditor(name: String, path: String, enabled: Boolean, pic
     if (choosing) ModalBottomSheet(onDismissRequest = { choosing = false }, dragHandle = null,
         shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
-        listOf("从相册选择" to pickPhoto, "拍照" to takePhoto).forEachIndexed { index, (label, action) ->
+        listOf(resources.getString(R.string.choose_photo) to pickPhoto, resources.getString(R.string.take_photo) to takePhoto).forEachIndexed { index, (label, action) ->
             if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.outlineVariant)
             Box(Modifier.fillMaxWidth().clickable { choosing = false; action() }
                 .heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 16.dp), contentAlignment = Alignment.CenterStart) {
@@ -80,7 +85,7 @@ internal fun VoiceAvatarEditor(name: String, path: String, enabled: Boolean, pic
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Box(Modifier.fillMaxWidth().clickable { choosing = false }.heightIn(min = 56.dp).padding(16.dp),
             contentAlignment = Alignment.Center) {
-            Text("取消", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(resources.getString(R.string.cancel), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

@@ -1,12 +1,19 @@
 package dev.rinstel.genie_tts.inference
 
-fun modelArchitectureLabel(architecture: String): String = when (architecture) {
-    "v2ProPlus" -> "V2 Pro Plus"
-    "v2Pro" -> "V2 Pro"
-    "v2" -> "V2"
-    "v5turbo" -> "V5 Turbo"
-    "v5dev" -> "V5 Dev · 暂不支持"
-    "v5" -> "V5 · 导入时确认版本"
-    "lora" -> "LoRA · 暂不支持"
-    else -> "未支持的版本"
-}
+import dev.rinstel.genie_tts.R
+import android.content.res.Resources
+import dev.rinstel.genie_tts.i18n.UiText
+
+fun modelArchitectureText(architecture: String): UiText = UiText(when (architecture) {
+    "v2ProPlus" -> R.string.model_v2_pro_plus
+    "v2Pro" -> R.string.model_v2_pro
+    "v2" -> R.string.model_v2
+    "v5turbo" -> R.string.model_v5_turbo
+    "v5dev" -> R.string.model_v5_dev_unsupported
+    "v5" -> R.string.model_v5_pending
+    "lora" -> R.string.model_lora_unsupported
+    else -> R.string.model_version_unsupported
+})
+
+fun modelArchitectureLabel(resources: Resources, architecture: String): String =
+    modelArchitectureText(architecture).resolve(resources)

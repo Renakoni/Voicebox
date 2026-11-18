@@ -1,6 +1,8 @@
 package dev.rinstel.genie_tts.checkpoint
 
 import dev.rinstel.genie_tts.inference.HalfPrecision
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.LocalizedFailure
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
@@ -10,7 +12,7 @@ class TorchCheckpointTest {
     @Test fun refusesExecutablePickleGlobals() {
         val pickle = byteArrayOf(0x80.toByte(), 2) + "cos\nsystem\n(S'echo unsafe'\ntR.".toByteArray()
         val error = assertThrows(IllegalArgumentException::class.java) { TorchPickle(pickle).read() }
-        assertTrue(error.message!!.contains("不支持的对象"))
+        assertEquals(R.string.checkpoint_object_unsupported, (error as LocalizedFailure).text.resourceId)
     }
 
     @Test fun rejectsTruncatedMetadataAndOutOfBoundsTensor() {

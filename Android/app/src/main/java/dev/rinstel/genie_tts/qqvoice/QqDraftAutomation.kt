@@ -1,5 +1,10 @@
 package dev.rinstel.genie_tts.qqvoice
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.checkUi
+import dev.rinstel.genie_tts.i18n.errorUi
+
 import java.util.UUID
 
 /** QQ foreground workflow. The user selects the actual chat in QQ. */
@@ -24,58 +29,58 @@ internal class QqDraftAutomation(private val adb: LocalAdb) {
     }
 
     /** Never use whichever chat happened to be open when Voicebox launched QQ. */
-    fun chooseRecipient(session: QqDraftSession, status: (String) -> Unit): String {
+    fun chooseRecipient(session: QqDraftSession, status: (UiText) -> Unit): String {
         var ui = snapshot()
         for (attempt in 0..2) {
-            check(!ui.hasPreview()) { "QQ 已有未发送的草稿，请先发送或取消，再重新开始。" }
-            check(!ui.hasActiveRecording()) { "QQ 正在录音，请先停止并处理该草稿。" }
+            checkUi(!ui.hasPreview()) { UiText(R.string.qq_existing_draft) }
+            checkUi(!ui.hasActiveRecording()) { UiText(R.string.qq_recording_active) }
             if (ui.isConversationList()) break
-            check(ui.conversationName() != null) { "请先回到 QQ 消息列表，再从 Voicebox 开始。" }
+            checkUi(ui.conversationName() != null) { UiText(R.string.qq_start_from_list) }
             // Closing the recording panel / keyboard may take a Back before leaving the chat.
             adb.shell("${focusGuard()}\ninput keyevent KEYCODE_BACK")
             ui = snapshot()
         }
-        check(ui.isConversationList()) { "未能打开 QQ 消息列表，请返回消息列表后重试。" }
+        checkUi(ui.isConversationList()) { UiText(R.string.qq_list_unavailable) }
         session.beginSelection()
-        status("请在 QQ 选择联系人。打开会话后，将自动准备并发送这条语音。")
+        status(UiText(R.string.qq_choose_recipient))
         val deadline = System.nanoTime() + 120_000_000_000L
         while (System.nanoTime() < deadline) {
             val focus = adb.shell("dumpsys window | sed -n '/mCurrentFocus=/p'")
-            check(focus.contains("com.tencent.mobileqq/")) { "已退出 QQ 选人，没有发送语音。返回后可重新选择。" }
+            checkUi(focus.contains("com.tencent.mobileqq/")) { UiText(R.string.qq_selection_cancelled) }
             ui = snapshot()
             val name = ui.conversationName()
             if (name != null && (ui.voiceButton() != null || ui.recordButton() != null || ui.recordTab() != null)) {
-                check(!ui.hasPreview()) { "所选会话已有语音草稿，未开始录制。请先处理该草稿。" }
+                checkUi(!ui.hasPreview()) { UiText(R.string.qq_chat_has_draft) }
                 selectedWindow = adb.shell("dumpsys window | sed -n '/mCurrentFocus=/p'")
-                status("正在准备发给 $name 的语音，请保持 QQ 前台，暂勿操作。")
+                status(UiText(R.string.qq_preparing_recipient, name))
                 return name
             }
             Thread.sleep(350)
         }
-        error("选择联系人已超时，没有发送语音。请返回 Voicebox 重试。")
+        errorUi(UiText(R.string.qq_selection_timeout))
     }
 
-    fun prepareAndSend(session: QqDraftSession, durationMs: Int, recipient: String, status: (String) -> Unit) {
+    fun prepareAndSend(session: QqDraftSession, durationMs: Int, recipient: String, status: (UiText) -> Unit) {
         val seconds = QqUiSnapshot.bubbleSeconds(durationMs)
         // At QQ's automatic recording limit the central button may already become Preview.
         // Do not automate that boundary until its controls have been verified separately.
-        check(seconds < 60) { "这段语音过长，暂不支持 QQ 自动发送。" }
+        checkUi(seconds < 60) { UiText(R.string.qq_audio_too_long) }
         var ui = snapshot()
         ui.requireConversation(recipient)
-        check(!ui.hasPreview()) { "QQ 已有未发送的草稿，请先发送或取消，再重新开始。" }
-        check(!ui.hasActiveRecording()) { "QQ 正在录音，未开始自动操作。请先处理该录音。" }
+        checkUi(!ui.hasPreview()) { UiText(R.string.qq_existing_draft) }
+        checkUi(!ui.hasActiveRecording()) { UiText(R.string.qq_recording_blocks_automation) }
         session.selectRecipient(recipient)
         if (ui.recordButton() == null) {
             if (ui.recordTab() == null) {
-                tap(ui.voiceButton() ?: error("找不到 QQ 语音入口，请先关闭键盘或弹窗。"))
+                tap(ui.voiceButton() ?: errorUi(UiText(R.string.qq_voice_button_missing)))
                 ui = snapshot()
                 ui.requireConversation(recipient)
             }
-            tap(ui.recordTab() ?: error("当前 QQ 录音页面不兼容。"))
+            tap(ui.recordTab() ?: errorUi(UiText(R.string.qq_recording_screen_unsupported)))
             ui = snapshot()
             ui.requireConversation(recipient)
         }
-        val record = ui.recordButton() ?: error("没有找到点击录音按钮，已停止。")
+        val record = ui.recordButton() ?: errorUi(UiText(R.string.qq_record_button_missing))
         session.arm(adb)
         // Both taps run on the phone, so host/ADB round trips do not determine the duration.
         // If the foreground window changes, never tap the new screen. A terminated command
@@ -100,19 +105,19 @@ internal class QqDraftAutomation(private val adb: LocalAdb) {
         """.trimIndent(), timeoutSeconds = seconds + 10L)
         ui = snapshot()
         ui.requireConversation(recipient)
-        check(ui.hasPreview()) { "QQ 尚未进入试听页，未替换音频。请回 QQ 检查。" }
-        check(ui.previewSeconds() == seconds) { "占位录音时长不符，未替换。请在 QQ 取消草稿后重试。" }
+        checkUi(ui.hasPreview()) { UiText(R.string.qq_preview_missing) }
+        checkUi(ui.previewSeconds() == seconds) { UiText(R.string.qq_duration_mismatch) }
         session.replace(adb)
 
-        status("正在核对发给 $recipient 的语音…")
+        status(UiText(R.string.qq_verifying_recipient, recipient))
         ui = snapshot()
         ui.requireConversation(recipient)
-        check(ui.hasPreview() && ui.previewSeconds() == seconds) { "QQ 草稿已变化，未点击发送。" }
+        checkUi(ui.hasPreview() && ui.previewSeconds() == seconds) { UiText(R.string.qq_draft_changed) }
         session.beginSend(adb, recipient)
         tap(requireNotNull(ui.previewSendButton()))
         ui = snapshot()
         ui.requireConversation(recipient)
-        check(!ui.hasPreview()) { "已尝试点击发送，请在 QQ 检查结果；程序不会自动重发。" }
+        checkUi(!ui.hasPreview()) { UiText(R.string.qq_send_attempted) }
         session.submitted()
     }
 }

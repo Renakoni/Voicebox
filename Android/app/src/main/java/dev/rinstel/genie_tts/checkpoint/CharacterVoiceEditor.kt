@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts.checkpoint
 
+import dev.rinstel.genie_tts.R
+import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.requireUi
+
 import org.json.JSONObject
 import java.io.File
 import java.nio.file.Files
@@ -9,17 +13,17 @@ import java.util.UUID
 /** Edits a voice while the service owns and has closed its model sessions. */
 class CharacterVoiceEditor(private val filesRoot: File) {
     fun character(id: String, version: String = "v2ProPlus"): File {
-        require(version in setOf("v2", "v2Pro", "v2ProPlus", "v5turbo")) { "不支持此音色版本。" }
+        requireUi(version in setOf("v2", "v2Pro", "v2ProPlus", "v5turbo")) { UiText(R.string.voice_version_unsupported) }
         val root = File(filesRoot, "CharacterModels/$version").canonicalFile
         val target = File(root, id).canonicalFile
-        require(target.parentFile == root && id == target.name && !id.startsWith('.')) { "无效的音色目录。" }
-        require(File(target, "tts_models").isDirectory) { "音色模型不存在，请重新导入。" }
+        requireUi(target.parentFile == root && id == target.name && !id.startsWith('.')) { UiText(R.string.voice_directory_invalid) }
+        requireUi(File(target, "tts_models").isDirectory) { UiText(R.string.voice_model_missing) }
         return target
     }
 
     fun updateReference(id: String, name: String, reference: CheckpointImporter.Reference, version: String = "v2ProPlus") {
-        require(name.isNotBlank() && name.length <= 80) { "请填写 1 至 80 字的音色名称。" }
-        require(reference.text.isNotBlank() && reference.audioFile.isFile) { "请选择参考音频并填写原文。" }
+        requireUi(name.isNotBlank() && name.length <= 80) { UiText(R.string.voice_name_length) }
+        requireUi(reference.text.isNotBlank() && reference.audioFile.isFile) { UiText(R.string.reference_required) }
         val target = character(id, version)
         val manifest = File(target, "prompt_wav.json")
         val json = if (manifest.isFile) JSONObject(manifest.readText()) else JSONObject()
