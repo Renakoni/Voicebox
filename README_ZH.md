@@ -46,7 +46,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## 快速上手
 
-从 [Releases](https://github.com/Renakoni/Voicebox/releases/latest) 下载 **Voicebox 1.1.2**（72.6 MiB）。
+从 [Releases](https://github.com/Renakoni/Voicebox/releases/latest) 下载 **Voicebox 1.1.3**（72.7 MiB）。
 
 1. **下载模型**：在「音色」页下载官方 V2 Pro Plus 或 V5 Turbo，应用会一并准备所需资源。也可以点「导入音色」，选自己的 `.ckpt` 与 `.pth`。
 2. **克隆音色**：选一个基础模型，长按录音或选择一段参考音频，填写对应原文和参考语言，保存。

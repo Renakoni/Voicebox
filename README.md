@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## Getting started
 
-Download **Voicebox 1.1.2** (72.6 MiB) from [Releases](https://github.com/Renakoni/Voicebox/releases/latest). It requires an **ARM64 device running Android 11 or later** and can be installed over earlier official releases.
+Download **Voicebox 1.1.3** (72.7 MiB) from [Releases](https://github.com/Renakoni/Voicebox/releases/latest). It requires an **ARM64 device running Android 11 or later** and can be installed over earlier official releases.
 
 1. On the **音色** (Voices) tab, download the official V2 Pro Plus or V5 Turbo model. Voicebox downloads the shared resources with it. To use your own weights, tap **导入音色** (Import voice) and choose the `.ckpt` and `.pth` files.
 2. Choose a base model. Press and hold to record a reference clip, or select an existing one. Enter its transcript, choose its language, and save.

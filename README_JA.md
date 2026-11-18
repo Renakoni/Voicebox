@@ -43,7 +43,7 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 
 ## 使い方
 
-[Releases](https://github.com/Renakoni/Voicebox/releases/latest) から **Voicebox 1.1.2**（72.6 MiB）をダウンロードします。**Android 11 以降の ARM64 端末**に対応しています。以前の公式版には上書きインストールできます。
+[Releases](https://github.com/Renakoni/Voicebox/releases/latest) から **Voicebox 1.1.3**（72.7 MiB）をダウンロードします。**Android 11 以降の ARM64 端末**に対応しています。以前の公式版には上書きインストールできます。
 
 1. 「音色」タブで公式の V2 Pro Plus または V5 Turbo をダウンロードします。共通データも一緒に取得します。手持ちの重みを使う場合は「导入音色」をタップし、`.ckpt` と `.pth` を選びます。
 2. ベースモデルを選びます。長押しで録音するか、参照音声を選んでください。録音で話している内容と、その言語を設定して保存します。
