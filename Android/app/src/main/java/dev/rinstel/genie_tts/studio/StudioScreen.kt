@@ -105,7 +105,7 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
         else -> StudioPage(StudioDestination.CREATE)
     }
     val notice = vm.notice?.resolve(resources)
-    LaunchedEffect(notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
+    LaunchedEffect(vm.notice, notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
     BackHandler(showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
         if (showingAbout) closeAbout()
         else if (vm.recordingMs != null) vm.cancelReferenceRecording()

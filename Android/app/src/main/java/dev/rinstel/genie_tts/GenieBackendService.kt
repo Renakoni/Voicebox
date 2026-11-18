@@ -1,11 +1,13 @@
 package dev.rinstel.genie_tts
 
 import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.UiLanguageContext
 import dev.rinstel.genie_tts.i18n.userMessage
 import dev.rinstel.genie_tts.i18n.userText
 import dev.rinstel.genie_tts.i18n.errorUi
 
 import android.Manifest
+import android.content.Context
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -62,6 +64,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class GenieBackendService : Service() {
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
+
     private val binder = LocalBinder()
     private val apiClients = linkedSetOf<Messenger>()
     private val listeners = linkedSetOf<BackendServiceListener>()

@@ -35,7 +35,7 @@ class StudioInstrumentedTest {
             ui.onNodeWithTag("tab_1").performClick()
             ui.onNodeWithTag("new_voice").performClick()
             ui.onNodeWithTag("save_voice").performClick()
-            ui.onNodeWithText("请填好音色名称、参考音频和对应原文，并选择基础音色。").assertExists()
+            ui.onNodeWithText(ui.activity.getString(R.string.voice_fields_required)).assertExists()
             ui.onNodeWithTag("voice_name").performScrollTo().performTextReplacement("界面验证音色")
             ui.runOnIdle { vm.pickReference(Uri.fromFile(File(base.audioPath))) }
             ui.waitUntil(15_000) { !vm.fileBusy }

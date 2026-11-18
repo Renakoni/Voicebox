@@ -549,7 +549,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             importing = false
             importMessage = result.fold({ UiText(R.string.import_resources_complete) }, {
                 Log.e("VoiceStudio", "Resource import failed", it)
-                UiText(R.string.import_resources_failed)
+                it.userText() ?: UiText(R.string.import_resources_failed)
             })
             refreshResources()
         } == true

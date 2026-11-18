@@ -2,11 +2,13 @@ package dev.rinstel.genie_tts.qqvoice
 
 import dev.rinstel.genie_tts.R
 import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.UiLanguageContext
 import dev.rinstel.genie_tts.i18n.userText
 import dev.rinstel.genie_tts.i18n.errorUi
 import androidx.compose.ui.platform.LocalResources
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
@@ -131,6 +133,8 @@ class QqVoiceModel(app: Application) : AndroidViewModel(app) {
 }
 
 class QqVoiceActivity : ComponentActivity() {
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
+
     private val model by viewModels<QqVoiceModel>()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

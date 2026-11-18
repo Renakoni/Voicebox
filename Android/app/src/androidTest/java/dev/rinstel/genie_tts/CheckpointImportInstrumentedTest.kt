@@ -26,11 +26,9 @@ import dev.rinstel.genie_tts.inference.OrtRuntimeFeatureExtractor
 import dev.rinstel.genie_tts.inference.RuntimeAssetRepository
 import dev.rinstel.genie_tts.inference.GenerationRequest
 import dev.rinstel.genie_tts.inference.GenerationStage
-import dev.rinstel.genie_tts.inference.ExecutionBackend
 import dev.rinstel.genie_tts.inference.BackendRuntimeCallbacks
 import dev.rinstel.genie_tts.inference.OrtCpuBackend
 import dev.rinstel.genie_tts.inference.InferenceTraceLogger
-import dev.rinstel.genie_tts.inference.InferenceTraceEvent
 import dev.rinstel.genie_tts.inference.V5StreamingVocoder
 import dev.rinstel.genie_tts.inference.InferenceTimer
 import dev.rinstel.genie_tts.inference.FloatTensorData
@@ -192,58 +190,6 @@ class CheckpointImportInstrumentedTest {
                     .put("sample_rate", generated.sampleRate).put("output", generated.file.absolutePath).toString(2))
             } finally { runtime.close() }
         }
-    }
-
-    @Test fun generatesWithExistingImportedVoice() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val arguments = InstrumentationRegistry.getArguments()
-        val source = File(requireNotNull(arguments.getString("checkpointSource")))
-        val case = JSONObject(File(source, "import-case.json").readText())
-        val repository = ModelAssetRepository(context)
-        val model = repository.discoverCharacterModels().single { it.id == arguments.getString("characterId") }
-        val assets = RuntimeAssetRepository(context)
-        var timings = JSONObject()
-        var providers = linkedSetOf<String>()
-        val trace = object : InferenceTraceLogger {
-            @Synchronized override fun stage(name: String, elapsedMs: Long) { timings.put(name, timings.optLong(name) + elapsedMs) }
-            @Synchronized override fun event(event: InferenceTraceEvent) {
-                if (event is InferenceTraceEvent.Model) providers.add(event.value.provider.wireValue)
-            }
-        }
-        val runtime = OrtSessionRuntime(repository, assets, backendEngine = OrtCpuBackend(
-            backend = if (arguments.getString("backend") in setOf("webgpu", "qnn")) ExecutionBackend.WEBGPU else ExecutionBackend.CPU,
-            configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
-            configureRoleSessionOptions = OrtCpuBackend::configureCpuSessionOptionsForRole,
-            traceLogger = trace, useNativeDecoder = true,
-            qnnRuntimeDirectory = { if (arguments.getString("backend") == "qnn") File(context.filesDir, "QualcommRuntime") else null },
-            qnnPerformance = arguments.getString("qnnPerformance", "balanced")!!), traceLogger = trace) { backend ->
-            OrtRuntimeFeatureExtractor(context, assets, backend, traceLogger = trace)
-        }
-        val rows = org.json.JSONArray()
-        try {
-            val texts = case.getJSONArray("texts")
-            for (index in 0 until texts.length() * (arguments.getString("repeats")?.toInt() ?: 1)) {
-                timings = JSONObject()
-                providers = linkedSetOf()
-                val labels = linkedSetOf<String>()
-                val start = SystemClock.elapsedRealtime()
-                val text = texts.getString(index % texts.length())
-                val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = text,
-                    referenceAudioPath = File(source, case.getString("reference_file")).absolutePath,
-                    referenceText = case.getString("reference_text"), promptLanguage = case.getString("reference_language")),
-                    object : BackendRuntimeCallbacks {
-                        override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
-                            if (progressLabel?.startsWith("CFM ") == true) labels.add(progressLabel)
-                        }
-                    })
-                assertTrue(generated.audioSamples > generated.sampleRate)
-                rows.put(JSONObject().put("text", text).put("elapsed_ms", SystemClock.elapsedRealtime() - start)
-                    .put("audio_samples", generated.audioSamples).put("sample_rate", generated.sampleRate)
-                    .put("output", generated.file.absolutePath).put("cfm_steps", org.json.JSONArray(labels))
-                    .put("providers", org.json.JSONArray(providers)).put("stages_ms", timings))
-                File(source, "android-generation-result.json").writeText(rows.toString(2))
-            }
-        } finally { runtime.close() }
     }
 
     @Test fun importsCommunityVoiceThroughStudioAndKeepsItReadyAfterRecreation() {

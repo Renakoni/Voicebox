@@ -1,8 +1,10 @@
 package dev.rinstel.genie_tts
 
 import dev.rinstel.genie_tts.i18n.UiText
+import dev.rinstel.genie_tts.i18n.UiLanguageContext
 
 import android.content.ClipData
+import android.content.Context
 import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
@@ -24,6 +26,8 @@ import dev.rinstel.genie_tts.studio.StudioViewModel
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
+
     private lateinit var studio: StudioViewModel
     private var exportPath: String? = null
     private var avatarCameraPath: String? = null
