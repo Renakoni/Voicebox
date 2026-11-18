@@ -40,12 +40,12 @@
     <string name="download_selecting_source">Selecting a download source</string>
     <string name="download_resources">Downloading resources %1$d/%2$d</string>
     <string name="vocoder_converting">Converting the V5 vocoder</string>
-    <string name="download_verified">Verification complete. Converting model.</string>
+    <string name="download_verified">Verification complete, converting model</string>
     <string name="model_incomplete">The model files are incomplete. Download the model again.</string>
     <string name="reference_size_limit">Select a reference audio file no larger than 32 MB.</string>
     <string name="resource_root_failed">Could not create the app resources folder.</string>
     <string name="resource_staging_failed">Could not create a temporary folder for the import.</string>
-    <string name="resource_invalid_path">The package must contain a RuntimeAssets/ folder with valid file paths.</string>
+    <string name="resource_invalid_path">All files in the package must be under RuntimeAssets/ and have valid paths.</string>
     <string name="resource_duplicate_files">The package contains duplicate files or too many entries.</string>
     <string name="resource_directory_failed">Could not create the resource folder.</string>
     <string name="resource_extraction_limit">The extracted package exceeds the 4 GiB limit.</string>
@@ -70,12 +70,12 @@
     <string name="saving_reference">Saving voice reference</string>
     <string name="checkpoint_size_limit">Each weight file must be no larger than 2 GB. Select exported model weights.</string>
     <string name="checkpoint_empty">The weight file is empty or damaged.</string>
-    <string name="checkpoint_zip_required">Select .ckpt and .pth weights in PyTorch ZIP format.</string>
+    <string name="checkpoint_zip_required">Select a .ckpt or .pth weight file in PyTorch ZIP format.</string>
     <string name="checkpoint_format_unsupported">This weight file format is not supported.</string>
     <string name="checkpoint_config_missing">The model configuration is missing. Select complete weights exported by GPT-SoVITS.</string>
     <string name="v5_variant_unsupported">Only complete V5 Turbo weights are supported. Other diffusion variants and LoRA weights are not supported.</string>
-    <string name="v5_variant_ambiguous">These V5 weights have no Dev/Turbo marker. The importer must explicitly specify v5turbo.</string>
-    <string name="v2_variant_unsupported">Select complete V2 Pro or V2 Pro Plus weights. Standard V2, diffusion models, and LoRA weights are not supported here.</string>
+    <string name="v5_variant_ambiguous">These V5 weights lack a Dev/Turbo identifier. Please use standard V5 Turbo weights.</string>
+    <string name="v2_variant_unsupported">Select complete V2 Pro or V2 Pro Plus weights. Standard V2, diffusion models, and LoRA weights are not supported.</string>
     <string name="checkpoint_truncated">The weight file is truncated.</string>
     <string name="checkpoint_nonfinite">The weights contain NaN or infinite values. Check the model file.</string>
     <string name="checkpoint_fp16_range">The weights exceed the FP16 range supported by this deployment format.</string>
@@ -92,7 +92,7 @@
     <string name="metadata_format_invalid">The weight metadata has an invalid format.</string>
     <string name="metadata_stack_empty">The weight metadata stack is empty.</string>
     <string name="metadata_marker_missing">The weight metadata is missing a marker.</string>
-    <string name="checkpoint_object_unsupported">This file contains unsupported objects. Use complete .ckpt and .pth weights exported by GPT-SoVITS.</string>
+    <string name="checkpoint_object_unsupported">This file contains unsupported objects. Use complete .ckpt or .pth weights exported by GPT-SoVITS.</string>
     <string name="metadata_too_large">The weight metadata is too large.</string>
     <string name="pytorch_format_unsupported">This PyTorch save format is not supported.</string>
     <string name="checkpoint_root_invalid">The weight archive root is invalid.</string>
@@ -113,7 +113,7 @@
     <string name="npu_unavailable">NPU unavailable</string>
     <string name="npu_available">NPU available</string>
     <string name="model_v5_dev_unsupported">V5 Dev · Unsupported</string>
-    <string name="model_v5_pending">V5 · Confirmed on import</string>
+    <string name="model_v5_pending">V5 · To be confirmed on import</string>
     <string name="model_lora_unsupported">LoRA · Unsupported</string>
     <string name="model_version_unsupported">Unsupported version</string>
     <string name="adb_pairing_input">Enter a valid port and a six-digit pairing code.</string>
@@ -143,12 +143,12 @@
     <string name="qq_preview_missing">QQ has not opened the audio preview. The audio was not replaced. Check QQ.</string>
     <string name="qq_duration_mismatch">The temporary recording has an unexpected duration. Discard the draft in QQ and try again.</string>
     <string name="qq_verifying_recipient">Checking the voice message for %1$s…</string>
-    <string name="qq_draft_changed">The QQ draft changed. Send was not tapped.</string>
+    <string name="qq_draft_changed">The QQ draft changed. Voicebox did not send the message.</string>
     <string name="qq_send_attempted">Send was tapped. Check the result in QQ. Voicebox will not send it again automatically.</string>
-    <string name="qq_draft_expired">Preparation expired. Discard the QQ draft and start again.</string>
+    <string name="qq_draft_expired">Voice preparation timed out. Discard the QQ draft and start again.</string>
     <string name="qq_draft_ambiguous">Could not identify a single new recording. Record one unsent voice draft in the intended chat.</string>
     <string name="qq_previous_busy">The previous voice message is still being processed.</string>
-    <string name="qq_content_changed">The draft content changed. Send was not tapped. Check QQ.</string>
+    <string name="qq_content_changed">The draft content changed. Voicebox did not send the message. Check QQ.</string>
     <string name="qq_folder_unsupported">The QQ folder layout is not supported.</string>
     <string name="qq_draft_already_handled">This draft has already been handled. Do not replace it again.</string>
     <string name="qq_recording_in_progress">The recording is still being written. Stop recording in QQ before trying again.</string>
@@ -156,7 +156,7 @@
     <string name="qq_draft_kept">The draft changed and was not overwritten.</string>
     <string name="qq_owner_changed">The draft file owner changed. Automation stopped.</string>
     <string name="qq_audio_verification_failed">Audio verification failed. Nothing was sent. Discard the draft in QQ.</string>
-    <string name="qq_duration_limit">QQ voice messages must be shorter than 60 seconds.</string>
+    <string name="qq_duration_limit">QQ voice currently supports audio up to 60 seconds.</string>
     <string name="audio_samples_invalid">The audio contains invalid samples.</string>
     <string name="qq_duplicate_controls">The QQ screen contains duplicate controls. Automation stopped.</string>
     <string name="qq_conversation_changed">The QQ conversation changed. Automation stopped.</string>
@@ -167,7 +167,7 @@
     <string name="qq_install_required">Install the official QQ app first.</string>
     <string name="qq_send_title">Send to QQ</string>
     <string name="qq_connect_device">Connect to this device</string>
-    <string name="qq_debug_settings">Wireless debugging settings</string>
+    <string name="qq_debug_settings">Open Wireless Debugging</string>
     <string name="qq_connected_port">Connected · %1$d</string>
     <string name="connect">Connect</string>
     <string name="qq_pairing_instructions">Keep the system pairing dialog open and enter its six-digit code.</string>
@@ -199,7 +199,7 @@
     <string name="stage_reference_audio">Processing reference audio</string>
     <string name="stage_speaker_features">Extracting speaker features</string>
     <string name="stage_voice_features">Preparing voice features</string>
-    <string name="stage_encoding">Encoding speech conditions</string>
+    <string name="stage_encoding">Encoding speech conditioning</string>
     <string name="stage_first_token">Generating the first speech token</string>
     <string name="stage_waveform">Synthesizing audio</string>
     <string name="stage_saving">Saving audio</string>
@@ -237,6 +237,10 @@
     <string name="speech_text_hint">Enter the text you want to hear…</string>
     <string name="character_count">Characters: %1$d</string>
     <string name="sample_text">Sample</string>
+    <!-- Speech examples follow the selected synthesis language, not the UI language. -->
+    <string name="speech_sample_zh" translatable="false">今晚风很轻，我们沿着河边慢慢往前走。远处的灯亮了，像星星落在水面上。</string>
+    <string name="speech_sample_en" translatable="false">The wind is gentle tonight. We walk slowly along the river, and distant lights shine on the water.</string>
+    <string name="speech_sample_ja" translatable="false">こんにちは。今日は日本語で話しています。よろしくお願いします。</string>
     <string name="generate_speech">Generate speech</string>
     <string name="stopping">Stopping…</string>
     <string name="stop">Stop</string>
@@ -256,6 +260,7 @@
     <string name="language_chinese">Chinese</string>
     <string name="language_auto">Auto · %1$s</string>
     <string name="language_from_transcript">Detect from transcript</string>
+    <string name="language_selection_description">%1$s: %2$s</string>
     <string name="save_audio">Save audio</string>
     <string name="share">Share</string>
     <string name="send_qq">Send to QQ</string>
@@ -329,11 +334,11 @@
     <string name="engine_other_task">The engine is working on another task. Try again later.</string>
     <string name="import_resources_progress">Importing resources. Large files may take a while.</string>
     <string name="import_resources_complete">Import complete. Resources are saved on this device.</string>
-    <string name="import_resources_failed">Import failed. Select a compatible Genie ZIP resource package and check available storage.</string>
+    <string name="import_resources_failed">Import failed. Select a compatible Voicebox ZIP resource package and check available storage.</string>
     <string name="import_engine_busy">The engine is busy. Try importing again later.</string>
     <string name="checkpoint_extension">Select a %2$s file for the %1$s weights.</string>
     <string name="model_identifying">Identifying model…</string>
-    <string name="model_identify_on_import">Identified on import</string>
+    <string name="model_identify_on_import">To be identified on import</string>
     <string name="model_identify_failed">Could not identify the model. Check the weight file.</string>
     <string name="checkpoint_fields_required">Enter a voice name and select a matching pair of .ckpt and .pth files.</string>
     <string name="checkpoint_replace_pair">To replace weights, select both matching .ckpt and .pth files.</string>
@@ -363,6 +368,6 @@
     <string name="model_v2_pro">V2 Pro</string>
     <string name="model_v2">V2</string>
     <string name="model_v5_turbo">V5 Turbo</string>
-    <string name="language_contains_kana">This text contains Japanese kana. Set its language to Japanese.</string>
-    <string name="language_not_english">English mode cannot read Chinese or Japanese text. Set the language to Chinese or Japanese.</string>
+    <string name="language_contains_kana">This text contains Japanese kana. Change the language to Japanese.</string>
+    <string name="language_not_english">English mode does not support Chinese or Japanese text. Set the language to Chinese or Japanese.</string>
 </resources>

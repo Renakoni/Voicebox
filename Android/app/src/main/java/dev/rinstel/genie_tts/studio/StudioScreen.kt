@@ -238,11 +238,11 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 Text(resources.getString(R.string.character_count, vm.text.length), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
-                StudioButton(onClick = { vm.updateText(when (vm.outputLanguage) {
-                    "ja" -> "こんにちは。今日は日本語で話しています。よろしくお願いします。"
-                    "en" -> "The wind is gentle tonight. We walk slowly along the river, and distant lights shine on the water."
-                    else -> "今晚风很轻，我们沿着河边慢慢往前走。远处的灯亮了，像星星落在水面上。"
-                }) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet) {
+                StudioButton(onClick = { vm.updateText(resources.getString(when (vm.outputLanguage) {
+                    "ja" -> R.string.speech_sample_ja
+                    "en" -> R.string.speech_sample_en
+                    else -> R.string.speech_sample_zh
+                })) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet) {
                     Text(resources.getString(R.string.sample_text))
                 }
                 StudioButton(onClick = { focus.clearFocus(); vm.generate() }, enabled = vm.canGenerate,
@@ -374,7 +374,7 @@ private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: St
         else languageName(resources, value)
     Box {
         StudioButton(onClick = { expanded = true }, enabled = enabled, style = StudioButtonStyle.Quiet,
-            modifier = Modifier.testTag(tag).semantics { contentDescription = "$title：$label" }) {
+            modifier = Modifier.testTag(tag).semantics { contentDescription = resources.getString(R.string.language_selection_description, title, label) }) {
             Text(label)
             Icon(Icons.Default.ArrowDropDown, null)
         }

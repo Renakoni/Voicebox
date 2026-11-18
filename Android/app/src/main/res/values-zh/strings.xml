@@ -45,7 +45,7 @@
     <string name="reference_size_limit">请选择不超过 32 MB 的参考音频。</string>
     <string name="resource_root_failed">无法创建应用资源目录。</string>
     <string name="resource_staging_failed">无法创建资源导入临时目录。</string>
-    <string name="resource_invalid_path">资源包必须位于 RuntimeAssets/ 内，且不能包含非法路径。</string>
+    <string name="resource_invalid_path">资源包内的所有文件必须位于 RuntimeAssets/ 目录下，且路径必须有效。</string>
     <string name="resource_duplicate_files">资源包文件重复或数量过多。</string>
     <string name="resource_directory_failed">无法创建资源目录。</string>
     <string name="resource_extraction_limit">资源包解压内容超过 4 GiB 限制。</string>
@@ -74,7 +74,7 @@
     <string name="checkpoint_format_unsupported">不支持此权重文件格式。</string>
     <string name="checkpoint_config_missing">模型缺少结构配置，请选择 GPT-SoVITS 导出的完整权重。</string>
     <string name="v5_variant_unsupported">当前只支持 V5 Turbo 完整权重，不支持其他扩散版本或 LoRA。</string>
-    <string name="v5_variant_ambiguous">此权重结构属于 V5，但缺少 Dev/Turbo 标记；请由导入调用方明确指定 v5turbo。</string>
+    <string name="v5_variant_ambiguous">此权重属于 V5 结构，但无法确认是 Dev 还是 Turbo 版本；请使用标准 V5 Turbo 模型。</string>
     <string name="v2_variant_unsupported">当前支持标准 V2Pro / V2ProPlus 完整模型；普通 V2、扩散模型和 LoRA 暂不支持。</string>
     <string name="checkpoint_truncated">权重文件已截断。</string>
     <string name="checkpoint_nonfinite">权重包含 NaN 或无穷大，请检查模型文件。</string>
@@ -145,7 +145,7 @@
     <string name="qq_verifying_recipient">正在核对发给 %1$s 的语音…</string>
     <string name="qq_draft_changed">QQ 草稿已变化，未点击发送。</string>
     <string name="qq_send_attempted">已尝试点击发送，请在 QQ 检查结果；程序不会自动重发。</string>
-    <string name="qq_draft_expired">准备已过期，请取消 QQ 草稿后重新开始。</string>
+    <string name="qq_draft_expired">语音准备超时，请取消 QQ 草稿后重新开始。</string>
     <string name="qq_draft_ambiguous">未找到唯一的新录音。请只在目标会话录一段未发送的草稿。</string>
     <string name="qq_previous_busy">上一条语音仍在处理中。</string>
     <string name="qq_content_changed">草稿内容已变化，未点击发送。请在 QQ 检查。</string>
@@ -156,7 +156,7 @@
     <string name="qq_draft_kept">草稿已改变，未覆盖。</string>
     <string name="qq_owner_changed">草稿属主发生变化，已停止。</string>
     <string name="qq_audio_verification_failed">音频校验失败，未发送。请在 QQ 取消该草稿。</string>
-    <string name="qq_duration_limit">QQ 语音实验目前支持 60 秒以内的音频。</string>
+    <string name="qq_duration_limit">QQ 语音目前支持 60 秒以内的音频。</string>
     <string name="audio_samples_invalid">音频包含无效采样。</string>
     <string name="qq_duplicate_controls">QQ 页面存在重复控件，自动操作已停止。</string>
     <string name="qq_conversation_changed">QQ 会话已改变，自动操作已停止。</string>
@@ -256,6 +256,7 @@
     <string name="language_chinese">中文</string>
     <string name="language_auto">按原文 · %1$s</string>
     <string name="language_from_transcript">按参考原文判断</string>
+    <string name="language_selection_description">%1$s：%2$s</string>
     <string name="save_audio">保存音频</string>
     <string name="share">分享</string>
     <string name="send_qq">去 QQ 发送</string>
@@ -264,10 +265,10 @@
     <string name="import_voice">导入音色</string>
     <string name="model_unavailable">模型不可用</string>
     <string name="selected">已选用</string>
-    <string name="edit_named_voice">编辑%1$s</string>
+    <string name="edit_named_voice">编辑“%1$s”</string>
     <string name="not_downloaded">未下载</string>
     <string name="cancel_download">取消下载</string>
-    <string name="download_named_model">下载%1$s</string>
+    <string name="download_named_model">下载 %1$s</string>
     <string name="back_create">返回创作</string>
     <string name="edit_voice">编辑音色</string>
     <string name="saving">保存中</string>
@@ -275,8 +276,8 @@
     <string name="importing">导入中</string>
     <string name="import_action">导入</string>
     <string name="voice_name">音色名称</string>
-    <string name="gpt_weights">GPT 权重 · ckpt</string>
-    <string name="sovits_weights">SoVITS 权重 · pth</string>
+    <string name="gpt_weights">GPT 权重 · .ckpt</string>
+    <string name="sovits_weights">SoVITS 权重 · .pth</string>
     <string name="original_filename_unknown">未记录原始文件名</string>
     <string name="select_file">选择文件</string>
     <string name="undo_replacement">撤销更换</string>
@@ -301,7 +302,7 @@
     <string name="device_acceleration">设备加速</string>
     <string name="collapse">收起</string>
     <string name="expand">展开</string>
-    <string name="local_api">本机应用接口</string>
+    <string name="local_api">本地 API</string>
     <string name="local_api_description">通过 127.0.0.1 上的 HTTP 接口使用当前音色。</string>
     <string name="port">端口</string>
     <string name="save_port">保存端口</string>
@@ -313,7 +314,7 @@
     <string name="service_disconnected">语音服务已断开，重新打开应用后可重试。</string>
     <string name="service_start_failed">语音服务启动失败，请重新打开应用。</string>
     <string name="voices_load_failed">音色加载失败，请检查本地资源后重试。</string>
-    <string name="engine_busy">引擎正在忙碌，请稍后再试。</string>
+    <string name="engine_busy">引擎繁忙，请稍后再试。</string>
     <string name="image_read_failed">无法读取这张图片，请重新选择。</string>
     <string name="reference_duration_limit">请选择 0.5 至 30 秒的音频，建议使用清晰的 3 至 10 秒人声。</string>
     <string name="reference_read_failed">无法读取这段音频，请选择可播放的 WAV、MP3 或 M4A 文件。</string>
@@ -327,14 +328,14 @@
     <string name="voice_save_failed">音色保存失败，请检查手机剩余空间后重试。</string>
     <string name="reference_missing">参考音频已丢失，请在音色页重新选择。</string>
     <string name="engine_other_task">引擎正在处理其他任务，请稍后重试。</string>
-    <string name="import_resources_progress">正在导入，完成后即可使用。大文件需要一些时间。</string>
+    <string name="import_resources_progress">正在导入，完成后即可使用。较大的文件可能需要更长时间。</string>
     <string name="import_resources_complete">导入完成，资源已保存在手机上。</string>
-    <string name="import_resources_failed">导入失败，请选择对应的 Genie ZIP 资源包，并确认手机剩余空间充足。</string>
-    <string name="import_engine_busy">引擎正在忙碌，请稍后重新导入。</string>
+    <string name="import_resources_failed">导入失败，请选择对应的 Voicebox ZIP 资源包，并确认手机剩余空间充足。</string>
+    <string name="import_engine_busy">引擎繁忙，请稍后重新导入。</string>
     <string name="checkpoint_extension">%1$s 权重请选择以 %2$s 结尾的文件。</string>
     <string name="model_identifying">正在识别…</string>
     <string name="model_identify_on_import">导入时识别</string>
-    <string name="model_identify_failed">无法识别，请检查权重文件</string>
+    <string name="model_identify_failed">无法识别，请检查权重文件。</string>
     <string name="checkpoint_fields_required">请填写音色名称，并选择配套的 .ckpt 和 .pth 文件。</string>
     <string name="checkpoint_replace_pair">更换权重时，请同时选择配套的 .ckpt 和 .pth。</string>
     <string name="checkpoint_reference_required">请选择配套的参考音频，并填写音频中的原文。</string>
@@ -345,10 +346,10 @@
     <string name="checkpoint_import_failed">导入失败，请检查文件是否完整、是否为支持的模型版本，并确认存储空间充足。</string>
     <string name="port_range">端口应为 1024 至 65535。</string>
     <string name="port_updated">端口已更新。</string>
-    <string name="file_write_failed">无法写入文件</string>
+    <string name="file_write_failed">无法写入文件。</string>
     <string name="audio_saved">音频已保存。</string>
     <string name="audio_save_failed">保存失败，请重新选择保存位置。</string>
-    <string name="audio_duration_failed">无法读取音频时长</string>
+    <string name="audio_duration_failed">无法读取音频时长。</string>
     <string name="voice_avatar">音色头像</string>
     <string name="named_voice_avatar">%1$s 的头像</string>
     <string name="change_avatar">更换头像</string>
@@ -364,5 +365,5 @@
     <string name="model_v2">V2</string>
     <string name="model_v5_turbo">V5 Turbo</string>
     <string name="language_contains_kana">文字包含日语假名，请将对应语言改为日语。</string>
-    <string name="language_not_english">英语模式不能读取中日文，请将对应语言改为中文或日语。</string>
+    <string name="language_not_english">英语模式不支持中文或日文，请将对应语言改为中文或日语。</string>
 </resources>
