@@ -49,6 +49,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import dev.rinstel.genie_tts.AppSettingsRepository.ThemeMode
 import dev.rinstel.genie_tts.R
@@ -309,9 +311,16 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+    val drawingInset = 24.dp
     AnimatedVisibility(expanded, enter = expandVertically(tween(180)) + fadeIn(tween(150)),
-        exit = shrinkVertically(tween(180)) + fadeOut(tween(150))) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        exit = shrinkVertically(tween(180)) + fadeOut(tween(150)),
+        modifier = Modifier.layout { measurable, constraints ->
+            // Include the page margins in the animation clip so endpoint thumbs and ripples fit.
+            val inset = drawingInset.roundToPx()
+            val placeable = measurable.measure(constraints.offset(horizontal = inset * 2))
+            layout(placeable.width - inset * 2, placeable.height) { placeable.placeRelative(-inset, 0) }
+        }) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = drawingInset).padding(bottom = 8.dp)) {
             fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
             SynthesisSlider(resources.getString(R.string.speech_speed), "${number(options.speed.toFloat())}×", options.speed.toFloat(), 0.6f..1.65f, 20, !vm.busy,
                 "synthesis_speed", { options = options.copy(speed = (it * 20).roundToInt() / 20.0) }, commit)
