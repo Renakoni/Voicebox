@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace genie_tts {
+namespace voicebox {
 
 // Bounded-memory band-limited resampling for reference conditioning audio.
 std::vector<float> ResampleReferenceAudio(
@@ -11,4 +11,4 @@ std::vector<float> ResampleReferenceAudio(
     int32_t source_rate,
     int32_t target_rate);
 
-}  // namespace genie_tts
+}  // namespace voicebox

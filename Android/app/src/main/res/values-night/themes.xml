@@ -1,5 +1,5 @@
 <resources>
-    <style name="Theme.Voicebox" parent="@android:style/Theme.Material.NoActionBar">
+    <style name="Theme.VoiceBox" parent="@android:style/Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">?android:attr/colorBackground</item>

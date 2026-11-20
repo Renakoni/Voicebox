@@ -110,7 +110,7 @@ cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-The default build uses the CPU for inference. To enable WebGPU, build the custom ONNX Runtime and pass its AAR to Gradle with `-PgenieOrtAar=<path-to-AAR>`. [Build script](tools/build_ort_webgpu.ps1) · [Patches](patches)
+The default build uses the CPU for inference. To enable WebGPU, build the custom ONNX Runtime and pass its AAR to Gradle with `-PvoiceboxOrtAar=<path-to-AAR>`. [Build script](tools/build_ort_webgpu.ps1) · [Patches](patches)
 
 ## Feedback and contributing
 

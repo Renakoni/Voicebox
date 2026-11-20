@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Voicebox"
+rootProject.name = "VoiceBox"
 include(":app")

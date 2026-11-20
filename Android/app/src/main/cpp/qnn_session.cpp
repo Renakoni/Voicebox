@@ -56,7 +56,7 @@ void fail(JNIEnv* env, const std::exception& error) {
 
 // The QNN runtime owns ALL its Ort handles. Java/WebGPU OrtValues never cross this boundary.
 extern "C" JNIEXPORT jlong JNICALL
-Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
+Java_dev_renakoni_voicebox_inference_QnnSession_create(
         JNIEnv* env, jclass, jstring runtime, jstring model, jstring cache, jstring performance, jint frames) {
     try {
         auto s = std::make_unique<Session>();
@@ -71,7 +71,7 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
         if (!s->library) throw std::runtime_error(dlerror());
         auto getApi = reinterpret_cast<const OrtApiBase*(*)()>(dlsym(s->library, "OrtGetApiBase"));
         if (!getApi || !(s->api = getApi()->GetApi(ORT_API_VERSION))) throw std::runtime_error("QNN ORT API unavailable");
-        s->check(s->api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "VoiceboxQNN", &s->env));
+        s->check(s->api->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "VoiceBoxQNN", &s->env));
         s->check(s->api->CreateSessionOptions(&s->options));
         s->check(s->api->SetIntraOpNumThreads(s->options, 4));
         s->check(s->api->AddSessionConfigEntry(s->options, "session.intra_op.allow_spinning", "0"));
@@ -96,14 +96,14 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
                 // Keep the same compiled graph, but release the source graph and compilation session.
                 // Otherwise each new shape can retain another full set of FP32 initializers.
                 s->api->ReleaseSession(s->session); s->session = nullptr;
-                __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "qnn_compile_ms=%lld ms",
+                __android_log_print(ANDROID_LOG_INFO, "VoiceBoxTiming", "qnn_compile_ms=%lld ms",
                     static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                         std::chrono::steady_clock::now() - started).count()));
                 s->check(s->api->AddSessionConfigEntry(s->options, "ep.context_enable", "0"));
                 started = std::chrono::steady_clock::now();
                 s->check(s->api->CreateSession(s->env, cachePath.c_str(), s->options, &s->session));
             }
-            __android_log_print(ANDROID_LOG_INFO, "GenieTtsTiming", "qnn_load_ms=%lld ms",
+            __android_log_print(ANDROID_LOG_INFO, "VoiceBoxTiming", "qnn_load_ms=%lld ms",
                 static_cast<long long>(std::chrono::duration_cast<std::chrono::milliseconds>(
                     std::chrono::steady_clock::now() - started).count()));
         }
@@ -151,7 +151,7 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_create(
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_dev_rinstel_genie_1tts_inference_QnnSession_inputNames(JNIEnv* env, jclass, jlong handle) {
+Java_dev_renakoni_voicebox_inference_QnnSession_inputNames(JNIEnv* env, jclass, jlong handle) {
     auto& s = *reinterpret_cast<Session*>(handle);
     auto result = env->NewObjectArray(s.names.size(), env->FindClass("java/lang/String"), nullptr);
     for (size_t i = 0; i < s.names.size(); ++i) {
@@ -162,7 +162,7 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_inputNames(JNIEnv* env, jclass,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_QnnSession_run(
+Java_dev_renakoni_voicebox_inference_QnnSession_run(
         JNIEnv* env, jclass, jlong handle, jobjectArray buffers, jobject output) {
     auto& s = *reinterpret_cast<Session*>(handle);
     std::vector<OrtValue*> owned;
@@ -194,13 +194,13 @@ Java_dev_rinstel_genie_1tts_inference_QnnSession_run(
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_QnnSession_terminate(JNIEnv* env, jclass, jlong handle, jboolean cancel) {
+Java_dev_renakoni_voicebox_inference_QnnSession_terminate(JNIEnv* env, jclass, jlong handle, jboolean cancel) {
     auto& s = *reinterpret_cast<Session*>(handle);
     try { s.check(cancel ? s.api->RunOptionsSetTerminate(s.run) : s.api->RunOptionsUnsetTerminate(s.run)); }
     catch (const std::exception& error) { fail(env, error); }
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_QnnSession_destroy(JNIEnv*, jclass, jlong handle) {
+Java_dev_renakoni_voicebox_inference_QnnSession_destroy(JNIEnv*, jclass, jlong handle) {
     delete reinterpret_cast<Session*>(handle);
 }

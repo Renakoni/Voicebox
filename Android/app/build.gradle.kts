@@ -25,13 +25,13 @@ plugins {
 // Common inference models are shipped as one resource package, not copied
 // into every character model package. The source path is configurable so
 // generated model binaries do not need to live in the Git worktree.
-val runtimeAssetSource = providers.gradleProperty("genieRuntimeAssets")
-    .orElse(providers.environmentVariable("GENIE_TTS_RUNTIME_ASSETS"))
+val runtimeAssetSource = providers.gradleProperty("voiceboxRuntimeAssets")
+    .orElse(providers.environmentVariable("VOICEBOX_RUNTIME_ASSETS"))
     .orElse(providers.provider {
-        throw GradleException("Set -PgenieRuntimeAssets=<GenieData> or GENIE_TTS_RUNTIME_ASSETS to package runtime assets.")
+        throw GradleException("Set -PvoiceboxRuntimeAssets=<GenieData> or VOICEBOX_RUNTIME_ASSETS to package runtime assets.")
     })
-val pythonExecutable = providers.gradleProperty("geniePython")
-    .orElse(providers.environmentVariable("GENIE_TTS_PYTHON"))
+val pythonExecutable = providers.gradleProperty("voiceboxPython")
+    .orElse(providers.environmentVariable("VOICEBOX_PYTHON"))
     .orElse("python")
 val runtimeAssetOutput = layout.buildDirectory.dir("generated/runtimeAssets")
 val runtimeAssetManifestOutput = layout.buildDirectory.file(
@@ -147,7 +147,7 @@ val syncRuntimeAssets = tasks.register<Sync>("syncRuntimeAssets") {
         val missing = requiredSources.filterNot(File::isFile)
         check(missing.isEmpty()) {
             "Missing Android runtime asset sources: ${missing.joinToString(", ")}. " +
-                "Set -PgenieRuntimeAssets=<GenieData> or GENIE_TTS_RUNTIME_ASSETS."
+                "Set -PvoiceboxRuntimeAssets=<GenieData> or VOICEBOX_RUNTIME_ASSETS."
         }
     }
 
@@ -185,7 +185,7 @@ tasks.register<HighCompressionRuntimeAssetsTask>("bundleRuntimeAssets") {
 }
 
 android {
-    namespace = "dev.rinstel.genie_tts"
+    namespace = "dev.renakoni.voicebox"
     ndkVersion = "28.2.13676358"
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/languageAssets").get().asFile)
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
@@ -198,7 +198,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "dev.rinstel.genie_tts"
+        applicationId = "dev.renakoni.voicebox"
         minSdk = 30
         targetSdk = 36
         versionCode = 10
@@ -209,7 +209,7 @@ android {
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
-                arguments += listOf("-DANDROID_STL=c++_shared", "-DGENIE_ENABLE_NATIVE_DECODER=ON")
+                arguments += listOf("-DANDROID_STL=c++_shared", "-DVOICEBOX_ENABLE_NATIVE_DECODER=ON")
             }
         }
     }
@@ -235,7 +235,7 @@ android {
     buildTypes {
         debug {
             // MuMu functional checks use x86_64; the release ABI is fixed below.
-            ndk { abiFilters += providers.gradleProperty("genieAbi").getOrElse("arm64-v8a") }
+            ndk { abiFilters += providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") }
         }
         release {
             ndk { abiFilters += "arm64-v8a" }
@@ -296,7 +296,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.core:core-ktx:1.19.0")
     // Use the optimized CPU + WebGPU AAR for delivery; stock ORT supports local development.
-    val customOrtAar = providers.gradleProperty("genieOrtAar").orNull
+    val customOrtAar = providers.gradleProperty("voiceboxOrtAar").orNull
     if (customOrtAar == null) {
         implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     } else {

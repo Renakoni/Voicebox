@@ -110,7 +110,7 @@ cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-標準のビルドでは CPU で推論します。WebGPU を使うには、専用の ONNX Runtime をビルドし、`-PgenieOrtAar=<AAR のパス>` を Gradle に渡してください。[ビルドスクリプト](tools/build_ort_webgpu.ps1) · [パッチ](patches)
+標準のビルドでは CPU で推論します。WebGPU を使うには、専用の ONNX Runtime をビルドし、`-PvoiceboxOrtAar=<AAR のパス>` を Gradle に渡してください。[ビルドスクリプト](tools/build_ort_webgpu.ps1) · [パッチ](patches)
 
 ## 不具合報告と貢献
 

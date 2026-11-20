@@ -7,7 +7,7 @@ extern "C" {
 }
 
 extern "C" JNIEXPORT jbyteArray JNICALL
-Java_dev_rinstel_genie_1tts_qqvoice_QqSilk_encode(JNIEnv* env, jobject, jshortArray pcm) {
+Java_dev_renakoni_voicebox_qqvoice_QqSilk_encode(JNIEnv* env, jobject, jshortArray pcm) {
     const auto fail = [&](const char* message) -> jbyteArray {
         env->ThrowNew(env->FindClass("java/io/IOException"), message);
         return nullptr;
