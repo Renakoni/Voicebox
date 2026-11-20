@@ -312,32 +312,32 @@ class VoiceBoxBackendService : Service() {
         acceleration.value = modelRepository.providers.associate { it.id to (it as VoiceLibrary).accelerationInfo() }
     }
 
-    fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(voice.id) { context ->
+    fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->
         val library = modelRepository.provider(voice.ref.backendId) as VoiceLibrary
         library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id) }, context) { label, percent ->
-            officialDownloadState.value = OfficialDownloadState(voice.id, UiText.literal(label), percent, running = true)
+            officialDownloadState.value = OfficialDownloadState(voice.ref, UiText.literal(label), percent, running = true)
         }
     }
 
     fun installBridge(id: String): Boolean {
         val archive = BridgePackages(this).packages.singleOrNull { it.spec.id == id } ?: return false
-        return downloadOnWorker(id) { context ->
+        return downloadOnWorker(OfficialDownloadState(packageId = id)) { context ->
             archive.install(context::checkCancelled) { percent ->
-                officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), percent, running = true)
+                officialDownloadState.value = OfficialDownloadState(packageId = id, label = UiText(R.string.download_preparing), percent = percent, running = true)
             }
             refreshBackendModes()
         }
     }
 
-    private fun downloadOnWorker(id: String, transfer: (GenerationContext) -> Unit): Boolean {
+    private fun downloadOnWorker(target: OfficialDownloadState, transfer: (GenerationContext) -> Unit): Boolean {
         val previous = officialDownloadState.value
-        officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), running = true)
+        officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
         val accepted = importOnWorker<Unit>(onComplete = { result ->
             officialDownloadState.value = result.fold(
-                { OfficialDownloadState(id, UiText(R.string.download_complete), completed = true) },
+                { target.copy(label = UiText(R.string.download_complete), completed = true) },
                 { error ->
                     Log.w("OfficialModels", "Model download failed", error)
-                    OfficialDownloadState(id, error = if (error is java.util.concurrent.CancellationException)
+                    target.copy(error = if (error is java.util.concurrent.CancellationException)
                         UiText(R.string.download_cancelled) else error.userText()
                         ?: UiText(R.string.download_failed))
                 })

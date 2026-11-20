@@ -27,6 +27,9 @@ class UiLanguageInstrumentedTest {
             }
             val localized = UiLanguageContext(context.createConfigurationContext(configuration))
             assertEquals(languages, expected, localized.getString(R.string.create_title))
+            val chinese = languages.startsWith("zh")
+            assertEquals(languages, if (chinese) "模型" else "Models", localized.getString(R.string.models))
+            assertEquals(languages, if (chinese) "已安装" else "Installed", localized.getString(R.string.backend_installed))
             assertEquals(1.3f, localized.resources.configuration.fontScale)
         }
     }

@@ -38,6 +38,7 @@ import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
 import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.bridge.BackendCapabilities
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.GenerationContext
 import dev.renakoni.voicebox.bridge.GenerationRequest
@@ -61,7 +62,7 @@ data class VoiceDraft(val id: String = UUID.randomUUID().toString(), val name: S
 data class CheckpointDraft(val name: String = "", val gpt: Uri? = null, val sovits: Uri? = null,
     val gptName: String = "", val sovitsName: String = "", val audioPath: String = "",
     val audioName: String = "", val transcript: String = "", val durationMs: Long = 0, val referenceLanguage: String = "auto",
-    val editingCharacterId: String? = null, val modelVersion: String = "v2ProPlus", val avatarPath: String = "")
+    val editingRef: ModelRef? = null, val avatarPath: String = "")
 
 class StudioViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application
@@ -70,19 +71,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val modelsRepository = registeredBackends(app)
     private val settings = AppSettingsRepository(app)
     private val packages = BridgePackages(app)
-    private val mingPackage = packages.get("ming")
-    val mingDownloadBytes get() = mingPackage.spec.downloadBytes
-    val mingSupported get() = mingPackage.supported
-    val mingInstalled get() = models.any { it.ref.backendId == mingPackage.spec.id }
-    var mingBackendInstalled by mutableStateOf(false); private set
-    val selectedCapabilities get() = selectedVoice?.let(::modelFor)?.let { modelsRepository.provider(it).capabilities }
+    val backendPackages = packages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
+    var installedPackages by mutableStateOf<Set<String>?>(null); private set
+    private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
+    val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
     val hasSynthesisOptions get() = selectedCapabilities?.optionNames?.isNotEmpty() == true
     var officialModels by mutableStateOf(emptyList<OfficialVoice>()); private set
-    private val importProvider get() = modelsRepository.providers.firstOrNull { VoiceImport.CHECKPOINT_PAIR in it.capabilities.imports }
+    private val importProvider get() = capabilities.entries.firstOrNull { VoiceImport.CHECKPOINT_PAIR in it.value.imports }?.let { modelsRepository.provider(it.key) }
     fun variantLabel(ref: ModelRef): UiText {
         val key = (modelsRepository.provider(ref.backendId) as VoiceLibrary).variantLabel(ref.variant)
         return if (key.isEmpty()) UiText.literal(ref.variant) else UiText(key)
     }
+    val canImportArchive get() = selectedCapabilities?.let { VoiceImport.RUNTIME_ARCHIVE in it.imports }
+        ?: capabilities.values.any { VoiceImport.RUNTIME_ARCHIVE in it.imports }
+    val resourceHint get() = selectedVoice?.model?.let { (modelsRepository.provider(it.backendId) as VoiceLibrary).resourceHint(it.variant) }
+
+    val canImportCheckpoints get() = importProvider != null
+    val importLanguages get() = importProvider?.capabilities?.languages.orEmpty()
+    fun languages(ref: ModelRef?) = capabilities[ref?.backendId]?.languages.orEmpty()
     private fun importVariantLabel(variant: String) = UiText((requireNotNull(importProvider) as VoiceLibrary).variantLabel(variant))
     val optionControls get() = selectedVoice?.let { (modelsRepository.provider(it.model.backendId) as VoiceLibrary).controls }.orEmpty()
 
@@ -103,7 +109,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var voices by mutableStateOf<List<StudioVoice>>(emptyList()); private set
     var selectedId by mutableStateOf(store.selectedId); private set
     var text by mutableStateOf(store.text); private set
-    var outputLanguage by mutableStateOf(store.outputLanguage); private set
+    private var languagesByBackend by mutableStateOf(modelsRepository.providers.associate { it.id to store.outputLanguage(it.id) })
+    val outputLanguage: String get() {
+        val voice = selectedVoice ?: return ""
+        val languages = languages(voice.model)
+        return languagesByBackend[voice.model.backendId]?.takeIf { it in languages } ?: languages.firstOrNull().orEmpty()
+    }
     private var optionsByBackend by mutableStateOf(modelsRepository.providers.associate { it.id to store.options(it.id) })
     val synthesisOptions get() = optionsByBackend[selectedVoice?.model?.backendId].orEmpty()
     var loading by mutableStateOf(true); private set
@@ -133,6 +144,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     private var accelerationByBackend by mutableStateOf(emptyMap<String, AccelerationInfo>())
+    private var auxiliaryLimits by mutableStateOf(emptyMap<ModelRef, Int>())
+    private var auxiliarySelection by mutableStateOf(emptyMap<String, List<String>>())
+    val auxiliaryLimit get() = auxiliaryLimits[selectedVoice?.model] ?: 0
+    val auxiliaryChoices get() = voices.filter { it.audioPath.isNotBlank() && it.audioPath != selectedVoice?.audioPath }.distinctBy { it.audioPath }
+    val auxiliaryPaths get() = auxiliarySelection[selectedId].orEmpty().filter { path -> auxiliaryChoices.any { it.audioPath == path } }.take(auxiliaryLimit)
+    fun toggleAuxiliary(path: String) {
+        if (busy || auxiliaryChoices.none { it.audioPath == path }) return
+        val paths = auxiliaryPaths
+        if (path !in paths && paths.size >= auxiliaryLimit) return
+        auxiliarySelection = auxiliarySelection + (selectedId to if (path in paths) paths - path else paths + path)
+        syncDefaults()
+    }
+
     private var modelsWithNpuGraphs by mutableStateOf(emptySet<ModelRef>())
     val acceleration: AccelerationInfo get() {
         val ref = selectedVoice?.model
@@ -230,7 +254,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val npuGraphs: Set<ModelRef>, val installed: Set<String>)
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val npuGraphs: Set<ModelRef>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>, val capabilities: Map<String, BackendCapabilities>)
 
     private fun refreshResources() {
         resourceUpdates?.cancel()
@@ -238,7 +262,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    packages.installBundled()
+                    runCatching { packages.installBundled() }.onFailure { Log.w("VoiceStudio", "Preinstall failed", it) }
                     val catalog = modelsRepository.providers.flatMap { (it as VoiceLibrary).officialVoices() }
                     val discovered = modelsRepository.discoverCharacterModels().filter { modelsRepository.inspect(it).isComplete }
                     val ready = discovered.filter { (modelsRepository.provider(it) as VoiceLibrary).resourcesReady(it.ref.variant) }.map { it.ref }.toSet()
@@ -255,14 +279,18 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
                     val npu = available.filter { (modelsRepository.provider(it) as VoiceLibrary).hasNpuGraphs(it) }.map { it.ref }.toSet()
-                    ResourcesSnapshot(available, voices, ready, catalog, npu, packages.packages.filter { it.installed }.map { it.spec.id }.toSet())
+                    val auxiliary = available.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
+                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, packages.packages.filter { it.installed }.map { it.spec.id }.toSet(),
+                        modelsRepository.providers.associate { it.id to it.capabilities })
                 }
                 models = data.models
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
                 readyResources = data.ready
                 officialModels = data.catalog
                 modelsWithNpuGraphs = data.npuGraphs
-                mingBackendInstalled = mingPackage.spec.id in data.installed
+                auxiliaryLimits = data.auxiliary
+                installedPackages = data.installed
+                capabilities = data.capabilities
                 if (voices.none { it.id == selectedId }) {
                     selectedId = voices.firstOrNull()?.id.orEmpty()
                     store.selectedId = selectedId
@@ -280,8 +308,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun changeOutputLanguage(language: String) {
         if (busy) return
-        outputLanguage = language
-        store.outputLanguage = language
+        val ref = selectedVoice?.model ?: return
+        if (language !in languages(ref)) return
+        languagesByBackend = languagesByBackend + (ref.backendId to language)
+        store.saveLanguage(ref.backendId, language)
         generationError = null
         syncDefaults()
     }
@@ -318,9 +348,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         if (service?.downloadOfficialModel(official) != true) notify(UiText(R.string.engine_busy))
     }
-    fun downloadMing() {
+    fun installBackend(id: String) {
         if (busy || fileBusy) return
-        if (service?.installBridge(mingPackage.spec.id) != true) notify(UiText(R.string.engine_busy))
+        if (service?.installBridge(id) != true) notify(UiText(R.string.engine_busy))
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -521,8 +551,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun changeSynthesisOptions(value: Map<String, String>) {
         if (busy) return
         val id = selectedVoice?.model?.backendId ?: return
-        store.saveOptions(id, value)
-        optionsByBackend = optionsByBackend + (id to value)
+        val library = modelsRepository.provider(id) as VoiceLibrary
+        val validated = library.studioOptions(value).filterKeys { key -> library.controls.any { it.name == key } && key in value }
+        store.saveOptions(id, validated)
+        optionsByBackend = optionsByBackend + (id to validated)
         syncDefaults()
     }
 
@@ -542,7 +574,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         generationError = null
         val request = GenerationRequest(model, outputLanguage,
             promptLanguage = promptLanguage, synthesisText = text.trim(),
-            referenceAudioPath = voice.audioPath, referenceText = voice.transcript,
+            referenceAudioPath = voice.audioPath, referenceText = voice.transcript, auxiliaryReferenceAudioPaths = auxiliaryPaths,
             options = (modelsRepository.provider(model) as VoiceLibrary).studioOptions(synthesisOptions))
         pendingRequest = request.context
         pendingVoiceName = voiceName(voice, app.resources)
@@ -570,7 +602,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         service?.setActiveDefaults(ActiveDefaults(backend, model.ref, outputLanguage, voice.audioPath,
             voice.transcript, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
-            options = (modelsRepository.provider(model) as VoiceLibrary).studioOptions(synthesisOptions)))
+            options = (modelsRepository.provider(model) as VoiceLibrary).studioOptions(synthesisOptions), auxiliaryReferenceAudioPaths = auxiliaryPaths))
     }
 
     fun importRuntimePackage(uri: Uri) {
@@ -593,7 +625,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun beginCheckpointImport() {
-        if (busy || fileBusy) return
+        if (busy || fileBusy || !canImportCheckpoints) return
         checkpointDraft = CheckpointDraft()
         checkpointError = null
         checkpointRecognition = null
@@ -602,7 +634,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun beginEditVoice(voice: StudioVoice) {
         if (busy || fileBusy) return
-        if (voice.builtIn && voice.model.backendId == mingPackage.spec.id) {
+        if (voice.builtIn && VoiceImport.CHECKPOINT_PAIR !in capabilities[voice.model.backendId]?.imports.orEmpty()) {
             beginVoice(voice.copy(id = UUID.randomUUID().toString(), name = ""))
             return
         }
@@ -611,8 +643,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         checkpointDraft = CheckpointDraft(name = voice.name, audioPath = voice.audioPath,
             gptName = model.sourceFilenames["gpt"].orEmpty(), sovitsName = model.sourceFilenames["sovits"].orEmpty(),
             audioName = voice.audioName, transcript = voice.transcript, durationMs = voice.durationMs,
-            referenceLanguage = voice.referenceLanguage, editingCharacterId = model.id,
-            modelVersion = model.ref.variant, avatarPath = voice.avatarPath)
+            referenceLanguage = voice.referenceLanguage, editingRef = model.ref, avatarPath = voice.avatarPath)
         checkpointError = null
         checkpointRecognition = importVariantLabel(model.ref.variant)
         importMessage = null
@@ -623,7 +654,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val model = modelFor(official) ?: return
         val voice = voiceFor(official)
         checkpointDraft = CheckpointDraft(name = official.name, gptName = model.sourceFilenames["gpt"].orEmpty(),
-            sovitsName = model.sourceFilenames["sovits"].orEmpty(), editingCharacterId = model.id, modelVersion = official.ref.variant,
+            sovitsName = model.sourceFilenames["sovits"].orEmpty(), editingRef = model.ref,
             audioPath = voice?.audioPath.orEmpty(), audioName = voice?.audioName.orEmpty(),
             transcript = voice?.transcript.orEmpty(), durationMs = voice?.durationMs ?: 0,
             referenceLanguage = voice?.referenceLanguage ?: "auto", avatarPath = voice?.avatarPath.orEmpty())
@@ -635,13 +666,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun clearCheckpointReplacement(gpt: Boolean) {
         if (busy || fileBusy) return
         checkpointDraft = checkpointDraft?.let { value ->
-            val model = models.firstOrNull { it.id == value.editingCharacterId }
+            val model = models.firstOrNull { it.ref == value.editingRef }
             if (gpt) value.copy(gpt = null, gptName = model?.sourceFilenames?.get("gpt").orEmpty())
             else value.copy(sovits = null, sovitsName = model?.sourceFilenames?.get("sovits").orEmpty())
         }
         checkpointError = null
         checkpointRecognition = checkpointDraft?.takeIf { it.gpt == null && it.sovits == null }
-            ?.let { importVariantLabel(it.modelVersion) }
+            ?.editingRef?.let(::variantLabel)
     }
 
     fun closeCheckpointImport() {
@@ -701,12 +732,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun importCheckpoints() {
         val value = checkpointDraft ?: return
         if (busy || fileBusy) return
-        val editing = value.editingCharacterId != null
+        val editing = value.editingRef != null
         if (value.name.isBlank() || (!editing && (value.gpt == null || value.sovits == null))) {
             checkpointError = UiText(R.string.checkpoint_fields_required)
             return
         }
-        val editedModel = value.editingCharacterId?.let { ModelRef(requireNotNull(importProvider).id, value.modelVersion, it) }
+        val editedModel = value.editingRef
         if (nameExists(value.name, modelRef = editedModel)) {
             checkpointError = UiText(R.string.voice_name_exists)
             return
@@ -749,7 +780,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         } else {
             service?.importCheckpointPair(value.name, value.gpt!!, value.sovits!!,
                 onProgress = { importMessage = it }, onComplete = onComplete, reference = reference,
-                replaceCharacterId = value.editingCharacterId, gptFilename = value.gptName, sovitsFilename = value.sovitsName) == true
+                replaceCharacterId = value.editingRef?.modelId, gptFilename = value.gptName, sovitsFilename = value.sovitsName) == true
         }
         if (!accepted) {
             importing = false

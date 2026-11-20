@@ -24,11 +24,12 @@ internal class GptLibrary(private val context: Context, private val device: Devi
     override fun officialVoices() = catalog.models.map { OfficialVoice(it.ref, it.name, variantLabel(it.architecture)) }
     override fun variantLabel(variant: String) = requireNotNull(modelArchitectureText(variant).key)
     override fun resourcesReady(variant: String) = catalog.runtimeReady(root, variant)
+    override fun resourceHint(variant: String) = if (variant == "v5turbo") "engine_v5_resources" else "engine_resources"
     override val controls = listOf(
         OptionControl("speed", "speech_speed", "1.0", 0.6f, 1.65f, 21, unit = "×"),
         OptionControl("temperature", "temperature", "1.0", 0f, 1f, 100),
-        OptionControl("topK", "Top-K", "15", 1f, 100f, 99, integral = true),
-        OptionControl("topP", "Top-P", "1.0", 0f, 1f, 100),
+        OptionControl("topK", "top_k", "15", 1f, 100f, 99, integral = true),
+        OptionControl("topP", "top_p", "1.0", 0f, 1f, 100),
         OptionControl("repetitionPenalty", "repetition_penalty", "1.35", 1f, 2f, 100),
     )
     override fun studioOptions(values: Map<String, String>) = SynthesisOptions.parse(values).toRequestOptions(1500)
