@@ -61,6 +61,8 @@ def main():
                 for name, expected in audit.items():
                     path = 'assets/' + name
                     data = model.read(path)
+                    if Path(name).suffix in {'.json', '.txt', '.tsv'}:
+                        data = data.replace(b'\r\n', b'\n')
                     if hashlib.sha256(data).hexdigest() != expected:
                         raise ValueError('Review changed bridge asset before packaging: ' + path)
                     archive.writestr(zipfile.ZipInfo(path), data, compress_type=zipfile.ZIP_DEFLATED)
