@@ -371,7 +371,7 @@ PR1 的混淆 APK 含 12 个以新包名导出的 JNI 方法。MuMu 的 8 个 na
 
 | 验收 | 本轮实测 |
 | --- | --- |
-| 构建与边界 | x86_64 Debug、ARM64 R8 Release、120 项 JVM 测试通过。两种 APK 均只内置各自 ABI 的单个 GPT ZIP；逐文件比较独立包和 APK 中的副本，校验目录 SHA、75 个资产及 DEX 类定义。生产 Release ZIP 为 20,118,302 字节，本次构建 SHA-256 为 `4a138b4a87655f7e51a7b02cb4442847b261c2136e42524c2be3b7145244d3e9`。见 `dex-{debug,release}.json`、`final-{debug,release}.log`。源码提交是构建输入，再次构建会生成对应新目录。 |
+| 构建与边界 | x86_64 Debug、ARM64 R8 Release、120 项 JVM 测试通过。两种 APK 均只内置各自 ABI 的单个 GPT ZIP；逐文件比较独立包和 APK 中的副本，校验目录 SHA、75 个资产及 DEX 类定义。对 JSON、词表和许可证统一使用 LF 后再按允许清单校验，确保不同 Git 换行配置可重建。最终 ZIP 的字节数和 SHA-256 见本 PR 正文。见 `dex-{debug,release}.json`、`final-{debug,release}.log`。源码提交是构建输入，再次构建会生成对应新目录。 |
 | 权重审计 | 检查图 initializer、属性常量和 external data。逐值比对八组大于等于 16 项的浮点数组与位置/时间频率、正余弦表、全 0/1、Hann 窗及 Slaney mel 滤组。GPT 和声码器的训练参数均在外部文件。英语 GRU 和 POS 权重、日语统计词典移到音源资源侧。用真实 NPZ 运行 Kotlin 转换，英语图每个张量均与原图相同，词表、POS 文件和日语五个文件逐项哈希一致；MuMu 日英前端及未知词 oracle 通过。见 `graph-content.json`、`unique-floats.log`、`language-parity.json`、`language-oracles-final.log`。 |
 | 安装与混淆 | 独立包名、无音源数据的原生 x86_64 R8 APK 在 MuMu 直接从 APK 预装并复用同一目录；模型资源查询为缺失。独立 GPT DEX 能列出官方音源，以字符串键和参数跨进程返回真实导入错误；用相同 DEX/native 加载路径建立 CPU ORT 图会话。见 `native-proof.log` 和验证源码。ARM64 定制 ORT 在 MuMu 强制转译下触发 native SIGSEGV，见 `minified-arm-crash.log`，原生 ARM64 仍待实机。 |
 | 真实音源 | x86_64 MuMu API 32，四个 V2 Pro 权重及 V5 Turbo 导入文件分别通过来源 SHA；独立 worker 输出单声道 PCM，V2 Pro 32 kHz / 131,840 样本，V5 Turbo 48 kHz / 199,680 样本。两种官方音源均在空目录通过网络下载、校验及转换；Studio 克隆、重建、生成、播放、导出通过。见 `{v2pro,v5turbo}.json`、`official-{download,v5}.log`、`audio.json` 和 `studio.log`。原版 V2 运行样本仍缺，见 P0。 |
