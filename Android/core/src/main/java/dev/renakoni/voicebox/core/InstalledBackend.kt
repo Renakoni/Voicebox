@@ -37,6 +37,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun officialVoices() = library()?.officialVoices().orEmpty()
     override fun variantLabel(variant: String) = library()?.variantLabel(variant) ?: ""
     override fun resourcesReady(variant: String) = library()?.resourcesReady(variant) ?: archive.installed
+    override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
     private var report = AccelerationInfo()

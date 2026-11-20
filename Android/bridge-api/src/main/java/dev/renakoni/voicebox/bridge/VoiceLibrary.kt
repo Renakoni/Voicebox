@@ -18,6 +18,7 @@ interface VoiceLibrary {
     fun officialVoices(): List<OfficialVoice>
     fun variantLabel(variant: String): String
     fun resourcesReady(variant: String): Boolean
+    fun resourceHint(variant: String): String?
     val controls: List<OptionControl>
     fun studioOptions(values: Map<String, String>): Map<String, String>
     fun hasNpuGraphs(model: CharacterModel): Boolean

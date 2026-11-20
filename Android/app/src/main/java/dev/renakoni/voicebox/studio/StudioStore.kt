@@ -39,9 +39,10 @@ class StudioStore(context: Context) {
         get() = preferences.getBoolean("gpu", true)
         set(value) { preferences.edit().putBoolean("gpu", value).apply() }
 
-    var outputLanguage: String
-        get() = preferences.getString("output_language", "zh") ?: "zh"
-        set(value) { preferences.edit().putString("output_language", value).apply() }
+    fun outputLanguage(backendId: String) = preferences.getString("language/$backendId", null)
+    fun saveLanguage(backendId: String, language: String) {
+        preferences.edit().putString("language/$backendId", language).apply()
+    }
 
     fun options(backendId: String): Map<String, String> {
         val data = JSONObject(preferences.getString("options/$backendId", "{}")!!)

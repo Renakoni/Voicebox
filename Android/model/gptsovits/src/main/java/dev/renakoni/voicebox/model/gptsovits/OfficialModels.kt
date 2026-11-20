@@ -70,7 +70,7 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
     fun install(model: OfficialModel, checkCancelled: () -> Unit, update: (OfficialDownloadState) -> Unit) {
         val stage = File(root, ".official-download").apply { mkdirs() }
         fun publish(label: UiText, percent: Int? = null) =
-            update(OfficialDownloadState(model.id, label, percent, running = true))
+            update(OfficialDownloadState(model.ref, label, percent, running = true))
         try {
             val downloads = catalog.runtime.mapNotNull { (path, source) ->
                 val target = File(root, "RuntimeAssets/$path")

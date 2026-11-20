@@ -14,6 +14,7 @@ import java.util.zip.ZipFile
 /** Only catalogs shipped with the application can name executable packages. */
 class BridgePackageSpec(json: JSONObject) {
     val id = json.getString("id")
+    val displayName = json.optString("displayName", id)
     val revision = json.getString("revision")
     val abi = json.getString("abi")
     val entry = json.getString("entry")
@@ -28,6 +29,7 @@ class BridgePackageSpec(json: JSONObject) {
     val files = json.getJSONObject("files").let { entries ->
         entries.keys().asSequence().associateWith { entries.getLong(it) }
     }
+    val bundled get() = parts.all { it.url.startsWith("asset://") }
     val downloadBytes get() = parts.sumOf { it.bytes }
 
     init {
@@ -77,7 +79,7 @@ class BridgePackages(private val context: Context) {
         }
     }
     fun installBundled() {
-        packages.filter { it.spec.parts.all { part -> part.url.startsWith("asset://") } }.forEach { it.install({}, {}) }
+        packages.filter { it.spec.bundled }.forEach { it.install({}, {}) }
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }

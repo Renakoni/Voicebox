@@ -116,7 +116,7 @@ def main():
             add_file(archive, path, relative)
     parts = [{'url': args.release_url.rstrip('/') + '/' + name,
               'bytes': archive_path.stat().st_size, 'sha256': sha256(archive_path)}]
-    catalog = {**manifest, 'format': 2, 'version': '2',
+    catalog = {**manifest, 'format': 2, 'displayName': 'Ming-TTS 0.5B', 'version': '2',
                'revision': hashlib.sha256(''.join(p['sha256'] for p in parts).encode()).hexdigest(),
                'parts': parts, 'files': {name: path.stat().st_size for path, name in files}}
     payload = json.dumps(catalog, ensure_ascii=False, indent=2) + '\n'

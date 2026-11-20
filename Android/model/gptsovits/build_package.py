@@ -77,7 +77,7 @@ def main():
                         archive_file(archive, name, stream)
                 files = {entry.filename: entry.file_size for entry in archive.infolist()}
         sha = digest(package)
-        catalog = dict(manifest, format=2, revision=sha, version='1', files=files, parts=[
+        catalog = dict(manifest, format=2, displayName='GPT-SoVITS', revision=sha, version='1', files=files, parts=[
             dict(url='asset://backend-packages/' + package.name, bytes=package.stat().st_size, sha256=sha)])
         catalog_file = work / 'gptsovits.json'
         catalog_file.write_text(json.dumps(catalog, indent=2) + '\n', encoding='utf-8')
