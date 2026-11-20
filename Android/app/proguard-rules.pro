@@ -3,8 +3,8 @@
 -keep class ai.onnxruntime.** { *; }
 
 # Called by name from native_decoder_loop.cpp, including lambda implementations.
--keep interface dev.renakoni.voicebox.inference.NativeDecoderLoop$DecoderProgressCallback { *; }
--keepclassmembers class * implements dev.renakoni.voicebox.inference.NativeDecoderLoop$DecoderProgressCallback {
+-keep interface dev.renakoni.voicebox.model.gptsovits.NativeDecoderLoop$DecoderProgressCallback { *; }
+-keepclassmembers class * implements dev.renakoni.voicebox.model.gptsovits.NativeDecoderLoop$DecoderProgressCallback {
     public void onProgress(int, int);
 }
 

@@ -1,14 +1,15 @@
 package dev.renakoni.voicebox.studio
 
+import dev.renakoni.voicebox.bridge.ModelRef
 import android.content.Context
-import dev.renakoni.voicebox.inference.SynthesisOptions
+import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import org.json.JSONArray
 import org.json.JSONObject
 
 data class StudioVoice(
     val id: String,
     val name: String,
-    val modelDirectory: String,
+    val model: ModelRef,
     val audioPath: String,
     val audioName: String,
     val transcript: String,
@@ -61,7 +62,8 @@ class StudioStore(context: Context) {
         val array = JSONArray(preferences.getString("voices", "[]"))
         return List(array.length()) { index ->
             val item = array.getJSONObject(index)
-            StudioVoice(item.getString("id"), item.getString("name"), item.getString("model"),
+            StudioVoice(item.getString("id"), item.getString("name"),
+                ModelRef(item.getString("backend"), item.getString("variant"), item.getString("model")),
                 item.getString("audio"), item.getString("audioName"), item.getString("transcript"),
                 item.optLong("duration"), referenceLanguage = item.optString("referenceLanguage", "auto"))
         }
@@ -71,7 +73,8 @@ class StudioStore(context: Context) {
         val array = JSONArray()
         voices.forEach { voice ->
             array.put(JSONObject().put("id", voice.id).put("name", voice.name)
-                .put("model", voice.modelDirectory).put("audio", voice.audioPath)
+                .put("backend", voice.model.backendId).put("variant", voice.model.variant)
+                .put("model", voice.model.modelId).put("audio", voice.audioPath)
                 .put("audioName", voice.audioName).put("transcript", voice.transcript)
                 .put("duration", voice.durationMs).put("referenceLanguage", voice.referenceLanguage))
         }

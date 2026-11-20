@@ -185,14 +185,14 @@ docs/
 
 建议分支：`refactor/voicebox-02-model-boundaries`，依赖 PR1。
 
-- [ ] 建立 `bridge-api`、`core` 和 `model/gptsovits`、`model/ming` 目录/构建边界；每次搬迁同步相关测试。
-- [ ] 从现有接口提取公共请求、事件、结果、取消、后端入口和实际所需能力；删除重复定义。
-- [ ] GPT 推理、前端、Torch 导入、官方资源和版本配置移入 GPT；Ming 专有资源与适配移入 Ming。
-- [ ] 公共下载、音频、请求调度与输出存储归 core；拆开混合职责的 Repository，不复制一份通用代码到每个模型目录。
-- [ ] 引入显式后端/模型引用与注册汇总，替代宿主对 GPT 目录和 Ming 常量的识别。
-- [ ] 服务的模型创建、资源发现和校验委托后端。保留现有 UI 功能，避免把未完成 UI 改造伪装成能力消失。
-- [ ] 如为使此 PR 独立可运行暂时直接链接 GPT provider，明确在 PR4 移除；禁止把该过渡状态当作桥接完成。
-- [ ] 验收：模块依赖无环；公共契约无 GPT/Ming 实现依赖；单测、API、导入及两种模型真实生成；GPT 参数校验、语言处理仍符合基线。
+- [x] 建立 `bridge-api`、`core` 和 `model/gptsovits`、`model/ming` 目录/构建边界；每次搬迁同步相关测试。
+- [x] 从现有接口提取公共请求、事件、结果、取消、后端入口和实际所需能力；删除重复定义。
+- [x] GPT 推理、前端、Torch 导入、官方资源和版本配置移入 GPT；Ming 专有资源与适配移入 Ming。
+- [x] 公共下载、音频、请求调度与输出存储归 core；拆开混合职责的 Repository，不复制一份通用代码到每个模型目录。
+- [x] 引入显式后端/模型引用与注册汇总，替代宿主对 GPT 目录和 Ming 常量的识别。
+- [x] 服务的模型创建、资源发现和校验委托后端。保留现有 UI 功能，避免把未完成 UI 改造伪装成能力消失。
+- [x] 如为使此 PR 独立可运行暂时直接链接 GPT provider，明确在 PR4 移除；禁止把该过渡状态当作桥接完成。
+- [ ] 验收（Ming 实际生成受 ABI 限制，见第 8 节）：模块依赖无环；公共契约无 GPT/Ming 实现依赖；单测、API、导入及两种模型真实生成；GPT 参数校验、语言处理仍符合基线。
 
 ### PR3：复用 Ming 验证公共包安装与 worker 装载
 
@@ -307,7 +307,7 @@ docs/
 - [x] 明确最终目的、范围、依赖方向、目录、PR 顺序及验收条件。
 - [x] P0 基线准备。V2、Ming、GPU/NPU 的未验证项见下表。
 - [x] PR1 命名。MuMu 的 ABI 限制见下表。
-- [ ] PR2 模型边界。
+- [x] PR2 模型边界。Ming 和 V2 的样本限制沿用 P0。
 - [ ] PR3 公共桥接装载。
 - [ ] PR4 GPT 独立包和默认预装。
 - [ ] PR5 加速职责。
@@ -318,7 +318,7 @@ docs/
 
 | 阶段 | 分支 / PR | 基准与 head | 验证命令 / 设备 / 样本 | 结果及证据路径 | 未解决项 |
 | --- | --- | --- | --- | --- | --- |
-| P0 / PR1 | `refactor/voicebox-01-namespace` | 基准 `5b3942f`，head 见首个实施 PR | x86_64 Debug、arm64-v8a 混淆 Release（engine-v1 AAR）；两个变体的 Lint；119 项 JVM 单测；MuMu API 32 | `artifacts/refactor-pr1/` 的 `debug.log`、`release.log`、`native-tests.log`、`release-jni.txt`、`benchmark-final.log`、`studio-playback-export.log` | Ming ARM64、WebGPU、QNN 待对应设备 |
+| P0 / PR1 | `refactor/voicebox-01-namespace` | 基准 `5b3942f`，head `223a7e5`（[PR #1](https://github.com/Renakoni/Voicebox/pull/1)） | x86_64 Debug、arm64-v8a 混淆 Release（engine-v1 AAR）；两个变体的 Lint；119 项 JVM 单测；MuMu API 32 | `artifacts/refactor-pr1/` 的 `debug.log`、`release.log`、`native-tests.log`、`release-jni.txt`、`benchmark-final.log`、`studio-playback-export.log` | Ming ARM64、WebGPU、QNN 待对应设备 |
 | 调研规划 | 规划工作区 | `5b3942f` | 源码与构建配置只读审查 | 第 3 节记载的是实施前的调查 | 已进入实施阶段 |
 
 ### P0 本次基线
@@ -344,3 +344,11 @@ docs/
 后续发布前另立升级兼容任务；本清单不提前实现其方案。
 
 PR1 的混淆 APK 含 12 个以新包名导出的 JNI 方法。MuMu 的 8 个 native/模型页用例中 5 个通过，3 个因 Ming ABI 或安装前置条件跳过。新 applicationId 下的 Studio 音源创建、重建、合成、实际播放位置推进、暂停、FileProvider 读取与 WAV 导出均通过。为在 API 32 验证播放，测试使用平台支持的四字节读取，并在主线程调用播放控件的语义事件，避免 Compose 等待每帧更新的时间轴空闲时短音频已播完。
+
+### PR2 模块与设备
+
+分支 `refactor/voicebox-02-model-boundaries`，基准 `223a7e5`。五个 Gradle 模块构建通过。两种 provider 暂由 app 静态注册，PR4 移除；core 与 bridge-api 的源码均无模型实现或 ORT 引用。官方资源、Torch、模型前端、推理和专有 JNI 随各后端迁移。调度、下载、音频、重采样和输出存储归 core。
+
+- 本地运行 `assembleDebug assembleDebugAndroidTest testDebugUnitTest -PvoiceboxAbi=x86_64`。五个模块的 JUnit XML 共 120 项，失败、错误及跳过均为 0。HTTP 用例覆盖同名模型、默认音源、选项隔离及取消。证据在 `artifacts/refactor-pr2/final-debug.log` 和各模块的测试报告。
+- 在 MuMu API 32 分别运行 core 重采样、GPT 日英语言前端及宿主集成用例。Roxy 3.0（V2 Pro Plus）Studio 音源重建、CPU 生成、播放及导出通过，两个 SILK 用例通过。Ming 的两个用例因 ARM64 前置条件跳过。见 `resampler.log`、`languages.log`、`integration.log`。基线工作树也用修正后的 Studio 探针复验通过，见 `artifacts/refactor-p0/studio-playback-export.log`。
+- 通过应用 UID 暂存相同的真实 checkpoint 及参考音频。V2 Pro 导入、图加载及 CPU 合成通过，32 kHz 单声道 147,200 样本，PCM16 峰值 8,524。V5 Turbo 同项通过，48 kHz 单声道 178,560 样本，峰值 12,280。报告、哈希与 WAV 在 `artifacts/refactor-pr2/{v2pro,v5turbo}.{json,wav}`。V2 原版仍缺完整样本，Ming、WebGPU 和 QNN 的设备限制同 P0。

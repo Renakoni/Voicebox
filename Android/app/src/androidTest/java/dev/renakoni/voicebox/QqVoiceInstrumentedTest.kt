@@ -2,7 +2,7 @@ package dev.renakoni.voicebox
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.renakoni.voicebox.inference.WavFileWriter
+import dev.renakoni.voicebox.core.WavFileWriter
 import dev.renakoni.voicebox.qqvoice.QqSilk
 import org.junit.Assert.*
 import org.junit.Test

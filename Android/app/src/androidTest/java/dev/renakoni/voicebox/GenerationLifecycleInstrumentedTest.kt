@@ -1,5 +1,11 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
+import dev.renakoni.voicebox.model.gptsovits.toRequestOptions
+
 import android.content.ComponentName
 import android.content.Context
 import android.content.ServiceConnection
@@ -11,7 +17,6 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.platform.app.InstrumentationRegistry
 import dev.renakoni.voicebox.api.ActiveDefaults
 import dev.renakoni.voicebox.api.InferResult
-import dev.renakoni.voicebox.inference.*
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.Rule
@@ -45,7 +50,7 @@ class GenerationLifecycleInstrumentedTest {
     }
 
     private fun request(long: Boolean = false, voiceId: String = "feibi"): GenerationRequest {
-        val repository = ModelAssetRepository(context)
+        val repository = registeredBackends(context)
         val model = repository.discoverCharacterModels().first { it.id == voiceId }
         val reference = requireNotNull(repository.findReferenceExample(model))
         return GenerationRequest(
@@ -53,7 +58,7 @@ class GenerationLifecycleInstrumentedTest {
             synthesisText = if (long) "陈长安走到桥边，望着远处渐渐亮起的灯火。他从口袋里取出那封信，仔细读了一遍，才轻声说道：明天上午九点，我们在银行门口见面。" else "清晨的阳光穿过窗帘，轻轻落在书页上。",
             referenceAudioPath = reference.audioFile.absolutePath,
             referenceText = reference.referenceText,
-            maxDecoderSteps = 1500,
+            options = SynthesisOptions.Default.toRequestOptions(1500),
         )
     }
 
@@ -119,14 +124,14 @@ class GenerationLifecycleInstrumentedTest {
                 assertTrue(service.inferBlocking(backend, request(), 90_000) is InferResult.Success)
             }
 
-            val defaults = ActiveDefaults(backend, "feibi", "zh", next.referenceAudioPath, next.referenceText, 1500)
+            val defaults = ActiveDefaults(backend, next.characterModel.ref, "zh", next.referenceAudioPath, next.referenceText, next.options)
             service.setActiveDefaults(defaults)
             val switching = request(long = true)
             await { service.synthesize(backend, switching) }
             await { service.currentState().requestId == switching.context.requestId && service.currentState().stage == GenerationStage.RUNNING_INFERENCE }
             val mansui = request(voiceId = "mansui")
             service.setActiveDefaults(ActiveDefaults(
-                backend, "mansui", "zh", mansui.referenceAudioPath, mansui.referenceText, 1500,
+                backend, mansui.characterModel.ref, "zh", mansui.referenceAudioPath, mansui.referenceText, mansui.options,
             ))
             await(10_000) { service.currentState().errorCode == "VOICE_CHANGED" }
             assertNull(service.currentState().latestOutputFilePath)

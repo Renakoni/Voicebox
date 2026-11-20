@@ -1,14 +1,20 @@
 package dev.renakoni.voicebox
 
-import dev.renakoni.voicebox.moremodels.MingModel
-import dev.renakoni.voicebox.moremodels.MingPackageRepository
-import dev.renakoni.voicebox.moremodels.MingBackendRuntime
+import dev.renakoni.voicebox.bridge.BackendApiContract
+import dev.renakoni.voicebox.core.GenerationRequestGate
+import dev.renakoni.voicebox.model.gptsovits.OfficialDownloadState
+import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
+import dev.renakoni.voicebox.model.gptsovits.OfficialModelInstaller
+import dev.renakoni.voicebox.model.gptsovits.ResourcePackageImporter
 
-import dev.renakoni.voicebox.i18n.UiText
+import dev.renakoni.voicebox.model.ming.MingModel
+import dev.renakoni.voicebox.model.ming.MingPackageRepository
+
+import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.i18n.UiLanguageContext
-import dev.renakoni.voicebox.i18n.userMessage
-import dev.renakoni.voicebox.i18n.userText
-import dev.renakoni.voicebox.i18n.errorUi
+import dev.renakoni.voicebox.core.i18n.userMessage
+import dev.renakoni.voicebox.core.i18n.userText
+import dev.renakoni.voicebox.core.i18n.errorUi
 
 import android.Manifest
 import android.content.Context
@@ -32,34 +38,26 @@ import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtException
-import ai.onnxruntime.OrtProvider
-import ai.onnxruntime.OrtSession
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import dev.renakoni.voicebox.api.ActiveDefaults
 import dev.renakoni.voicebox.api.InferResult
 import dev.renakoni.voicebox.api.LocalHttpApiServer
-import dev.renakoni.voicebox.checkpoint.CheckpointImporter
-import dev.renakoni.voicebox.checkpoint.CharacterVoiceEditor
-import dev.renakoni.voicebox.inference.BackendRuntime
-import dev.renakoni.voicebox.inference.BackendRuntimeCallbacks
-import dev.renakoni.voicebox.inference.CharacterModel
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.DeviceAcceleration
-import dev.renakoni.voicebox.inference.GenerationRequest
-import dev.renakoni.voicebox.inference.GenerationContext
-import dev.renakoni.voicebox.inference.GenerationCancelledException
-import dev.renakoni.voicebox.inference.EmptySemanticException
-import dev.renakoni.voicebox.inference.GenerationStage
-import dev.renakoni.voicebox.inference.InferenceTraceLogger
-import dev.renakoni.voicebox.inference.LogcatInferenceTraceLogger
-import dev.renakoni.voicebox.inference.ModelAssetRepository
-import dev.renakoni.voicebox.inference.OrtSessionRuntime
-import dev.renakoni.voicebox.inference.OrtCpuBackend
-import dev.renakoni.voicebox.inference.OrtRuntimeFeatureExtractor
-import dev.renakoni.voicebox.inference.RuntimeAssetRepository
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CharacterVoiceEditor
+import dev.renakoni.voicebox.bridge.BackendRuntime
+import dev.renakoni.voicebox.bridge.BackendRuntimeCallbacks
+import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.model.gptsovits.DeviceAcceleration
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.GenerationContext
+import dev.renakoni.voicebox.bridge.GenerationCancelledException
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.bridge.ModelRef
+import dev.renakoni.voicebox.bridge.BackendFailure
+import dev.renakoni.voicebox.core.BackendRegistry
+import dev.renakoni.voicebox.model.gptsovits.RuntimeAssetRepository
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -84,7 +82,7 @@ class VoiceBoxBackendService : Service() {
 
     private data class WarmupKey(
         val backend: ExecutionBackend,
-        val modelId: String,
+        val model: ModelRef,
     )
 
     private val warmupLock = Any()
@@ -92,16 +90,16 @@ class VoiceBoxBackendService : Service() {
     private var completedWarmupKey: WarmupKey? = null
 
     private lateinit var settingsRepository: AppSettingsRepository
-    private lateinit var modelRepository: ModelAssetRepository
+    private lateinit var modelRepository: BackendRegistry
     private lateinit var runtimeRepository: RuntimeAssetRepository
     private lateinit var localHttpApiServer: LocalHttpApiServer
     lateinit var deviceAcceleration: DeviceAcceleration
         private set
 
-    private val runtimes = linkedMapOf<ExecutionBackend, BackendRuntime>()
-    // Accessed only by the inference worker. Do not retain two complete voice runtimes.
-    private var workerBackend: ExecutionBackend? = null
-    private val enabledBackends = MutableStateFlow<Set<ExecutionBackend>>(emptySet())
+    // Mutated only on the serial inference worker.
+    private var workerRuntime: BackendRuntime? = null
+    private var runtimeOwner: String? = null
+    private val enabledBackends = MutableStateFlow<Map<String, Set<ExecutionBackend>>>(emptyMap())
     val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
@@ -124,23 +122,22 @@ class VoiceBoxBackendService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = AppSettingsRepository(this)
-        modelRepository = ModelAssetRepository(this)
-        runtimeRepository = RuntimeAssetRepository(this)
         deviceAcceleration = DeviceAcceleration(this)
+        modelRepository = registeredBackends(this, settingsRepository, deviceAcceleration)
+        runtimeRepository = RuntimeAssetRepository(this)
         localHttpApiServer = LocalHttpApiServer(
             object : LocalHttpApiServer.Bridge {
                 override fun currentState(): BackendServiceState = this@VoiceBoxBackendService.currentState()
 
                 override fun availableModels(): List<CharacterModel> = modelRepository.discoverCharacterModels()
 
-                override fun supportedBackends(): Set<ExecutionBackend> = this@VoiceBoxBackendService.supportedBackends()
+                override fun supportedBackends(model: CharacterModel) = this@VoiceBoxBackendService.supportedBackends(model.ref)
 
                 override fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
-                    model.modelFiles.maxAuxiliaryReferenceCount > 0 &&
-                        File(
-                            modelRepository.modelRootDirectory(),
-                            "${model.relativeModelDirectory}/prompt_encoder_multi_fp32.onnx",
-                        ).isFile
+                    modelRepository.provider(model).supportsAuxiliaryReferences(model)
+
+                override fun validateOptions(model: CharacterModel, options: Map<String, String>) =
+                    modelRepository.provider(model).validateOptions(options)
 
                 override fun activeDefaults(): ActiveDefaults? = this@VoiceBoxBackendService.activeDefaults
 
@@ -153,61 +150,12 @@ class VoiceBoxBackendService : Service() {
                 override fun cancel(requestId: String): Boolean = cancelGeneration(requestId)
             },
         )
-        val traceLogger = LogcatInferenceTraceLogger()
-        val executionBackends = mutableListOf(ExecutionBackend.CPU)
-        if (OrtProvider.WEBGPU in OrtEnvironment.getAvailableProviders()) {
-            executionBackends += ExecutionBackend.WEBGPU
-        }
-        for (executionBackend in executionBackends) {
-            runtimes[executionBackend] = OrtSessionRuntime(
-                modelRepository = modelRepository,
-                runtimeRepository = runtimeRepository,
-                backendEngine = OrtCpuBackend(
-                    backend = executionBackend,
-                    configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
-                    configureRoleSessionOptions = { options, role ->
-                        OrtCpuBackend.configureCpuSessionOptionsForRole(
-                            options = options,
-                            role = role,
-                            t2sThreadLimit = settingsRepository.t2sCpuThreads,
-                            vocoderThreadLimit = settingsRepository.vocoderCpuThreads,
-                        )
-                    },
-                    traceLogger = traceLogger,
-                    useNativeDecoder = true,
-                    qnnRuntimeDirectory = {
-                        deviceAcceleration.runtimeDirectory.takeIf { settingsRepository.deviceAccelerationEnabled }
-                    },
-                    onNpuUnavailable = deviceAcceleration::modelUnavailable,
-                ),
-                featureExtractorFactory = { backend ->
-                    OrtRuntimeFeatureExtractor(
-                        context = this,
-                        runtimeAssets = runtimeRepository,
-                        backend = backend,
-                        traceLogger = traceLogger,
-                    )
-                },
-                traceLogger = traceLogger,
-            )
-        }
         worker.execute {
-            val webGpu = ExecutionBackend.WEBGPU in runtimes && canInitializeWebGpu()
-            enabledBackends.value = if (webGpu) runtimes.keys.toSet() else setOf(ExecutionBackend.CPU)
-            deviceAcceleration.detect(webGpu)
+            enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
         }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
         syncLocalHttpApiServer()
-    }
-
-    private fun canInitializeWebGpu(): Boolean = try {
-        OrtEnvironment.getEnvironment() // Register ORT's logger before initializing the provider.
-        OrtSession.SessionOptions().use { it.addWebGPU(emptyMap()) }
-        true
-    } catch (error: OrtException) {
-        Log.i(TIMING_LOG_TAG, "WebGPU initialization failed: ${error.message}")
-        false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -243,8 +191,7 @@ class VoiceBoxBackendService : Service() {
         localHttpApiServer.close()
         // Session ownership never leaves the worker, including during teardown.
         worker.execute {
-            runtimes.values.forEach(BackendRuntime::close)
-            runtimes.clear()
+            closeWorkerRuntime()
             Log.i(TIMING_LOG_TAG, "runtime_closed_after_worker_return")
         }
         worker.shutdown()
@@ -261,7 +208,7 @@ class VoiceBoxBackendService : Service() {
         ) {
             runCatching {
                 worker.execute {
-                    runtimes.values.forEach(BackendRuntime::trimMemory)
+                    workerRuntime?.trimMemory()
                     synchronized(warmupLock) {
                         // Trimming closes graph sessions, so a later idle
                         // period must be allowed to schedule warmup again.
@@ -289,13 +236,14 @@ class VoiceBoxBackendService : Service() {
 
     fun currentState(): BackendServiceState = state
 
-    fun supportedBackends(): Set<ExecutionBackend> = enabledBackends.value.ifEmpty { setOf(ExecutionBackend.CPU) }
+    fun supportedBackends(model: ModelRef): Set<ExecutionBackend> =
+        enabledBackends.value[model.backendId] ?: setOf(ExecutionBackend.CPU)
 
     fun setActiveDefaults(defaults: ActiveDefaults?) {
-        val supportedDefaults = defaults?.takeIf { it.backend in supportedBackends() }
+        val supportedDefaults = defaults?.takeIf { it.backend in supportedBackends(it.model) }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
-        if (previous != null && (previous.modelId != supportedDefaults?.modelId || previous.backend != supportedDefaults?.backend)) {
+        if (previous != null && (previous.model != supportedDefaults?.model || previous.backend != supportedDefaults?.backend)) {
             generationGate.invalidate("VOICE_CHANGED")
             warmupContext?.cancel("VOICE_CHANGED")
         }
@@ -307,7 +255,7 @@ class VoiceBoxBackendService : Service() {
         backend: ExecutionBackend,
         request: GenerationRequest,
     ): Boolean {
-        if (backend !in supportedBackends()) return false
+        if (backend !in supportedBackends(request.characterModel.ref)) return false
         if (!generationGate.tryAcquire(request.context)) {
             return false
         }
@@ -327,7 +275,7 @@ class VoiceBoxBackendService : Service() {
         request: GenerationRequest,
         timeoutMs: Long,
     ): InferResult {
-        if (backend !in supportedBackends()) {
+        if (backend !in supportedBackends(request.characterModel.ref)) {
             return InferResult.Error("Backend is not enabled.")
         }
         if (!generationGate.tryAcquire(request.context)) {
@@ -446,8 +394,7 @@ class VoiceBoxBackendService : Service() {
         worker.execute {
             val result = runCatching {
                 context.checkCancelled()
-                runtimes.values.forEach(BackendRuntime::close)
-                workerBackend = null
+                closeWorkerRuntime()
                 synchronized(warmupLock) { completedWarmupKey = null; queuedWarmupKey = null }
                 operation(context) { message -> mainHandler.post { onProgress(message) } }
             }
@@ -464,22 +411,15 @@ class VoiceBoxBackendService : Service() {
         request: GenerationRequest,
         onComplete: ((InferResult) -> Unit)? = null,
     ) {
-        val ming = MingModel.matches(request.characterModel)
-        val runtime = if (ming) MingBackendRuntime(this, backend) else runtimes[backend]
+        var runtime: BackendRuntime? = null
         val startedAtMs = SystemClock.elapsedRealtime()
         val context = request.context
         Log.i(TIMING_LOG_TAG, "request_id: ${context.requestId}")
         Log.i(TIMING_LOG_TAG, "generation_epoch: ${context.generationEpoch}")
         try {
             context.checkCancelled()
-            if (ming) {
-                runtimes.values.forEach(BackendRuntime::close)
-                workerBackend = null
-                synchronized(warmupLock) { completedWarmupKey = null }
-            } else selectWorkerBackend(backend)
-            val activeRuntime = requireNotNull(runtime) {
-                getString(R.string.prototype_backend_unavailable, backend.label)
-            }
+            val activeRuntime = selectWorkerRuntime(request.characterModel, backend)
+            runtime = activeRuntime
             val result = withActiveGenerationResources {
                 context.run {
                     activeRuntime.generate(
@@ -546,7 +486,7 @@ class VoiceBoxBackendService : Service() {
             val cancelled = context.cancellationReason != null || error is GenerationCancelledException
             val errorCode = when {
                 cancelled -> context.cancellationReason ?: "CANCELLED"
-                error is EmptySemanticException -> "EMPTY_SEMANTIC"
+                error is BackendFailure -> error.code
                 else -> "INFERENCE_FAILED"
             }
             generationGate.release(context)
@@ -600,7 +540,7 @@ class VoiceBoxBackendService : Service() {
             resourceReloadPending = true
             return
         }
-        runtimes.values.forEach(BackendRuntime::close)
+        closeWorkerRuntime()
         resourceReloadPending = false
         synchronized(warmupLock) {
             completedWarmupKey = null
@@ -636,7 +576,7 @@ class VoiceBoxBackendService : Service() {
         try {
             // Closing the runtime releases ORT sessions and all conditioning
             // caches before deleting files that can be regenerated.
-            runtimes.values.forEach(BackendRuntime::close)
+            closeWorkerRuntime()
             synchronized(warmupLock) {
                 completedWarmupKey = null
                 queuedWarmupKey = null
@@ -785,7 +725,7 @@ class VoiceBoxBackendService : Service() {
 
     private fun scheduleWarmup(defaults: ActiveDefaults) {
         if (destroyed) return
-        val key = WarmupKey(defaults.backend, defaults.modelId)
+        val key = WarmupKey(defaults.backend, defaults.model)
         synchronized(warmupLock) {
             if (completedWarmupKey == key || queuedWarmupKey == key) return
             queuedWarmupKey = key
@@ -793,19 +733,18 @@ class VoiceBoxBackendService : Service() {
         runCatching {
             worker.execute {
                 try {
-                    if (destroyed || activeDefaults?.let { WarmupKey(it.backend, it.modelId) } != key) return@execute
+                    if (destroyed || activeDefaults?.let { WarmupKey(it.backend, it.model) } != key) return@execute
                     val model = modelRepository.discoverCharacterModels()
-                        .firstOrNull { it.id == key.modelId }
+                        .firstOrNull { it.ref == key.model }
                         ?: return@execute
-                    if (MingModel.matches(model)) return@execute
+                    if (!modelRepository.provider(model).supportsWarmup) return@execute
                     val startedAt = SystemClock.elapsedRealtime()
                     val request = defaults.toWarmupRequest(model)
                     warmupContext = request.context
                     if (destroyed) request.context.cancel("SERVICE_DESTROYED")
                     withActiveGenerationResources {
                         request.context.run {
-                            selectWorkerBackend(key.backend)
-                            runtimes[key.backend]?.warmup(request)
+                            selectWorkerRuntime(model, key.backend).warmup(request)
                         }
                     }
                     synchronized(warmupLock) {
@@ -813,7 +752,7 @@ class VoiceBoxBackendService : Service() {
                     }
                     Log.i(
                         TIMING_LOG_TAG,
-                        "warmup completed backend=${key.backend.label} model=${key.modelId} elapsed_ms=${SystemClock.elapsedRealtime() - startedAt}",
+                        "warmup completed backend=${key.backend.label} model=${key.model} elapsed_ms=${SystemClock.elapsedRealtime() - startedAt}",
                     )
                 } catch (error: Throwable) {
                     Log.i(TIMING_LOG_TAG, "warmup skipped: ${error.message}")
@@ -831,10 +770,17 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
-    private fun selectWorkerBackend(backend: ExecutionBackend) {
-        if (workerBackend == backend) return
-        workerBackend?.let { runtimes[it]?.close() }
-        workerBackend = backend
+    private fun selectWorkerRuntime(model: CharacterModel, backend: ExecutionBackend): BackendRuntime {
+        val provider = modelRepository.provider(model)
+        workerRuntime?.let { if (runtimeOwner == provider.id && it.backend == backend) return it }
+        closeWorkerRuntime()
+        return provider.createRuntime(backend).also { workerRuntime = it; runtimeOwner = provider.id }
+    }
+
+    private fun closeWorkerRuntime() {
+        workerRuntime?.close()
+        workerRuntime = null
+        runtimeOwner = null
         synchronized(warmupLock) { completedWarmupKey = null }
     }
 
@@ -846,7 +792,7 @@ class VoiceBoxBackendService : Service() {
             synthesisText = if (language.startsWith("zh", ignoreCase = true)) "。" else ".",
             referenceAudioPath = referenceAudioPath,
             referenceText = referenceText,
-            maxDecoderSteps = maxDecoderSteps,
+            options = options,
             auxiliaryReferenceAudioPaths = auxiliaryReferenceAudioPaths,
         )
 
@@ -930,6 +876,9 @@ class VoiceBoxBackendService : Service() {
     }
 
     companion object {
+        private val COMMON_REQUEST_KEYS = with(BackendApiContract) { setOf(KEY_MODEL_ID, KEY_BACKEND_ID, KEY_VARIANT, KEY_LANGUAGE,
+            KEY_PROMPT_LANGUAGE, KEY_SYNTHESIS_TEXT, KEY_REFERENCE_AUDIO_PATH, KEY_REFERENCE_TEXT,
+            KEY_AUXILIARY_REFERENCE_AUDIO_PATHS, KEY_BACKEND) }
         private const val NOTIFICATION_CHANNEL_ID = "voicebox_backend_service"
         private const val NOTIFICATION_ID = 2001
         private const val TIMING_LOG_TAG = "VoiceBoxTiming"
@@ -1012,14 +961,23 @@ class VoiceBoxBackendService : Service() {
     }
 
     private fun Bundle.toGenerationRequest(): GenerationRequest? {
-        val options = BackendApiContract.synthesisOptions(this)
         val modelId = getString(BackendApiContract.KEY_MODEL_ID) ?: return null
+        val backendId = getString(BackendApiContract.KEY_BACKEND_ID)
+        val variant = getString(BackendApiContract.KEY_VARIANT)
         val characterModel = modelRepository.discoverCharacterModels()
-            .firstOrNull { it.id == modelId }
+            .singleOrNull { it.id == modelId && (backendId == null || it.ref.backendId == backendId) &&
+                (variant == null || it.ref.variant == variant) }
             ?: return null
         return GenerationRequest(
             characterModel = characterModel,
-            synthesisOptions = options,
+            options = modelRepository.provider(characterModel).validateOptions(buildMap {
+                for (key in keySet() - COMMON_REQUEST_KEYS) {
+                    @Suppress("DEPRECATION")
+                    val value = this@toGenerationRequest.get(key)
+                    require(value is Number || value is String) { "$key must be a scalar." }
+                    put(if (key == BackendApiContract.KEY_MAX_DECODER_STEPS) "maxDecoderSteps" else key, value.toString())
+                }
+            }),
             language = getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),
             promptLanguage = getString(BackendApiContract.KEY_PROMPT_LANGUAGE)
                 ?.takeIf(String::isNotBlank)
@@ -1027,7 +985,6 @@ class VoiceBoxBackendService : Service() {
             synthesisText = getString(BackendApiContract.KEY_SYNTHESIS_TEXT).orEmpty(),
             referenceAudioPath = getString(BackendApiContract.KEY_REFERENCE_AUDIO_PATH).orEmpty(),
             referenceText = getString(BackendApiContract.KEY_REFERENCE_TEXT).orEmpty(),
-            maxDecoderSteps = getInt(BackendApiContract.KEY_MAX_DECODER_STEPS, 500),
             auxiliaryReferenceAudioPaths = getStringArrayList(
                 BackendApiContract.KEY_AUXILIARY_REFERENCE_AUDIO_PATHS,
             )?.toList().orEmpty(),

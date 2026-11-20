@@ -7,8 +7,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.GenerationStage
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.studio.StudioStore
 import dev.renakoni.voicebox.studio.StudioViewModel
 import org.junit.Assert.*

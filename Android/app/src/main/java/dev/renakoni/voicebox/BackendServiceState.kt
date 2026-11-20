@@ -1,7 +1,7 @@
 package dev.renakoni.voicebox
 
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.GenerationStage
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationStage
 
 data class BackendServiceState(
     val requestId: String? = null,

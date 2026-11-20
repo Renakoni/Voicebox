@@ -1,11 +1,19 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.bridge.BackendRuntimeCallbacks
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationContext
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.model.ming.MingBackendRuntime
+import dev.renakoni.voicebox.model.ming.MingModel
+import dev.renakoni.voicebox.model.ming.MingModelResources
+import dev.renakoni.voicebox.model.ming.MingPackageRepository
+
 import android.content.Context
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.renakoni.voicebox.inference.*
-import dev.renakoni.voicebox.moremodels.*
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Test
@@ -64,7 +72,7 @@ class MingRuntimeInstrumentedTest {
     @Test fun downloadedRuntimeGeneratesAndClonesThroughExistingContract() {
         installed()
         assertTrue("Push model data separately before running", MingModelResources(app).available)
-        assertTrue(ModelAssetRepository(app).discoverCharacterModels().any(MingModel::matches))
+        assertTrue(registeredBackends(app).discoverCharacterModels().any(MingModel::matches))
         val runtime = MingBackendRuntime(app, ExecutionBackend.WEBGPU)
         val base = request("你好，这是明语音的本地测试。")
         val generated = runtime.generate(base, callbacks)

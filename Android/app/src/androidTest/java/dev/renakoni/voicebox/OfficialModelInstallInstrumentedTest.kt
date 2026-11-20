@@ -1,5 +1,8 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
+import dev.renakoni.voicebox.model.gptsovits.OfficialModelInstaller
+
 import android.content.Context
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider

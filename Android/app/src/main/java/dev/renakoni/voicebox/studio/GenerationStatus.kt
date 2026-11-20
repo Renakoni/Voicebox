@@ -4,7 +4,7 @@ import dev.renakoni.voicebox.R
 import android.content.res.Resources
 
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.inference.GenerationStage
+import dev.renakoni.voicebox.bridge.GenerationStage
 
 internal data class GenerationStatus(val title: String, val detail: String? = null, val percent: Int? = null)
 

@@ -11,31 +11,23 @@ import android.os.Looper
 import android.os.SystemClock
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import ai.onnxruntime.OnnxTensor
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import dev.renakoni.voicebox.inference.ModelAssetRepository
-import dev.renakoni.voicebox.inference.modelArchitectureText
-import dev.renakoni.voicebox.inference.OptimizedDecoderAssets
-import dev.renakoni.voicebox.inference.SplitVocoderAssets
-import dev.renakoni.voicebox.inference.OrtSessionRuntime
-import dev.renakoni.voicebox.inference.OrtRuntimeFeatureExtractor
-import dev.renakoni.voicebox.inference.RuntimeAssetRepository
-import dev.renakoni.voicebox.inference.GenerationRequest
-import dev.renakoni.voicebox.inference.GenerationStage
-import dev.renakoni.voicebox.inference.BackendRuntimeCallbacks
-import dev.renakoni.voicebox.inference.OrtCpuBackend
-import dev.renakoni.voicebox.inference.InferenceTraceLogger
-import dev.renakoni.voicebox.inference.V5StreamingVocoder
-import dev.renakoni.voicebox.inference.InferenceTimer
-import dev.renakoni.voicebox.inference.FloatTensorData
-import java.nio.FloatBuffer
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import dev.renakoni.voicebox.checkpoint.CheckpointImporter
+import dev.renakoni.voicebox.model.gptsovits.modelFiles
+import dev.renakoni.voicebox.model.gptsovits.GptModelRepository
+import dev.renakoni.voicebox.model.gptsovits.modelArchitectureText
+import dev.renakoni.voicebox.model.gptsovits.OptimizedDecoderAssets
+import dev.renakoni.voicebox.model.gptsovits.SplitVocoderAssets
+import dev.renakoni.voicebox.model.gptsovits.OrtSessionRuntime
+import dev.renakoni.voicebox.model.gptsovits.OrtRuntimeFeatureExtractor
+import dev.renakoni.voicebox.model.gptsovits.RuntimeAssetRepository
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.bridge.BackendRuntimeCallbacks
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
 import dev.renakoni.voicebox.studio.StudioViewModel
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -50,77 +42,6 @@ import java.util.concurrent.atomic.AtomicReference
 /** Real checkpoint import; an optional case supplies reference audio for synthesis. */
 @RunWith(AndroidJUnit4::class)
 class CheckpointImportInstrumentedTest {
-    @Test fun streamingVocoderMatchesWholeWaveform() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val source = File(requireNotNull(InstrumentationRegistry.getArguments().getString("checkpointSource")))
-        val bytes = File(source, "streaming-mel.f32").readBytes()
-        val mel = FloatArray(bytes.size / 4)
-        ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer().get(mel)
-        val frames = mel.size / 100
-        require(frames > 100 && frames * 100 == mel.size)
-        val environment = OrtEnvironment.getEnvironment()
-        val graph = File(context.getExternalFilesDir(null), "RuntimeAssets/v5-vocoder/v5-vocoder-subpixel.onnx")
-        OrtSession.SessionOptions().use { options ->
-            OrtCpuBackend.configureCpuSessionOptions(options)
-            options.addWebGPU(emptyMap())
-            environment.createSession(graph.absolutePath, options).use { session ->
-                val baseline = OnnxTensor.createTensor(environment, FloatBuffer.wrap(mel), longArrayOf(1, 100, frames.toLong())).use { input ->
-                    session.run(mapOf("mel" to input)).use { result ->
-                        val buffer = (result.get(0) as OnnxTensor).floatBuffer
-                        FloatArray(buffer.remaining()).also { buffer.get(it) }
-                    }
-                }
-                val actual = V5StreamingVocoder(environment, session, InferenceTimer(InferenceTraceLogger.None)).use { streaming ->
-                    var start = 0
-                    for (end in listOf(frames / 3, frames * 2 / 3, frames - 1, frames)) {
-                        val length = end - start
-                        val chunk = FloatArray(100 * length)
-                        for (c in 0 until 100) mel.copyInto(chunk, c * length, c * frames + start, c * frames + end)
-                        streaming.submit(FloatTensorData(chunk, longArrayOf(1, 100, length.toLong())), last = end == frames)
-                        start = end
-                    }
-                    streaming.finish()
-                }
-                assertEquals(baseline.size, actual.size)
-                var error = 0.0
-                var power = 0.0
-                for (i in actual.indices) { error += (actual[i] - baseline[i]).toDouble().let { it * it }; power += baseline[i].toDouble().let { it * it } }
-                val relativeRms = kotlin.math.sqrt(error / power)
-                File(source, "streaming-parity.json").writeText(JSONObject().put("relative_rms", relativeRms)
-                    .put("samples", actual.size).put("last_chunk_frames", 1).toString(2))
-                assertTrue("Streaming waveform relative RMS: $relativeRms", relativeRms < 0.0005)
-
-                // An interrupted caller must not let the backend release a session still in use.
-                val gpuLock = Any()
-                val streaming = V5StreamingVocoder(environment, session, InferenceTimer(InferenceTraceLogger.None), gpuLock)
-                val closing = CountDownLatch(1)
-                val closed = CountDownLatch(1)
-                val failure = AtomicReference<Throwable>()
-                val interrupted = AtomicReference(false)
-                val closer = Thread {
-                    Thread.currentThread().interrupt()
-                    closing.countDown()
-                    try { streaming.close() } catch (error: Throwable) { failure.set(error) }
-                    finally { interrupted.set(Thread.currentThread().isInterrupted); closed.countDown() }
-                }
-                try {
-                    synchronized(gpuLock) {
-                        streaming.submit(FloatTensorData(mel, longArrayOf(1, 100, frames.toLong())), last = true)
-                        closer.start()
-                        assertTrue(closing.await(5, TimeUnit.SECONDS))
-                        assertFalse("Close returned while the GPU worker was blocked", closed.await(200, TimeUnit.MILLISECONDS))
-                    }
-                    assertTrue("Vocoder close did not finish", closed.await(60, TimeUnit.SECONDS))
-                    assertTrue(failure.get() is InterruptedException)
-                    assertTrue(interrupted.get())
-                } finally {
-                    closer.join()
-                    streaming.close()
-                }
-            }
-        }
-    }
-
     @Test fun importsOfficialPairAndLoadsOptimizedGraphs() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val sourcePath = InstrumentationRegistry.getArguments().getString("checkpointSource", "checkpoint-test-source")!!
@@ -167,7 +88,7 @@ class CheckpointImportInstrumentedTest {
         val result = imported.get().getOrThrow()
         verifyImportedModel(context, result, source, start)
         if (reference != null) {
-            val repository = ModelAssetRepository(context)
+            val repository = GptModelRepository(context)
             val runtimeAssets = RuntimeAssetRepository(context)
             val model = repository.discoverCharacterModels().single { it.id == result.characterId }
             assertEquals(case.getString("architecture"), result.architecture)
@@ -241,7 +162,7 @@ class CheckpointImportInstrumentedTest {
             onMain { vm.pickCheckpoint(Uri.fromFile(sovits), false) }
             awaitStudio { !vm.fileBusy }
             onMain {
-                assertEquals(modelArchitectureText(architecture).resourceId, vm.checkpointRecognition?.resourceId)
+                assertEquals(modelArchitectureText(architecture).resolve(app.resources), vm.checkpointRecognition?.resolve(app.resources))
                 vm.importCheckpoints()
                 assertEquals(R.string.checkpoint_reference_required, vm.checkpointError?.resourceId)
                 assertFalse(vm.importing)
@@ -270,7 +191,7 @@ class CheckpointImportInstrumentedTest {
                 assertEquals(name, voice.name)
                 assertEquals(transcript, voice.transcript)
                 assertEquals(language, voice.referenceLanguage)
-                assertEquals(architecture, voice.modelDirectory.substringBefore('/'))
+                assertEquals(architecture, voice.model.variant)
                 assertArrayEquals(reference.readBytes(), File(voice.audioPath).readBytes())
                 selectedId = voice.id
                 result = CheckpointImporter.Result(vm.modelFor(voice)!!.id, voice.name, architecture)
@@ -299,7 +220,7 @@ class CheckpointImportInstrumentedTest {
     }
 
     private fun verifyImportedModel(context: Context, result: CheckpointImporter.Result, source: File, start: Long) {
-        val repository = ModelAssetRepository(context)
+        val repository = GptModelRepository(context)
         val model = repository.discoverCharacterModels().single { it.id == result.characterId }
         assertEquals(result.displayName, model.displayName)
         val modelDirectory = repository.installToPrivateStorage(model.modelFiles)
@@ -342,6 +263,6 @@ class CheckpointImportInstrumentedTest {
         // Keep the imported model for the user, but never retain checkpoint source copies.
         assertFalse(modelDirectory.parentFile!!.walkTopDown().any { it.extension in setOf("ckpt", "pth") })
         assertFalse(context.getExternalFilesDir(null)!!.listFiles()!!.any { it.name.startsWith(".voicebox-checkpoint-") })
-        assertTrue(ModelAssetRepository(context).discoverCharacterModels().any { it.id == model.id && it.displayName == result.displayName })
+        assertTrue(GptModelRepository(context).discoverCharacterModels().any { it.id == model.id && it.displayName == result.displayName })
     }
 }

@@ -1,6 +1,6 @@
 package dev.renakoni.voicebox
 
-import dev.renakoni.voicebox.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.i18n.UiLanguageContext
 
 import android.content.ClipData

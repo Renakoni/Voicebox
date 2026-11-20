@@ -1,9 +1,9 @@
 package dev.renakoni.voicebox.api
 
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.inference.CharacterModel
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.SynthesisOptions
+import dev.renakoni.voicebox.bridge.ModelRef
+import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.bridge.ExecutionBackend
 import java.io.File
 
 data class ApiServerStatus(
@@ -15,14 +15,13 @@ data class ApiServerStatus(
 
 data class ActiveDefaults(
     val backend: ExecutionBackend,
-    val modelId: String,
+    val model: ModelRef,
     val language: String,
     val referenceAudioPath: String,
     val referenceText: String,
-    val maxDecoderSteps: Int,
+    val options: Map<String, String> = emptyMap(),
     val promptLanguage: String = language,
     val auxiliaryReferenceAudioPaths: List<String> = emptyList(),
-    val synthesisOptions: SynthesisOptions = SynthesisOptions.Default,
 )
 
 sealed class InferResult {
@@ -40,6 +39,8 @@ internal data class HttpResponse(
 )
 
 internal data class InferPayload(
+    val backendId: String? = null,
+    val variant: String? = null,
     val backendName: String,
     val modelId: String,
     val language: String,
@@ -47,9 +48,8 @@ internal data class InferPayload(
     val text: String,
     val referenceAudioPath: String,
     val referenceText: String,
-    val maxDecoderSteps: Int,
+    val options: Map<String, String> = emptyMap(),
     val auxiliaryReferenceAudioPaths: List<String> = emptyList(),
-    val synthesisOptions: SynthesisOptions = SynthesisOptions.Default,
 )
 
 internal fun BackendServiceState.toJsonString(): String =
@@ -76,16 +76,29 @@ internal fun List<CharacterModel>.toJsonString(): String =
         map { model ->
             jsonObject(
                 "id" to model.id,
+                "backendId" to model.ref.backendId,
+                "variant" to model.ref.variant,
                 "displayName" to model.displayName,
                 "relativeModelDirectory" to model.relativeModelDirectory,
             )
         },
     )
 
-internal fun parseInferPayload(body: String, options: SynthesisOptions = SynthesisOptions.Default): InferPayload {
+private val commonFields = setOf("backend", "backendId", "variant", "modelId", "language", "promptLanguage", "text",
+    "referenceAudioPath", "referenceText", "auxReferenceAudioPaths")
+
+internal fun requestOptions(values: Map<String, *>): Map<String, String> =
+    values.filterKeys { it !in commonFields }.mapValues { (name, value) ->
+        require(value is String) { "$name must be a scalar." }
+        value
+    }
+
+internal fun parseInferPayload(body: String): InferPayload {
     val parsed = parseJsonObject(body.ifBlank { "{}" })
     val values = parsed.mapValues { it.value as? String }
     return InferPayload(
+        backendId = values["backendId"],
+        variant = values["variant"],
         backendName = values["backend"].orEmpty(),
         modelId = values["modelId"].orEmpty().trim(),
         language = values["language"].orEmpty().trim(),
@@ -94,9 +107,8 @@ internal fun parseInferPayload(body: String, options: SynthesisOptions = Synthes
         text = values["text"].orEmpty().trim(),
         referenceAudioPath = values["referenceAudioPath"].orEmpty().trim(),
         referenceText = values["referenceText"].orEmpty().trim(),
-        maxDecoderSteps = values["maxDecoderSteps"]?.trim()?.toIntOrNull() ?: 500,
+        options = requestOptions(parsed),
         auxiliaryReferenceAudioPaths = parseReferencePathList(parsed["auxReferenceAudioPaths"]),
-        synthesisOptions = SynthesisOptions.parse(values, options),
     )
 }
 
