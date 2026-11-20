@@ -58,7 +58,7 @@ class BridgePackageSpec(json: JSONObject) {
     companion object {
         private val HASH = Regex("[a-f0-9]{64}")
         internal fun safePath(name: String) = name.length in 1..512 && name.split('/').all {
-            it.matches(Regex("[A-Za-z0-9_][A-Za-z0-9._-]*"))
+            it.matches(Regex("[A-Za-z0-9_][A-Za-z0-9.+_-]*"))
         }
     }
 }
@@ -81,6 +81,9 @@ class BridgePackages(private val context: Context) {
                 }
             } else downloadModelFile(part, destination, cancel, progress = progress)
         }
+    }
+    fun installBundled() {
+        packages.filter { it.spec.parts.all { part -> part.url.startsWith("asset://") } }.forEach { it.install({}, {}) }
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }

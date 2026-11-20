@@ -68,11 +68,9 @@ import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.model.gptsovits.OfficialModel
+import dev.renakoni.voicebox.bridge.OfficialVoice
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.core.ReferenceLanguage
-import dev.renakoni.voicebox.model.gptsovits.modelArchitectureLabel
-import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -326,18 +324,21 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
             layout(placeable.width - inset * 2, placeable.height) { placeable.placeRelative(-inset, 0) }
         }) {
         Column(Modifier.fillMaxWidth().padding(horizontal = drawingInset).padding(bottom = 8.dp)) {
-            fun number(value: Float) = String.format(Locale.ROOT, "%.2f", value)
-            SynthesisSlider(resources.getString(R.string.speech_speed), "${number(options.speed.toFloat())}×", options.speed.toFloat(), 0.6f..1.65f, 20, !vm.busy,
-                "synthesis_speed", { options = options.copy(speed = (it * 20).roundToInt() / 20.0) }, commit)
-            SynthesisSlider(resources.getString(R.string.temperature), number(options.temperature), options.temperature, 0f..1f, 99, !vm.busy,
-                "synthesis_temperature", { options = options.copy(temperature = (it * 100).roundToInt() / 100f) }, commit)
-            SynthesisSlider("Top-K", options.topK.toString(), options.topK.toFloat(), 1f..100f, 98, !vm.busy,
-                "synthesis_top_k", { options = options.copy(topK = it.roundToInt()) }, commit)
-            SynthesisSlider("Top-P", number(options.topP), options.topP, 0f..1f, 99, !vm.busy,
-                "synthesis_top_p", { options = options.copy(topP = (it * 100).roundToInt() / 100f) }, commit)
-            SynthesisSlider(resources.getString(R.string.repetition_penalty), number(options.repetitionPenalty), options.repetitionPenalty, 1f..2f, 99, !vm.busy,
-                "synthesis_repetition_penalty", { options = options.copy(repetitionPenalty = (it * 100).roundToInt() / 100f) }, commit)
-            StudioButton(onClick = { options = SynthesisOptions.Default; commit() }, enabled = !vm.busy && options != SynthesisOptions.Default,
+            val controls = vm.optionControls
+            for (control in controls) {
+                val current = (options[control.name] ?: control.defaultValue).toFloat()
+                val label = if (control.label.startsWith("Top-")) control.label else dev.renakoni.voicebox.core.i18n.UiText(control.label).resolve(resources)
+                val display = if (control.integral) current.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", current)
+                val tag = control.name.replace(Regex("([A-Z])")) { "_" + it.value.lowercase() }
+                SynthesisSlider(label, display + control.unit, current, control.min..control.max, control.increments - 1, !vm.busy,
+                    "synthesis_$tag", { changed ->
+                        val value = if (control.integral) changed.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", changed)
+                        options = options + (control.name to value)
+                    }, commit)
+            }
+            StudioButton(onClick = { options = emptyMap(); commit() }, enabled = !vm.busy && controls.any {
+                options[it.name]?.toFloat()?.let { value -> value != it.defaultValue.toFloat() } == true
+            },
                 style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End).testTag("reset_synthesis_options")) {
                 Text(resources.getString(R.string.reset_defaults))
             }
@@ -458,7 +459,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                             Column(Modifier.weight(1f)) {
                                 Text(voice.name, style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(modelArchitectureLabel(resources, voice.model.variant),
+                                Text(vm.variantLabel(voice.model).resolve(resources),
                                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!available) Text(resources.getString(R.string.model_unavailable),
                                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -481,7 +482,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
 }
 
 @Composable
-private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialModel) {
+private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
     val resources = LocalResources.current
     val ready = vm.modelFor(model) != null
     val voice = vm.voiceFor(model)
@@ -741,7 +742,7 @@ private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openMoreMod
                     Text(resources.getString(R.string.device_acceleration), style = MaterialTheme.typography.titleMedium)
                     Text(vm.acceleration.device.ifBlank { resources.getString(R.string.device_loading) }, style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(vm.acceleration.detail.resolve(resources), style = MaterialTheme.typography.bodySmall,
+                    Text(dev.renakoni.voicebox.core.i18n.UiText(vm.acceleration.detail).resolve(resources), style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("device_acceleration_status"))
                 }
                 Switch(checked = vm.deviceAccelerationEnabled && vm.acceleration.available && vm.gpuEnabled,

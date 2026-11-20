@@ -69,6 +69,8 @@ tests/parity/.tmp/
 !Android/model/gptsovits/src/main/assets/checkpoint-v2proplus/*.onnx
 !Android/model/gptsovits/src/main/assets/checkpoint-v2pro/*.onnx
 !Android/model/gptsovits/src/main/assets/checkpoint-v5turbo/*.onnx
+!Android/model/gptsovits/src/main/assets/english-g2p/encoder.onnx
+!Android/model/gptsovits/src/main/assets/english-g2p/decoder.onnx
 !Android/model/gptsovits/src/main/assets/device-acceleration/probe.onnx
 *.bin
 *.ckpt

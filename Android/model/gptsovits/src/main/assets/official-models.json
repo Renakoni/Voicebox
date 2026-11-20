@@ -92,5 +92,51 @@
         "sha256": "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022"
       }
     }
+  ],
+  "languageFrontends": [
+    {
+      "path": "checkpoint20.npz",
+      "bytes": 3342298,
+      "sha256": "b8af35e4596d8dd5836dfd3fe9b2ba4f97b9c311efe8879544cbcfcbd566d8c6",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/checkpoint20.npz",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/checkpoint20.npz"
+      ]
+    },
+    {
+      "path": "pos-weights.json",
+      "bytes": 5677744,
+      "sha256": "789e8e35f6fac656d9b7eccea29ba4e8a137cbb5b525dd31f39e4291a9e80832",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.weights.json",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.weights.json"
+      ]
+    },
+    {
+      "path": "pos-classes.json",
+      "bytes": 285,
+      "sha256": "d152ffa69d45b8357276341a3d592c6c025911d52ec0d9068d4f382560dd48b6",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.classes.json",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.classes.json"
+      ]
+    },
+    {
+      "path": "pos-tagdict.json",
+      "bytes": 25788,
+      "sha256": "4c713731cb06727736962bc8cd94ad919217a040e76691059af99bc0c2c9c246",
+      "urls": [
+        "https://huggingface.co/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.tagdict.json",
+        "https://hf-mirror.com/High-Logic/Genie/resolve/52b17272e0b7032415e85ad37b551db2386b1810/GenieData/G2P/EnglishG2P/taggers/averaged_perceptron_tagger_eng/averaged_perceptron_tagger_eng.tagdict.json"
+      ]
+    },
+    {
+      "path": "open_jtalk_dic_utf_8-1.11.tar.gz",
+      "bytes": 23646843,
+      "sha256": "fe6ba0e43542cef98339abdffd903e062008ea170b04e7e2a35da805902f382a",
+      "urls": [
+        "https://github.com/r9y9/open_jtalk/releases/download/v1.11.1/open_jtalk_dic_utf_8-1.11.tar.gz"
+      ]
+    }
   ]
 }

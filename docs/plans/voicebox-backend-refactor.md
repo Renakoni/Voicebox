@@ -309,7 +309,7 @@ docs/
 - [x] PR1 命名。MuMu 的 ABI 限制见下表。
 - [x] PR2 模型边界。Ming 和 V2 的样本限制沿用 P0。
 - [x] PR3 公共桥接装载。MuMu 原生 x86_64 与 ARM64 转译结果分别记载。
-- [ ] PR4 GPT 独立包和默认预装。
+- [x] PR4 GPT 独立包和默认预装。原版 V2 和原生 ARM64 的限制见下表。
 - [ ] PR5 加速职责。
 - [ ] PR6 模型页面与能力驱动流程。
 - [ ] PR7 综合验收。
@@ -364,3 +364,17 @@ PR1 的混淆 APK 含 12 个以新包名导出的 JNI 方法。MuMu 的 8 个 na
 | 混淆宿主 | 使用相同 R8 规则、定制 ORT 及独立包名后缀 `.pr3verify`。在 MuMu 安装 ARM64 候选 ZIP，加载独立 DEX，调用共享能力和私有 worker；缺模型错误正常跨进程返回。见 `release-worker-final.log` 及同目录的探针源码、Gradle 初始化脚本。 |
 | Ming 实际运行 | 为 MuMu 单独从相同源码构建 x86_64 候选包，使用上游标准 ONNX V1 的 CPU FP32 模型、原参考编码器和真实参考 WAV。独立进程完成固定音色、重新编码参考音频的克隆、播放进度推进、取消及其后的请求。两次语音分别为 44.1 kHz 单声道 123,480 和 91,728 样本。测试包使用单独 applicationId。见 `ming-x86-verified.log`、`audio.json`、`ming-{default,clone}.wav` 和 `x86-assets/bridges/ming.json`。 |
 | 设备与分发限制 | 对 MuMu 强制使用 ARM64 转译后，包安装、共享契约和缺模型错误可测；真实 ARM64 模型进入 ORT 后发生 SIGSEGV，原生 ARM 设备仍待复验。GPT 的旧 WebGPU 探测在转译环境出现原生 `No supported adapters` 中止。见 `{ming-arm,arm}-crash.log`。公开 `ming-runtime-v2` URL 尚无 Release；本次设备从本地暂存的候选 ZIP 安装，未上传构建物。 |
+
+### PR4 GPT 独立包与默认预装
+
+分支 `refactor/voicebox-04-gptsovits-package`，基准 `6e9932d`。本地证据目录为 `artifacts/refactor-pr4/`。GPT 的模型、字典、checkpoint、ORT 与 JNI 实现通过与 Ming 相同的固定目录、安装器、DEX 装载器与 worker 运行。Studio 读取后端提供的选项和操作，已安装桥接与含权重的音源分开检查。
+
+| 验收 | 本轮实测 |
+| --- | --- |
+| 构建与边界 | x86_64 Debug、ARM64 R8 Release、120 项 JVM 测试通过。两种 APK 均只内置各自 ABI 的单个 GPT ZIP；逐文件比较独立包和 APK 中的副本，校验目录 SHA、75 个资产及 DEX 类定义。生产 Release ZIP 为 20,118,302 字节，本次构建 SHA-256 为 `4a138b4a87655f7e51a7b02cb4442847b261c2136e42524c2be3b7145244d3e9`。见 `dex-{debug,release}.json`、`final-{debug,release}.log`。源码提交是构建输入，再次构建会生成对应新目录。 |
+| 权重审计 | 检查图 initializer、属性常量和 external data。逐值比对八组大于等于 16 项的浮点数组与位置/时间频率、正余弦表、全 0/1、Hann 窗及 Slaney mel 滤组。GPT 和声码器的训练参数均在外部文件。英语 GRU 和 POS 权重、日语统计词典移到音源资源侧。用真实 NPZ 运行 Kotlin 转换，英语图每个张量均与原图相同，词表、POS 文件和日语五个文件逐项哈希一致；MuMu 日英前端及未知词 oracle 通过。见 `graph-content.json`、`unique-floats.log`、`language-parity.json`、`language-oracles-final.log`。 |
+| 安装与混淆 | 独立包名、无音源数据的原生 x86_64 R8 APK 在 MuMu 直接从 APK 预装并复用同一目录；模型资源查询为缺失。独立 GPT DEX 能列出官方音源，以字符串键和参数跨进程返回真实导入错误；用相同 DEX/native 加载路径建立 CPU ORT 图会话。见 `native-proof.log` 和验证源码。ARM64 定制 ORT 在 MuMu 强制转译下触发 native SIGSEGV，见 `minified-arm-crash.log`，原生 ARM64 仍待实机。 |
+| 真实音源 | x86_64 MuMu API 32，四个 V2 Pro 权重及 V5 Turbo 导入文件分别通过来源 SHA；独立 worker 输出单声道 PCM，V2 Pro 32 kHz / 131,840 样本，V5 Turbo 48 kHz / 199,680 样本。两种官方音源均在空目录通过网络下载、校验及转换；Studio 克隆、重建、生成、播放、导出通过。见 `{v2pro,v5turbo}.json`、`official-{download,v5}.log`、`audio.json` 和 `studio.log`。原版 V2 运行样本仍缺，见 P0。 |
+| 会话与性能 | P0 固定 Roxy 模型、日语参考和中文句，默认 CPU，进程冷启动首请求 24,426 ms，热请求 12,428 ms，RTF 5.87 / 2.99。两次均为 32 kHz、133,120 样本、4.16 s，峰值 8,512；同一 worker PID 20939，VmHWM 1,958,612 KiB；宿主 PID 20866，289,852 KiB。P0 分别为 49,690 / 14,689 ms。缓存与模拟器热状态不能严格复现，两个进程各自峰值不等于同时占用。超时、解码中取消、切换音源、服务销毁及随后的真实生成通过。见 `refactor-{0,1}.txt`、`lifecycle-real-final.log`。 |
+| 跨后端 | 使用同源 x86_64 Ming 本地候选，单个前台服务完成 Roxy → Ming → Roxy。三次输出分别为 32 kHz / 65,280、44.1 kHz / 63,504、32 kHz / 62,720 样本且非静音，见 `switch.log`、`switch-audio.log`。 |
+| 多参考 | 对同一 V2 Pro Plus 模板使用上游多参考导出器构造可选八槽图，验证真实日语主参考和第二段中文参考经宿主请求、IPC、独立 prompt encoder 与 CPU 合成。结果为非静音 32 kHz WAV，见 `multi.log` 与 `switch-probes/MultiProof.kt`。 |

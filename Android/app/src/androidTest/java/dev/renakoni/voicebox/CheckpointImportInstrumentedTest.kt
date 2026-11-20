@@ -1,5 +1,8 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.bridge.ReferenceExample
+import dev.renakoni.voicebox.bridge.VoiceLibrary
+import dev.renakoni.voicebox.bridge.ExecutionBackend
 import android.net.Uri
 import android.app.Application
 import android.content.Context
@@ -9,25 +12,14 @@ import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
-import dev.renakoni.voicebox.model.gptsovits.modelFiles
-import dev.renakoni.voicebox.model.gptsovits.GptModelRepository
-import dev.renakoni.voicebox.model.gptsovits.modelArchitectureText
-import dev.renakoni.voicebox.model.gptsovits.OptimizedDecoderAssets
-import dev.renakoni.voicebox.model.gptsovits.SplitVocoderAssets
-import dev.renakoni.voicebox.model.gptsovits.OrtSessionRuntime
-import dev.renakoni.voicebox.model.gptsovits.OrtRuntimeFeatureExtractor
-import dev.renakoni.voicebox.model.gptsovits.RuntimeAssetRepository
 import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.BackendRuntimeCallbacks
-import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
 import dev.renakoni.voicebox.studio.StudioViewModel
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -49,7 +41,7 @@ class CheckpointImportInstrumentedTest {
         val case = File(source, "import-case.json").takeIf { it.isFile }?.let { JSONObject(it.readText()) }
         val gpt = File(source, "s1v3.ckpt")
         val sovits = File(source, case?.getString("sovits_file") ?: "s2Gv2ProPlus.pth")
-        val reference = case?.let { CheckpointImporter.Reference(File(source, it.getString("reference_file")),
+        val reference = case?.let { ReferenceExample(File(source, it.getString("reference_file")),
             it.getString("reference_text"), it.optString("reference_language", "zh")) }
         val runtimeFixture = File(source, "RuntimeAssets")
         if (runtimeFixture.isDirectory) {
@@ -64,7 +56,7 @@ class CheckpointImportInstrumentedTest {
         val connected = CountDownLatch(1)
         val finished = CountDownLatch(1)
         val service = AtomicReference<VoiceBoxBackendService>()
-        val imported = AtomicReference<Result<CheckpointImporter.Result>>()
+        val imported = AtomicReference<Result<ImportedVoice>>()
         val connection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 service.set((binder as VoiceBoxBackendService.LocalBinder).getService()); connected.countDown()
@@ -88,16 +80,13 @@ class CheckpointImportInstrumentedTest {
         val result = imported.get().getOrThrow()
         verifyImportedModel(context, result, source, start)
         if (reference != null) {
-            val repository = GptModelRepository(context)
-            val runtimeAssets = RuntimeAssetRepository(context)
-            val model = repository.discoverCharacterModels().single { it.id == result.characterId }
-            assertEquals(case.getString("architecture"), result.architecture)
-            val runtime = OrtSessionRuntime(repository, runtimeAssets) { backend ->
-                OrtRuntimeFeatureExtractor(context, runtimeAssets, backend)
-            }
+            val repository = registeredBackends(context)
+            val model = repository.discoverCharacterModels().single { it.ref == result.ref }
+            assertEquals(case.getString("architecture"), result.ref.variant)
+            val runtime = repository.provider(model).createRuntime(ExecutionBackend.CPU)
             try {
                 val generated = runtime.generate(GenerationRequest(model, "zh", synthesisText = case.getString("text"),
-                    referenceAudioPath = reference.audioFile.absolutePath, referenceText = reference.text,
+                    referenceAudioPath = reference.audioFile.absolutePath, referenceText = reference.referenceText,
                     promptLanguage = reference.language),
                     object : BackendRuntimeCallbacks {
                         override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
@@ -106,7 +95,7 @@ class CheckpointImportInstrumentedTest {
                     })
                 assertTrue(generated.audioSamples > 32000)
                 val reportFile = File(source, "android-import-result.json")
-                reportFile.writeText(JSONObject(reportFile.readText()).put("architecture", result.architecture)
+                reportFile.writeText(JSONObject(reportFile.readText()).put("architecture", result.ref.variant)
                     .put("synthesis_performed", true).put("audio_samples", generated.audioSamples)
                     .put("sample_rate", generated.sampleRate).put("output", generated.file.absolutePath).toString(2))
             } finally { runtime.close() }
@@ -162,7 +151,7 @@ class CheckpointImportInstrumentedTest {
             onMain { vm.pickCheckpoint(Uri.fromFile(sovits), false) }
             awaitStudio { !vm.fileBusy }
             onMain {
-                assertEquals(modelArchitectureText(architecture).resolve(app.resources), vm.checkpointRecognition?.resolve(app.resources))
+                assertEquals(dev.renakoni.voicebox.core.i18n.UiText((registeredBackends(app).provider("gptsovits") as VoiceLibrary).variantLabel(architecture)).resolve(app.resources), vm.checkpointRecognition?.resolve(app.resources))
                 vm.importCheckpoints()
                 assertEquals(R.string.checkpoint_reference_required, vm.checkpointError?.resourceId)
                 assertFalse(vm.importing)
@@ -180,7 +169,7 @@ class CheckpointImportInstrumentedTest {
                 vm.importCheckpoints()
             }
             awaitStudio { !vm.importing && !vm.loading }
-            lateinit var result: CheckpointImporter.Result
+            lateinit var result: ImportedVoice
             var selectedId = ""
             onMain {
                 assertNull(vm.checkpointError)
@@ -194,7 +183,7 @@ class CheckpointImportInstrumentedTest {
                 assertEquals(architecture, voice.model.variant)
                 assertArrayEquals(reference.readBytes(), File(voice.audioPath).readBytes())
                 selectedId = voice.id
-                result = CheckpointImporter.Result(vm.modelFor(voice)!!.id, voice.name, architecture)
+                result = ImportedVoice(vm.modelFor(voice)!!.ref, voice.name)
                 vm.openVoicePicker(); vm.chooseVoice(voice)
                 assertFalse(vm.choosingVoice)
                 assertNull(vm.draft)
@@ -219,11 +208,12 @@ class CheckpointImportInstrumentedTest {
         } finally { onMain { owner.clear() } }
     }
 
-    private fun verifyImportedModel(context: Context, result: CheckpointImporter.Result, source: File, start: Long) {
-        val repository = GptModelRepository(context)
-        val model = repository.discoverCharacterModels().single { it.id == result.characterId }
+    private fun verifyImportedModel(context: Context, result: ImportedVoice, source: File, start: Long) {
+        val repository = registeredBackends(context)
+        val model = repository.discoverCharacterModels().single { it.id == result.ref.modelId }
         assertEquals(result.displayName, model.displayName)
-        val modelDirectory = repository.installToPrivateStorage(model.modelFiles)
+        assertTrue(repository.inspect(model).isComplete)
+        val modelDirectory = File(context.getExternalFilesDir(null), "CharacterModels/${model.relativeModelDirectory}")
         val expected = JSONObject(File(source, "expected-import.json").readText()).getJSONObject("outputs")
         val report = JSONObject().put("character_id", model.id)
             .put("import_elapsed_ms", (System.nanoTime() - start) / 1_000_000)
@@ -240,29 +230,12 @@ class CheckpointImportInstrumentedTest {
             assertEquals(name, expected.getJSONObject(name).getString("sha256"), hash)
             hashes.put(name, hash)
         }
-        assertTrue(OptimizedDecoderAssets.resolve(modelDirectory, true).values.any { it.name == "mobile-decoder-shared.onnx" })
-        val graphs = if (result.architecture == "v5turbo") {
-            listOf("t2s_encoder_fp32.onnx", "mobile-prefill.onnx", "mobile-decoder-shared.onnx",
-                "v5-reference-audio.onnx", "v5-condition.onnx", "v5-static.onnx", "v5-dit.onnx")
-        } else {
-            SplitVocoderAssets.validate(modelDirectory)
-            listOf("t2s_encoder_fp32.onnx", "mobile-prefill.onnx", "mobile-decoder-shared.onnx",
-                "prompt_encoder_fp32.onnx", "split-encoder.onnx", "split-hifigan.onnx")
-        }
-        for (graph in graphs) {
-            OrtSession.SessionOptions().use { options ->
-                options.setIntraOpNumThreads(1)
-                OrtEnvironment.getEnvironment().createSession(File(modelDirectory, graph).absolutePath, options).use { session ->
-                    assertTrue(session.inputNames.isNotEmpty()); assertTrue(session.outputNames.isNotEmpty())
-                }
-            }
-        }
-        report.put("weight_hashes", hashes).put("loaded_graphs", org.json.JSONArray(graphs))
+        report.put("weight_hashes", hashes)
             .put("status", "passed").put("synthesis_performed", false)
         File(source, "android-import-result.json").writeText(report.toString(2))
         // Keep the imported model for the user, but never retain checkpoint source copies.
         assertFalse(modelDirectory.parentFile!!.walkTopDown().any { it.extension in setOf("ckpt", "pth") })
         assertFalse(context.getExternalFilesDir(null)!!.listFiles()!!.any { it.name.startsWith(".voicebox-checkpoint-") })
-        assertTrue(GptModelRepository(context).discoverCharacterModels().any { it.id == model.id && it.displayName == result.displayName })
+        assertTrue(registeredBackends(context).discoverCharacterModels().any { it.id == model.id && it.displayName == result.displayName })
     }
 }

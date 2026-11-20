@@ -23,16 +23,25 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
     override fun warmup(request: GenerationRequest) { call(WorkerProtocol.WARMUP, request, null) }
     override fun trimMemory() { if (session != null) call(WorkerProtocol.TRIM, null, null) }
 
-    private fun call(what: Int, request: GenerationRequest?, callbacks: BackendRuntimeCallbacks?): Bundle {
+    fun probe(): Bundle = call(WorkerProtocol.PROBE, null, null)
+
+    fun operate(action: LibraryAction, arguments: Bundle, context: GenerationContext, progress: (String, Int?) -> Unit): Bundle =
+        call(WorkerProtocol.LIBRARY, null, object : BackendRuntimeCallbacks {
+            override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) =
+                progress(message, progressPercent)
+        }, Bundle().apply { putString("action", action.name); putBundle("arguments", arguments) }, context)
+
+    private fun call(what: Int, request: GenerationRequest?, callbacks: BackendRuntimeCallbacks?,
+        arguments: Bundle = Bundle(), cancellation: GenerationContext? = request?.context): Bundle {
         val binding = session ?: WorkerBinding(context).also { session = it }
         var ok = false
         try {
-            val data = (request?.encode() ?: Bundle()).apply {
+            val data = (request?.encode() ?: arguments).apply {
                 putString("session", binding.id); putString("backendId", id); putString("execution", backend.name)
                 putBundle("settings", settings)
-                if (request == null) putString("request", UUID.randomUUID().toString())
+                if (request == null) putString("request", cancellation?.requestId ?: UUID.randomUUID().toString())
             }
-            val result = binding.call(what, data, request?.context, callbacks)
+            val result = binding.call(what, data, cancellation, callbacks)
             runtimeLabel = result.getString("runtime") ?: backend.label
             ok = true
             return result
@@ -77,27 +86,36 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
     }
 
     fun call(what: Int, data: Bundle, cancellation: GenerationContext?, callbacks: BackendRuntimeCallbacks?): Bundle {
+        val cooperative = what == WorkerProtocol.LIBRARY
+        fun cancelOperation() {
+            runCatching { remote?.send(Message.obtain(null, WorkerProtocol.CANCEL).apply {
+                this.data = Bundle().apply { putString("session", id); putString("request", data.getString("request")) }
+            }) }
+        }
         val hook = cancellation?.onCancel {
-            connected.completeExceptionally(GenerationCancelledException(cancellation.cancellationReason ?: "CANCELLED"))
-            responses.offer(Bundle().apply { putBoolean("cancelled", true) })
+            if (cooperative) cancelOperation() else {
+                connected.completeExceptionally(GenerationCancelledException(cancellation.cancellationReason ?: "CANCELLED"))
+                responses.offer(Bundle().apply { putBoolean("cancelled", true) })
+            }
         }
         try {
             cancellation?.checkCancelled()
             val worker = connected.get(30, TimeUnit.SECONDS)
             cancellation?.checkCancelled()
             worker.send(Message.obtain(null, what).apply { this.data = data; replyTo = receiver })
+            if (cooperative && cancellation?.cancellationReason != null) cancelOperation()
             val deadline = SystemClock.elapsedRealtime() + TimeUnit.MINUTES.toMillis(15)
             while (true) {
                 val item = responses.poll((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
                     ?: throw TimeoutException("Backend worker timed out")
-                cancellation?.checkCancelled()
+                if (!cooperative || item.getInt("type") == WorkerProtocol.RESULT || item.getBoolean("disconnected")) cancellation?.checkCancelled()
                 check(!item.getBoolean("disconnected")) { "Backend worker disconnected" }
                 if (item.getString("request") != data.getString("request")) continue
                 if (item.getInt("type") == WorkerProtocol.EVENT) {
                     callbacks?.onStage(GenerationStage.valueOf(item.getString("stage")!!), item.getString("message").orEmpty(),
                         if (item.containsKey("percent")) item.getInt("percent") else null, item.getString("label"))
                 } else {
-                    item.getString("error")?.let { throw BackendFailure(item.getString("code")!!, it) }
+                    item.getString("error")?.let { throw item.workerFailure(it) }
                     return item
                 }
             }

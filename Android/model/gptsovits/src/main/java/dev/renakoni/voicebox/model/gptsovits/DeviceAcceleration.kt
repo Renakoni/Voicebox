@@ -1,12 +1,12 @@
 package dev.renakoni.voicebox.model.gptsovits
 
+import dev.renakoni.voicebox.core.openBackendAsset
+
 import dev.renakoni.voicebox.core.i18n.UiText
 
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 
 data class DeviceAccelerationStatus(
@@ -18,9 +18,9 @@ data class DeviceAccelerationStatus(
 
 /** Owned by the service; detection and model work run on the same worker. */
 class DeviceAcceleration(private val context: Context) {
-    private val mutableStatus = MutableStateFlow(DeviceAccelerationStatus())
+    @Volatile var status = DeviceAccelerationStatus()
+        private set
     private val capabilityCache = File(context.noBackupFilesDir, "npu-capability")
-    val status = mutableStatus.asStateFlow()
     @Volatile var runtimeDirectory: File? = null
         private set
 
@@ -34,7 +34,7 @@ class DeviceAcceleration(private val context: Context) {
         fun unavailable(reason: String) {
             Log.i("VoiceBoxAcceleration", reason)
             runtimeDirectory = null
-            mutableStatus.value = DeviceAccelerationStatus(device, detail = UiText("npu_unavailable"), checking = false)
+            status = DeviceAccelerationStatus(device, detail = UiText("npu_unavailable"), checking = false)
         }
         if (!qualcomm || "arm64-v8a" !in Build.SUPPORTED_ABIS) {
             unavailable("未检测到兼容的高通 NPU")
@@ -43,14 +43,14 @@ class DeviceAcceleration(private val context: Context) {
         if (!webGpu) { unavailable("当前运行库不支持混合加速"); return }
         val runtime = File(context.filesDir, "QualcommRuntime")
         if (!hasRuntimeFiles(runtime)) { unavailable("未安装 NPU 加速组件"); return }
-        mutableStatus.value = DeviceAccelerationStatus(device)
+        status = DeviceAccelerationStatus(device)
         val updatedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
         val key = capabilityCacheKey(Build.FINGERPRINT, updatedAt, runtime)
         val available = cachedCapability(capabilityCache, key) {
             val probe = File(context.cacheDir, "qnn-capability.onnx")
             try {
                 Log.i("VoiceBoxAcceleration", "验证 NPU 能力")
-                context.assets.open("device-acceleration/probe.onnx").use { input -> probe.outputStream().use(input::copyTo) }
+                context.openBackendAsset("device-acceleration/probe.onnx").use { input -> probe.outputStream().use(input::copyTo) }
                 QnnSession.probe(runtime, probe)
                 true
             } catch (error: Exception) {
@@ -63,14 +63,14 @@ class DeviceAcceleration(private val context: Context) {
         }
         if (available) {
             runtimeDirectory = runtime
-            mutableStatus.value = DeviceAccelerationStatus(device, true, UiText("npu_available"), checking = false)
+            status = DeviceAccelerationStatus(device, true, UiText("npu_available"), checking = false)
         } else unavailable("NPU capability check failed")
     }
 
     fun modelUnavailable() {
         capabilityCache.delete()
         runtimeDirectory = null
-        mutableStatus.value = mutableStatus.value.copy(available = false, detail = UiText("npu_unavailable"))
+        status = status.copy(available = false, detail = UiText("npu_unavailable"))
     }
 
     companion object {
