@@ -127,8 +127,6 @@ class VoiceBoxBackendService : Service() {
 
                 override fun referenceExample(model: CharacterModel) = modelRepository.findReferenceExample(model)
 
-                override fun supportedBackends(model: CharacterModel) = this@VoiceBoxBackendService.supportedBackends(model)
-
                 override fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
                     modelRepository.provider(model).supportsAuxiliaryReferences(model)
 
@@ -248,20 +246,22 @@ class VoiceBoxBackendService : Service() {
     fun synthesize(
         backend: ExecutionBackend,
         request: GenerationRequest,
-    ): Boolean {
-        if (backend !in supportedBackends(request.characterModel)) return false
-        if (!generationGate.tryAcquire(request.context)) {
-            return false
-        }
+    ): Boolean = enqueue(backend, request) == null
+
+    private fun enqueue(
+        backend: ExecutionBackend?,
+        request: GenerationRequest,
+        onComplete: ((InferResult) -> Unit)? = null,
+    ): InferResult.Rejected? {
+        if (backend == null || backend !in supportedBackends(request.characterModel)) return InferResult.BackendUnavailable
+        if (!generationGate.tryAcquire(request.context)) return InferResult.Busy
         try {
-            worker.execute {
-                runSynthesis(backend, request)
-            }
+            worker.execute { runSynthesis(backend, request, onComplete) }
         } catch (error: Throwable) {
             generationGate.release(request.context)
             throw error
         }
-        return true
+        return null
     }
 
     fun inferBlocking(
@@ -269,25 +269,12 @@ class VoiceBoxBackendService : Service() {
         request: GenerationRequest,
         timeoutMs: Long,
     ): InferResult {
-        if (backend !in supportedBackends(request.characterModel)) {
-            return InferResult.Error("Backend is not enabled.")
-        }
-        if (!generationGate.tryAcquire(request.context)) {
-            return InferResult.Busy
-        }
         val latch = java.util.concurrent.CountDownLatch(1)
         val resultHolder = java.util.concurrent.atomic.AtomicReference<InferResult>(InferResult.Timeout)
-        try {
-            worker.execute {
-                runSynthesis(backend, request) { res ->
-                    resultHolder.set(res)
-                    latch.countDown()
-                }
-            }
-        } catch (error: Throwable) {
-            generationGate.release(request.context)
-            throw error
-        }
+        enqueue(backend, request) { result ->
+            resultHolder.set(result)
+            latch.countDown()
+        }?.let { return it }
         try {
             if (!latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                 val cancelled = generationGate.cancel(request.context.requestId, "TIMEOUT")
@@ -482,8 +469,7 @@ class VoiceBoxBackendService : Service() {
                         formatAudioDuration(result.audioSamples, result.sampleRate),
                     ),
                 )
-                onComplete?.invoke(InferResult.Success(result.file,
-                    result.audioSamples.toLong() * 1000 / result.sampleRate))
+                onComplete?.invoke(InferResult.Success(result.file))
             }
             if (!delivered) {
                 result.file.delete()
@@ -939,14 +925,11 @@ class VoiceBoxBackendService : Service() {
                         return
                     }
                     val requested = message.data.getString(BackendApiContract.KEY_BACKEND) ?: ExecutionBackend.CPU.name
-                    val backend = supportedBackends(request.characterModel).firstOrNull { it.name.equals(requested, ignoreCase = true) }
-                    if (backend == null) {
-                        sendErrorTo(message.replyTo, getString(R.string.prototype_backend_unavailable, requested))
-                        return
-                    }
-                    val started = synthesize(backend, request)
-                    if (!started) {
-                        sendErrorTo(message.replyTo, getString(R.string.prototype_generation_busy))
+                    val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(requested, ignoreCase = true) }
+                    when (enqueue(backend, request)) {
+                        InferResult.BackendUnavailable -> sendErrorTo(message.replyTo, getString(R.string.prototype_backend_unavailable, requested))
+                        InferResult.Busy -> sendErrorTo(message.replyTo, getString(R.string.prototype_generation_busy))
+                        null -> Unit
                     }
                 }
                 else -> super.handleMessage(message)

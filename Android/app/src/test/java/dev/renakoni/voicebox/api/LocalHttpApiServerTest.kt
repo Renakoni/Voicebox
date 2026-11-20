@@ -280,9 +280,7 @@ class LocalHttpApiServerTest {
 
     @Test
     fun inferRejectsBackendThatIsNotEnabled() {
-        val bridge = FakeBridge(
-            enabledBackends = setOf(ExecutionBackend.CPU),
-        )
+        val bridge = FakeBridge()
         val server = LocalHttpApiServer(bridge)
 
         val response = server.route(
@@ -345,7 +343,6 @@ class LocalHttpApiServerTest {
 
     private class FakeBridge(
         private val validate: (Map<String, String>) -> Map<String, String> = { it },
-        private val enabledBackends: Set<ExecutionBackend> = setOf(ExecutionBackend.CPU),
         private val models: List<CharacterModel> = listOf(testModel),
         private val defaults: ActiveDefaults = ActiveDefaults(
             backend = ExecutionBackend.CPU,
@@ -378,14 +375,13 @@ class LocalHttpApiServerTest {
         override fun referenceExample(model: CharacterModel) =
             dev.renakoni.voicebox.bridge.ReferenceExample(File(primaryReferencePath), model.displayName, "ja")
 
-        override fun supportedBackends(model: CharacterModel): Set<ExecutionBackend> = enabledBackends
-
         override fun activeDefaults(): ActiveDefaults = defaults
 
         override fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult {
+            if (backend != ExecutionBackend.CPU) return InferResult.BackendUnavailable
             capturedBackend = backend
             capturedRequest = request
-            return InferResult.Success(File(primaryReferencePath), 1000)
+            return InferResult.Success(File(primaryReferencePath))
         }
     }
 }

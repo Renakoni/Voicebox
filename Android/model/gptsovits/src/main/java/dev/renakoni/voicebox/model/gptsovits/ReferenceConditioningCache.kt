@@ -12,15 +12,12 @@ data class ReferenceConditioningCacheKey(
     val characterModelId: String,
     val backend: ExecutionBackend,
     val language: String,
-    val referenceAudioPath: String,
+    val referenceAudio: ReferenceAudioFingerprint,
     val referenceText: String,
     val usesPromptEncoder: Boolean,
-    val referenceAudioSize: Long = -1L,
-    val referenceAudioLastModified: Long = -1L,
     val modelInterfaceVersion: String,
     val preprocessingVersion: String,
     val conditioningRole: InferenceModelRole = InferenceModelRole.TEXT_FRONTEND,
-    val auxiliaryReferenceAudioFingerprints: List<ReferenceAudioFingerprint> = emptyList(),
 )
 
 data class ReferenceConditioning(

@@ -36,7 +36,10 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     private fun library() = metadata() as? VoiceLibrary
     override fun officialVoices() = library()?.officialVoices().orEmpty()
     override fun variantLabel(variant: String) = library()?.variantLabel(variant) ?: ""
-    override fun resourcesReady(variant: String) = library()?.resourcesReady(variant) ?: archive.installed
+    override fun resourcesReady(variant: String): Boolean {
+        val provider = metadata() ?: return false
+        return provider !is VoiceLibrary || provider.resourcesReady(variant)
+    }
     override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)

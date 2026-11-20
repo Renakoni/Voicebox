@@ -179,8 +179,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
     val busy get() = state.busy || submitting || importing || officialDownload.running
     val backend get() = if (gpuAvailable && gpuEnabled) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
-    val canGenerate get() = connected && availableBackends.isNotEmpty() && !loading && !busy && !fileBusy && runtimeReady &&
-        selectedVoice != null && text.isNotBlank() && modelFor(selectedVoice!!) != null
+    val canGenerate get() = connected && !loading && !busy && !fileBusy && text.isNotBlank() && runtimeReady && availableBackends.isNotEmpty()
 
     private val listener = BackendServiceListener { next ->
         val ownRequest = pendingRequest != null && next.requestId == pendingRequest?.requestId
@@ -270,8 +269,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    val catalog = modelsRepository.providers.flatMap { it.officialVoices() }
-                    val discovered = modelsRepository.discoverCharacterModels().filter { modelsRepository.inspect(it).isComplete }
+                    val installed = backendPackages.filter { it.installed }.map { it.spec.id }.toSet()
+                    val providers = modelsRepository.providers.filter { it.id in installed }
+                    val catalog = providers.flatMap { it.officialVoices() }
+                    val discovered = providers.flatMap { provider -> provider.discoverCharacterModels().filter { provider.inspect(it).isComplete } }
                     val ready = discovered.groupBy { it.ref.backendId to it.ref.variant }
                         .filterKeys { (id, variant) -> modelsRepository.provider(id).resourcesReady(variant) }
                         .values.flatten().map { it.ref }.toSet()
@@ -289,8 +290,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     val npu = available.filter { modelsRepository.provider(it).hasNpuGraphs(it) }.map { it.ref }.toSet()
                     val auxiliary = available.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
-                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, backendPackages.filter { it.installed }.map { it.spec.id }.toSet(),
-                        modelsRepository.providers.associate { it.id to it.capabilities })
+                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, installed, providers.associate { it.id to it.capabilities })
                 }
                 models = data.models
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }

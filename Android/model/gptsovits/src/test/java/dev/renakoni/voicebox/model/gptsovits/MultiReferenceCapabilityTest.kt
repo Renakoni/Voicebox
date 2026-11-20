@@ -27,9 +27,9 @@ class MultiReferenceCapabilityTest {
         assertTrue(capability.supported)
         assertEquals(3, capability.maxReferenceCount)
         assertEquals(2048, capability.placeholderAudioSamples)
-        capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav"))
+        capability.validateReferenceCount(3)
         assertThrows(IllegalArgumentException::class.java) {
-            capability.validateAuxiliaryReferencePaths(listOf("one.wav", "two.wav", "three.wav"))
+            capability.validateReferenceCount(4)
         }
     }
 
@@ -43,23 +43,7 @@ class MultiReferenceCapabilityTest {
 
         assertFalse(capability.supported)
         assertThrows(IllegalArgumentException::class.java) {
-            capability.validateAuxiliaryReferencePaths(listOf("aux.wav"))
-        }
-    }
-
-    @Test
-    fun rejectsBlankAndDuplicatePathsBeforeInference() {
-        val capability = MultiReferenceCapability(
-            supported = true,
-            maxReferenceCount = 3,
-        )
-
-        assertThrows(IllegalArgumentException::class.java) {
-            capability.validateAuxiliaryReferencePaths(listOf(""))
-        }
-
-        assertThrows(IllegalArgumentException::class.java) {
-            capability.validateAuxiliaryReferencePaths(listOf("same.wav", "same.wav"))
+            capability.validateReferenceCount(2)
         }
     }
 }

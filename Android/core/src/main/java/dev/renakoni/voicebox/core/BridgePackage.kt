@@ -8,6 +8,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import java.util.zip.ZipFile
 
@@ -91,7 +92,12 @@ class BridgePackage(
     val supported get() = spec.abi == abi
     private val revisions get() = File(root, spec.revision)
     val directory: File? get() = if (!supported) null else revisions.listFiles()?.firstOrNull { candidate ->
-        spec.files.all { (name, bytes) -> File(candidate, name).let { it.isFile && it.length() == bytes } }
+        spec.files.all { (name, bytes) ->
+            try {
+                val file = Files.readAttributes(File(candidate, name).toPath(), BasicFileAttributes::class.java)
+                file.isRegularFile && file.size() == bytes
+            } catch (_: java.io.IOException) { false }
+        }
     }
     val installed get() = directory != null
 

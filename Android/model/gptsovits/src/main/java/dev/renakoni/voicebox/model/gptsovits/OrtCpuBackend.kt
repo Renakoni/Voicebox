@@ -34,7 +34,6 @@ class OrtCpuBackend(
     private val sessions: MutableMap<String, OrtSession> = linkedMapOf()
     private val sessionFiles: MutableMap<String, File> = linkedMapOf()
     private var modelFiles: RequiredModelFiles? = null
-    private var multiReferenceCapabilityResolved = false
     private var cachedMultiReferenceCapability: MultiReferenceCapability? = null
     private var v5Acoustic: V5AcousticRuntime? = null
     private var v5DiT: V5DiTRuntime? = null
@@ -71,21 +70,6 @@ class OrtCpuBackend(
 
     fun hasPromptEncoder(): Boolean =
         sessionFiles.keys.any { it.contains("prompt_encoder", ignoreCase = true) }
-
-    fun multiReferenceCapability(): MultiReferenceCapability? {
-        if (multiReferenceCapabilityResolved) return cachedMultiReferenceCapability
-        val resolved = when {
-            !hasPromptEncoder() -> null
-            MULTI_REFERENCE_PROMPT_ENCODER !in sessionFiles ->
-                MultiReferenceCapability(supported = false)
-            else -> runCatching {
-                MultiReferenceCapability.fromSession(session(MULTI_REFERENCE_PROMPT_ENCODER))
-            }.getOrDefault(MultiReferenceCapability(supported = false))
-        }
-        multiReferenceCapabilityResolved = true
-        cachedMultiReferenceCapability = resolved
-        return resolved
-    }
 
     data class CpuThreadPlan(
         val intraOpThreads: Int,
@@ -608,22 +592,12 @@ class OrtCpuBackend(
         referenceAudio32k: List<FloatArray>,
         speakerEmbeddings: List<FloatTensorData>,
     ): PromptEmbeddings {
-        require(referenceAudio32k.isNotEmpty()) { "At least one reference audio is required." }
         require(referenceAudio32k.size == speakerEmbeddings.size) {
             "Reference audio and speaker embedding counts must match."
         }
-        return runPromptBatchGraph(referenceAudio32k, speakerEmbeddings)
-    }
-
-    private fun runPromptBatchGraph(
-        referenceAudio32k: List<FloatArray>,
-        speakerEmbeddings: List<FloatTensorData>,
-    ): PromptEmbeddings {
-        val capability = requireNotNull(multiReferenceCapability()) {
-            "The loaded model does not provide the multi-reference prompt encoder."
-        }
-        // This layer receives tensors rather than paths; validate the count without
-        // inventing duplicate path values that would reject valid ordered slots.
+        require(MULTI_REFERENCE_PROMPT_ENCODER in sessionFiles) { "The loaded model does not provide the multi-reference prompt encoder." }
+        val promptSession = session(MULTI_REFERENCE_PROMPT_ENCODER)
+        val capability = cachedMultiReferenceCapability ?: MultiReferenceCapability.fromSession(promptSession).also { cachedMultiReferenceCapability = it }
         capability.validateReferenceCount(referenceAudio32k.size)
         val maxReferenceCount = capability.maxReferenceCount
         val placeholderAudioSamples = capability.placeholderAudioSamples
@@ -654,7 +628,7 @@ class OrtCpuBackend(
                 ).also(ownedTensors::add)
                 feed["sv_emb_$index"] = createFloatTensor(embedding).also(ownedTensors::add)
             }
-            session(MULTI_REFERENCE_PROMPT_ENCODER).runCancellable(feed).use { result ->
+            promptSession.runCancellable(feed).use { result ->
                 return PromptEmbeddings(
                     globalEmbedding = floatTensorData(result.get(0) as OnnxTensor),
                     advancedGlobalEmbedding = floatTensorData(result.get(1) as OnnxTensor),
@@ -675,7 +649,6 @@ class OrtCpuBackend(
         sessionFiles.clear()
         modelFiles = null
         v5Acoustic = null
-        multiReferenceCapabilityResolved = false
         cachedMultiReferenceCapability = null
         retainT2SSessionsAfterGeneration = false
         retainVocoderSessionAfterGeneration = false

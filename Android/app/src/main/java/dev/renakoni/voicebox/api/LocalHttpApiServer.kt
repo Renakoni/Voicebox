@@ -28,7 +28,6 @@ class LocalHttpApiServer(
         fun currentState(): BackendServiceState
         fun availableModels(): List<CharacterModel>
         fun referenceExample(model: CharacterModel): dev.renakoni.voicebox.bridge.ReferenceExample?
-        fun supportedBackends(model: CharacterModel): Set<ExecutionBackend>
         fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
             model.maxAuxiliaryReferences > 0
         fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String>
@@ -224,7 +223,6 @@ class LocalHttpApiServer(
         } else input
         val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(payload.backendName.ifBlank { "CPU" }, ignoreCase = true) }
             ?: return HttpResponse(400, errorJson("Unknown backend."))
-        if (backend !in bridge.supportedBackends(model)) return HttpResponse(400, errorJson("Backend is not enabled."))
         if (
             payload.language.isBlank() ||
             payload.text.isBlank() ||
@@ -233,8 +231,8 @@ class LocalHttpApiServer(
         ) {
             return HttpResponse(400, errorJson("language, text, referenceAudioPath, and referenceText are required."))
         }
-        validateReferenceAudioPath(payload.referenceAudioPath)?.let { error ->
-            return HttpResponse(400, errorJson(error))
+        if (!File(payload.referenceAudioPath).isFile) {
+            return HttpResponse(400, errorJson("Reference audio not found: ${payload.referenceAudioPath}"))
         }
         val options = try { bridge.validateOptions(model, active?.options.orEmpty() + payload.options) }
         catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
@@ -265,43 +263,29 @@ class LocalHttpApiServer(
         return when (result) {
             is InferResult.Success -> HttpResponse(200, "", "audio/wav", result.outputFile)
             is InferResult.Error -> HttpResponse(500, errorJson(result.message, result.code))
+            InferResult.BackendUnavailable -> HttpResponse(400, errorJson("Backend is not enabled."))
             InferResult.Busy -> HttpResponse(409, errorJson("Inference is already running."))
             InferResult.Timeout -> HttpResponse(504, errorJson("Inference timed out.", "TIMEOUT"))
         }
     }
 
-    private fun validateReferenceAudioPath(path: String): String? {
-        val file = File(path)
-        if (!file.isFile) {
-            return "Reference audio not found: $path"
-        }
-        return null
-    }
-
     private fun validateAuxiliaryReferencePaths(
         paths: List<String>,
-        primaryPath: String? = null,
+        primaryPath: String,
     ): String? {
-        val canonicalPrimaryPath = primaryPath?.let { rawPath ->
-            val file = File(rawPath)
-            runCatching { file.canonicalFile }.getOrElse { file.absoluteFile }.absolutePath
-        }
-        val canonicalPaths = paths.map { rawPath ->
-            if (rawPath.isBlank()) {
-                return "Auxiliary reference paths cannot be blank."
-            }
-            val file = File(rawPath)
-            val canonical = runCatching { file.canonicalFile }.getOrElse { file.absoluteFile }
+        if (paths.isEmpty()) return null
+        fun canonicalFile(path: String) = File(path).let { runCatching { it.canonicalFile }.getOrDefault(it.absoluteFile) }
+        val primary = canonicalFile(primaryPath)
+        val seen = mutableSetOf<File>()
+        for (rawPath in paths) {
+            val canonical = canonicalFile(rawPath)
             if (!canonical.isFile) {
                 return "Auxiliary reference audio not found: $rawPath"
             }
-            if (canonical.absolutePath == canonicalPrimaryPath) {
+            if (canonical == primary) {
                 return "Auxiliary reference path duplicates the primary reference."
             }
-            canonical.absolutePath
-        }
-        if (canonicalPaths.distinct().size != canonicalPaths.size) {
-            return "Auxiliary reference paths must be unique."
+            if (!seen.add(canonical)) return "Auxiliary reference paths must be unique."
         }
         return null
     }

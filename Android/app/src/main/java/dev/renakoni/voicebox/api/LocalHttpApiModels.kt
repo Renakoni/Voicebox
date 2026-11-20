@@ -25,9 +25,11 @@ data class ActiveDefaults(
 )
 
 sealed class InferResult {
-    data class Success(val outputFile: File, val audioDurationMs: Long) : InferResult()
+    data class Success(val outputFile: File) : InferResult()
     data class Error(val message: String, val code: String = "INFERENCE_FAILED") : InferResult()
-    data object Busy : InferResult()
+    sealed class Rejected : InferResult()
+    data object Busy : Rejected()
+    data object BackendUnavailable : Rejected()
     data object Timeout : InferResult()
 }
 

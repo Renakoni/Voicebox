@@ -11,11 +11,11 @@ data class SynthesisOptions(
     val repetitionPenalty: Float = 1.35f,
 ) {
     init {
-        require(speed.isFinite() && speed in 0.6..1.65) { "speed must be between 0.6 and 1.65." }
-        require(temperature.isFinite() && temperature in 0f..1f) { "temperature must be between 0 and 1." }
+        require(speed in 0.6..1.65) { "speed must be between 0.6 and 1.65." }
+        require(temperature in 0f..1f) { "temperature must be between 0 and 1." }
         require(topK in 1..100) { "topK must be between 1 and 100." }
-        require(topP.isFinite() && topP in 0f..1f) { "topP must be between 0 and 1." }
-        require(repetitionPenalty.isFinite() && repetitionPenalty in 1f..2f) {
+        require(topP in 0f..1f) { "topP must be between 0 and 1." }
+        require(repetitionPenalty in 1f..2f) {
             "repetitionPenalty must be between 1 and 2."
         }
     }

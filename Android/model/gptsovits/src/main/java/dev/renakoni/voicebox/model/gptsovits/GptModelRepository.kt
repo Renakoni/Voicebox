@@ -125,7 +125,7 @@ class GptModelRepository(private val filesRoot: File) {
         modelDirectory: File,
         requiredModelFiles: RequiredModelFiles,
     ): List<String> =
-        requiredModelFiles.sessionModelNames(modelDirectory).filterNot { fileName ->
+        requiredModelFiles.sessionModels.filterNot { fileName ->
             File(modelDirectory, fileName).isFile
         }
 }

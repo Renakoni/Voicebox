@@ -5,8 +5,6 @@ import ai.onnxruntime.OrtSession
 data class MultiReferenceCapability(
     val supported: Boolean,
     val maxReferenceCount: Int = 0,
-    val inputNames: Set<String> = emptySet(),
-    val outputNames: Set<String> = emptySet(),
     val placeholderAudioSamples: Int = DEFAULT_PLACEHOLDER_AUDIO_SAMPLES,
 ) {
     fun validateReferenceCount(count: Int) {
@@ -16,23 +14,6 @@ data class MultiReferenceCapability(
             "At most $maxReferenceCount total references are supported."
         }
     }
-
-    fun validateAuxiliaryReferencePaths(auxiliaryReferenceAudioPaths: List<String>) {
-        if (auxiliaryReferenceAudioPaths.isEmpty()) return
-        require(auxiliaryReferenceAudioPaths.none(String::isBlank)) {
-            "Auxiliary reference paths cannot be blank."
-        }
-        require(auxiliaryReferenceAudioPaths.distinct().size == auxiliaryReferenceAudioPaths.size) {
-            "Auxiliary reference paths must be unique."
-        }
-        require(auxiliaryReferenceAudioPaths.size + 1 <= maxReferenceCount) {
-            "At most ${maxAuxiliaryReferenceCount} auxiliary references are supported."
-        }
-        require(supported) { "The loaded model does not support auxiliary references." }
-    }
-
-    val maxAuxiliaryReferenceCount: Int
-        get() = (maxReferenceCount - 1).coerceAtLeast(0)
 
     companion object {
         private const val INTERFACE_KEY = "genie.interface"
@@ -61,19 +42,14 @@ data class MultiReferenceCapability(
                 ?.toIntOrNull()
                 ?.takeIf { it > 0 }
                 ?: DEFAULT_PLACEHOLDER_AUDIO_SAMPLES
-            val requiredReferenceInputs = (0 until maxCount).flatMap { index ->
-                listOf("ref_audio_$index", "sv_emb_$index")
-            }
             val supported = metadata[INTERFACE_KEY] == INTERFACE_VALUE &&
                 maxCount > 0 &&
                 inputNames.contains(REFERENCE_COUNT_INPUT) &&
-                requiredReferenceInputs.all(inputNames::contains) &&
+                (0 until maxCount).all { "ref_audio_$it" in inputNames && "sv_emb_$it" in inputNames } &&
                 REQUIRED_OUTPUTS.all(outputNames::contains)
             return MultiReferenceCapability(
                 supported = supported,
                 maxReferenceCount = if (supported) maxCount else 0,
-                inputNames = inputNames,
-                outputNames = outputNames,
                 placeholderAudioSamples = placeholderAudioSamples,
             )
         }
