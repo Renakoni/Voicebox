@@ -46,38 +46,21 @@ class GptModelRepository(private val filesRoot: File) {
                     d.outputFile == fileName && File(modelDirectory, d.sourceFile).isFile
                 }
         }
-        val missingSessionModels = missingSessionModels(modelDirectory, requiredModelFiles)
+        val missingSessionModels = requiredModelFiles.sessionModels.filterNot { File(modelDirectory, it).isFile }
         return ModelInspectionResult(
             missingFiles = missingFiles + missingSessionModels,
         )
     }
 
-    fun installToPrivateStorage(requiredModelFiles: RequiredModelFiles, progress: (Long, Long) -> Unit = { _, _ -> }): File {
-        val targetDirectory = File(modelRoot, requiredModelFiles.assetSubdirectory)
-        if (!targetDirectory.exists()) {
-            targetDirectory.mkdirs()
-        }
-        requiredModelFiles.files.forEach { fileName ->
-            val targetFile = File(targetDirectory, fileName)
-            val derivedFile = requiredModelFiles.derivedFiles.firstOrNull { it.outputFile == fileName }
-            if (derivedFile != null) {
-                val sourceFile = File(targetDirectory, derivedFile.sourceFile)
-                if (sourceFile.isFile) {
-                    if (!targetFile.isFile || targetFile.length() != sourceFile.length() * 2L) {
-                        HalfPrecisionFileConverter.convertFp16FileToFp32File(sourceFile, targetFile, progress)
-                    }
-                    return@forEach
-                }
+    fun prepareExportedWeights(files: RequiredModelFiles, progress: (Long, Long) -> Unit) {
+        val directory = File(modelRoot, files.assetSubdirectory)
+        for (derived in files.derivedFiles) {
+            val source = File(directory, derived.sourceFile)
+            val target = File(directory, derived.outputFile)
+            if (source.isFile && (!target.isFile || target.length() != source.length() * 2L)) {
+                HalfPrecisionFileConverter.convertFp16FileToFp32File(source, target, progress)
             }
-            require(targetFile.isFile) { "Missing model file: ${targetDirectory.absolutePath}/$fileName" }
         }
-
-        val missingSessionModels = missingSessionModels(targetDirectory, requiredModelFiles)
-        require(missingSessionModels.isEmpty()) {
-            "Missing model file: ${targetDirectory.absolutePath}/${missingSessionModels.first()}"
-        }
-
-        return targetDirectory
     }
 
     fun findReferenceExample(characterModel: CharacterModel): ReferenceExample? {
@@ -120,12 +103,4 @@ class GptModelRepository(private val filesRoot: File) {
 
         return null
     }
-
-    private fun missingSessionModels(
-        modelDirectory: File,
-        requiredModelFiles: RequiredModelFiles,
-    ): List<String> =
-        requiredModelFiles.sessionModels.filterNot { fileName ->
-            File(modelDirectory, fileName).isFile
-        }
 }

@@ -19,20 +19,20 @@ import java.io.File
 
 class GptProvider(
     private val context: Context,
-    private val deviceAcceleration: DeviceAcceleration,
-    private val t2sThreads: () -> Int,
-    private val vocoderThreads: () -> Int,
-    private val accelerationEnabled: () -> Boolean,
-) : BackendProvider, dev.renakoni.voicebox.bridge.VoiceLibrary by GptLibrary(context, deviceAcceleration) {
+    private val t2sThreads: Int,
+    private val vocoderThreads: Int,
+    private val allowNpu: Boolean,
+) : BackendProvider, dev.renakoni.voicebox.bridge.VoiceLibrary by GptLibrary(context) {
     override val id = "gptsovits"
+    private val deviceAcceleration = DeviceAcceleration(context)
     override val capabilities = BackendCapabilities(
         listOf("zh", "ja", "en"),
         setOf(VoiceImport.CHECKPOINT_PAIR, VoiceImport.RUNTIME_ARCHIVE),
     )
     override fun languageError(language: String, text: String) = LanguageNormalizer.scriptError(language, text)?.key
     override val supportsWarmup = true
-    private val modelRepository = GptModelRepository(context)
-    private val runtimeRepository = RuntimeAssetRepository(context)
+    private val modelRepository by lazy { GptModelRepository(context) }
+    private val runtimeRepository by lazy { RuntimeAssetRepository(context) }
     private val traceLogger = LogcatInferenceTraceLogger()
 
     override fun discoverCharacterModels() = modelRepository.discoverCharacterModels()
@@ -47,9 +47,10 @@ class GptProvider(
 
     override fun executionModes(): Set<ExecutionBackend> {
         val webGpu = OrtProvider.WEBGPU in OrtEnvironment.getAvailableProviders() && canInitializeWebGpu()
-        deviceAcceleration.detect(webGpu)
         return if (webGpu) ExecutionBackend.entries.toSet() else setOf(ExecutionBackend.CPU)
     }
+
+    override fun accelerationInfo() = deviceAcceleration.detect()
 
     private fun canInitializeWebGpu(): Boolean = try {
         val environment = OrtEnvironment.getEnvironment()
@@ -71,25 +72,24 @@ class GptProvider(
         false
     }
 
-    override fun createRuntime(executionBackend: ExecutionBackend): BackendRuntime {
-        if (executionBackend == ExecutionBackend.WEBGPU && accelerationEnabled()) deviceAcceleration.detect(true)
+    override fun createRuntime(execution: ExecutionBackend): BackendRuntime {
         return OrtSessionRuntime(
             modelRepository = modelRepository,
             runtimeRepository = runtimeRepository,
             backendEngine = OrtCpuBackend(
-                backend = executionBackend,
+                backend = execution,
                 configureSessionOptions = OrtCpuBackend::configureCpuSessionOptions,
                 configureRoleSessionOptions = { options, role ->
                     OrtCpuBackend.configureCpuSessionOptionsForRole(
                         options = options,
                         role = role,
-                        t2sThreadLimit = t2sThreads(),
-                        vocoderThreadLimit = vocoderThreads(),
+                        t2sThreadLimit = t2sThreads,
+                        vocoderThreadLimit = vocoderThreads,
                     )
                 },
                 traceLogger = traceLogger,
                 useNativeDecoder = true,
-                qnnRuntimeDirectory = deviceAcceleration.runtimeDirectory,
+                qnnRuntimeDirectory = deviceAcceleration.runtimeDirectory.takeIf { execution == ExecutionBackend.WEBGPU && allowNpu },
             ),
             featureExtractorFactory = { backend ->
                 OrtRuntimeFeatureExtractor(

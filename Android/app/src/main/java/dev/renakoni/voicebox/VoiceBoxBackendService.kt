@@ -58,6 +58,8 @@ import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+internal data class BackendProbeResult(val modes: Set<ExecutionBackend>, val acceleration: AccelerationInfo?)
+
 class VoiceBoxBackendService : Service() {
     override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
 
@@ -91,13 +93,12 @@ class VoiceBoxBackendService : Service() {
     private val app get() = application as VoiceBoxApplication
     private val modelRepository get() = app.backends
     private lateinit var localHttpApiServer: LocalHttpApiServer
-    val acceleration = MutableStateFlow<Map<String, AccelerationInfo>>(emptyMap())
 
     // Mutated only on the serial inference worker.
     private var workerRuntime: BackendRuntime? = null
     private var runtimeOwner: String? = null
-    private val enabledBackends = MutableStateFlow<Map<String, Set<ExecutionBackend>>>(emptyMap())
-    val backendCapabilities = enabledBackends.asStateFlow()
+    private val enabledBackends = MutableStateFlow<Map<String, BackendProbeResult>>(emptyMap())
+    internal val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
     private var resourceReloadPending = false
@@ -229,10 +230,10 @@ class VoiceBoxBackendService : Service() {
     fun currentState(): BackendServiceState = state
 
     private fun supportedBackends(model: CharacterModel) =
-        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
+        model.executionModes intersect (enabledBackends.value[model.ref.backendId]?.modes ?: setOf(ExecutionBackend.CPU))
 
     fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
-        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
+        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId]?.modes.orEmpty() }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
@@ -291,8 +292,8 @@ class VoiceBoxBackendService : Service() {
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
     private fun refreshBackendModes(provider: InstalledBackend) {
-        enabledBackends.value += provider.id to provider.executionModes()
-        acceleration.value += provider.id to provider.accelerationInfo()
+        val modes = provider.executionModes()
+        enabledBackends.value += provider.id to BackendProbeResult(modes, provider.accelerationInfo())
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->

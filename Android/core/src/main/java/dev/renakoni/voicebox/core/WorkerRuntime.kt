@@ -113,7 +113,8 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
             cancellation?.checkCancelled()
             worker.send(Message.obtain(null, what).apply { this.data = data; replyTo = receiver })
             if (cooperative && cancellation?.cancellationReason != null) cancelOperation()
-            val deadline = SystemClock.elapsedRealtime() + TimeUnit.MINUTES.toMillis(15)
+            val timeout = if (what == WorkerProtocol.PROBE) TimeUnit.SECONDS.toMillis(30) else TimeUnit.MINUTES.toMillis(15)
+            val deadline = SystemClock.elapsedRealtime() + timeout
             while (true) {
                 val item = responses.poll((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
                     ?: throw TimeoutException("Backend worker timed out")

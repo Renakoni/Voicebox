@@ -25,7 +25,6 @@ android {
     }
     defaultConfig {
         externalNativeBuild.cmake.arguments += "-DANDROID_STL=c++_shared"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         debug { ndk.abiFilters += providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") }
@@ -39,8 +38,6 @@ android {
 }
 
 dependencies {
-    androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
     implementation(project(":core"))
     implementation("net.lingala.zip4j:zip4j:2.11.5")
     val runtime = providers.gradleProperty("voiceboxOrtAar").orNull
@@ -48,10 +45,7 @@ dependencies {
         implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
     } else {
         compileOnly(files(rootProject.file(runtime)))
-        testImplementation(files(rootProject.file(runtime)))
     }
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
 }
 
 val packageOrt by configurations.creating { isTransitive = false }

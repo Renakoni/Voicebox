@@ -11,30 +11,22 @@ import java.io.File
 
 /** Owned by the service; detection and model work run on the same worker. */
 class DeviceAcceleration(private val context: Context) {
-    @Volatile var status = AccelerationInfo()
-        private set
     private val capabilityCache = File(context.noBackupFilesDir, "gptsovits-npu-capability")
-    @Volatile var runtimeDirectory: File? = null
-        private set
+    val runtimeDirectory = File(context.filesDir, "QualcommRuntime")
 
-    fun detect(webGpu: Boolean) {
+    fun detect(): AccelerationInfo {
         val facts = DeviceFacts.read(context)
         val qualcomm = isQualcomm(facts.manufacturer, facts.hardware)
         val device = listOf(if (qualcomm) "Qualcomm" else facts.manufacturer, facts.soc)
             .filter { it.isNotBlank() && it != android.os.Build.UNKNOWN }.joinToString(" · ")
             .ifBlank { facts.model }
-        fun unavailable(reason: String) {
+        fun unavailable(reason: String, detail: String = "npu_unavailable"): AccelerationInfo {
             Log.i("VoiceBoxAcceleration", reason)
-            runtimeDirectory = null
-            status = AccelerationInfo(device, detail = "npu_unavailable")
+            return AccelerationInfo(device, detail = detail)
         }
-        if (!qualcomm || facts.abi != "arm64-v8a") {
-            unavailable("未检测到兼容的高通 NPU")
-            return
-        }
-        if (!webGpu) { unavailable("当前运行库不支持混合加速"); return }
-        val runtime = File(context.filesDir, "QualcommRuntime")
-        if (!hasRuntimeFiles(runtime)) { unavailable("未安装 NPU 加速组件"); return }
+        if (!qualcomm || facts.abi != "arm64-v8a") return unavailable("未检测到兼容的高通 NPU")
+        val runtime = runtimeDirectory
+        if (!hasRuntimeFiles(runtime)) return unavailable("未安装 NPU 加速组件", "npu_runtime_missing")
         val updatedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
         val key = capabilityCacheKey(facts.fingerprint + ":" + facts.abi, updatedAt, runtime)
         val available = cachedCapability(capabilityCache, key) {
@@ -52,10 +44,8 @@ class DeviceAcceleration(private val context: Context) {
                 false
             } finally { probe.delete() }
         }
-        if (available) {
-            runtimeDirectory = runtime
-            status = AccelerationInfo(device, true, "npu_available")
-        } else unavailable("NPU capability check failed")
+        return if (available) AccelerationInfo(device, true, "npu_available")
+            else unavailable("NPU capability check failed", "npu_probe_failed")
     }
 
     companion object {
@@ -64,13 +54,10 @@ class DeviceAcceleration(private val context: Context) {
                 .sortedBy { it.name }.joinToString("\n") { "${it.name}:${it.length()}:${it.lastModified()}" }
 
         internal fun cachedCapability(cache: File, key: String, probe: () -> Boolean): Boolean {
-            when (runCatching { cache.readText() }.getOrNull()) {
-                "true\n$key" -> return true
-                "false\n$key" -> return false
-            }
+            if (runCatching { cache.readText() }.getOrNull() == key) return true
             return probe().also { available ->
                 // An interrupted or unwritable cache only causes a fresh probe next time.
-                runCatching { cache.writeText("$available\n$key") }
+                if (available) runCatching { cache.writeText(key) }
             }
         }
 

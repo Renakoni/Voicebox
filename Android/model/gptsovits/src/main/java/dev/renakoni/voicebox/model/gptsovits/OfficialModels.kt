@@ -106,7 +106,8 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
             checkCancelled()
             publish(UiText("download_verified"))
             val existing = File(root, "CharacterModels/${model.architecture}/${model.id}").isDirectory
-            CheckpointImporter(root, openAsset).import(model.name, { gpt.inputStream() }, { sovits.inputStream() },
+            CheckpointImporter(root, openAsset).import(model.name,
+                stageGpt = { Files.move(gpt.toPath(), it.toPath()) }, stageSovits = { Files.move(sovits.toPath(), it.toPath()) },
                 progress = { publish(it) }, checkCancelled = checkCancelled,
                 replace = model.ref.takeIf { existing }, newCharacterId = model.id.takeUnless { existing },
                 gptFilename = "s1v3.ckpt", sovitsFilename = if (model.architecture == "v5turbo") "s2Gv5turbo.pth" else "s2Gv2ProPlus.pth",

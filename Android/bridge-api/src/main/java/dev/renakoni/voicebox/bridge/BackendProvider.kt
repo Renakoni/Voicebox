@@ -7,6 +7,8 @@ data class BackendCapabilities(
     val imports: Set<VoiceImport>,
 )
 
+data class AccelerationInfo(val device: String = "", val available: Boolean = false, val detail: String = "npu_checking")
+
 interface BackendProvider {
     val id: String
     val capabilities: BackendCapabilities
@@ -17,6 +19,7 @@ interface BackendProvider {
     fun findReferenceExample(model: CharacterModel): ReferenceExample?
     fun supportsAuxiliaryReferences(model: CharacterModel): Boolean
     fun executionModes(): Set<ExecutionBackend>
+    fun accelerationInfo(): AccelerationInfo? = null
     fun createRuntime(execution: ExecutionBackend): BackendRuntime
     fun validateOptions(options: Map<String, String>): Map<String, String>
 }

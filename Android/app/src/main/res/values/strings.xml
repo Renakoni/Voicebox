@@ -66,7 +66,6 @@
     <string name="checkpoint_storage_full">There is not enough storage to save and unpack this model.</string>
     <string name="converting_weights">Converting weights %1$d/%2$d</string>
     <string name="installing_optimized_model">Installing the optimized model</string>
-    <string name="model_template_corrupt">The bundled model template is damaged. Reinstall the app.</string>
     <string name="saving_reference">Saving voice reference</string>
     <string name="checkpoint_size_limit">Each weight file must be no larger than 2 GB. Select exported model weights.</string>
     <string name="checkpoint_empty">The weight file is empty or damaged.</string>
@@ -108,8 +107,9 @@
     <string name="checkpoint_key_missing">The model is missing a required weight: %1$s</string>
     <string name="weight_data_missing">Weight data is missing: %1$s</string>
     <string name="weight_length_mismatch">Weight data length does not match: %1$s</string>
-    <string name="device_loading">Reading device information…</string>
     <string name="npu_checking">Checking NPU support</string>
+    <string name="npu_probe_failed">Could not verify NPU acceleration</string>
+    <string name="npu_runtime_missing">NPU acceleration components are missing</string>
     <string name="npu_unavailable">NPU unavailable</string>
     <string name="npu_available">NPU available</string>
     <string name="model_v5_dev_unsupported">V5 Dev · Unsupported</string>

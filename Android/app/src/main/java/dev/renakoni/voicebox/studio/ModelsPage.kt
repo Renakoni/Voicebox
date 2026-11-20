@@ -12,7 +12,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -23,7 +22,7 @@ import dev.renakoni.voicebox.R
 internal fun ModelsPage(vm: StudioViewModel, onBack: () -> Unit, modifier: Modifier) {
     val resources = LocalResources.current
     val context = LocalContext.current
-    Column(modifier.fillMaxHeight().testTag("models_page")) {
+    Column(modifier.fillMaxHeight()) {
         TopAppBar(title = { Text(resources.getString(R.string.models), style = MaterialTheme.typography.titleLarge) },
             navigationIcon = { IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_settings))
@@ -40,7 +39,7 @@ internal fun ModelsPage(vm: StudioViewModel, onBack: () -> Unit, modifier: Modif
                         Text(spec.displayName, style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f).semantics { heading() })
                         if (installed?.contains(spec.id) == true) Text(resources.getString(R.string.backend_installed),
-                            style = MaterialTheme.typography.labelLarge, modifier = Modifier.testTag("${spec.id}_installed"))
+                            style = MaterialTheme.typography.labelLarge)
                     }
                     when {
                         installed == null -> LinearProgressIndicator(Modifier.fillMaxWidth())
@@ -49,21 +48,17 @@ internal fun ModelsPage(vm: StudioViewModel, onBack: () -> Unit, modifier: Modif
                             val percent = download.percent
                             if (percent != null) {
                                 LinearProgressIndicator(progress = { percent / 100f }, modifier = Modifier.fillMaxWidth())
-                                Text("$percent%", style = MaterialTheme.typography.labelMedium,
-                                    modifier = Modifier.testTag("${spec.id}_progress"))
+                                Text("$percent%", style = MaterialTheme.typography.labelMedium)
                             } else LinearProgressIndicator(Modifier.fillMaxWidth())
-                            StudioButton(onClick = vm::cancelOfficialDownload, style = StudioButtonStyle.Quiet,
-                                modifier = Modifier.testTag("${spec.id}_cancel")) { Text(resources.getString(R.string.cancel_download)) }
+                            StudioButton(onClick = vm::cancelOfficialDownload, style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.cancel_download)) }
                         }
                         else -> {
                             if (!archive.supported) Text(resources.getString(R.string.backend_device_unsupported))
                             else if (!spec.bundled) Text(resources.getString(R.string.backend_download_size,
                                 Formatter.formatShortFileSize(context, spec.downloadBytes)), style = MaterialTheme.typography.bodyMedium)
-                            download?.error?.let { Text(it.resolve(resources), color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.testTag("${spec.id}_error")) }
+                            download?.error?.let { Text(it.resolve(resources), color = MaterialTheme.colorScheme.error) }
                             StudioButton(onClick = { vm.installBackend(spec.id) },
-                                enabled = archive.supported && vm.connected && !vm.busy && !vm.fileBusy,
-                                modifier = Modifier.testTag("${spec.id}_download")) {
+                                enabled = archive.supported && vm.connected && !vm.busy && !vm.fileBusy) {
                                 Text(resources.getString(when {
                                     spec.bundled -> R.string.install_bundled
                                     download?.error != null -> R.string.backend_retry

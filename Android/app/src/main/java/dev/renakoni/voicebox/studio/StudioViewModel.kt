@@ -33,6 +33,7 @@ import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.AppSettingsRepository
 import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
+import dev.renakoni.voicebox.BackendProbeResult
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
@@ -139,13 +140,18 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
-    private var backendModes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
+    private var probes by mutableStateOf(emptyMap<String, BackendProbeResult>())
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
-        model.executionModes intersect backendModes[model.ref.backendId].orEmpty()
+        model.executionModes intersect probes[model.ref.backendId]?.modes.orEmpty()
     }.orEmpty()
-    val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
+    val gpuAvailable get() = probes.values.any { ExecutionBackend.WEBGPU in it.modes }
+    val hybridAvailable get() = probes.values.any { it.acceleration?.available == true && ExecutionBackend.WEBGPU in it.modes }
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
-    private var accelerationByBackend by mutableStateOf(emptyMap<String, AccelerationInfo>())
+    val acceleration: AccelerationInfo get() {
+        val reports = probes.values.mapNotNull { it.acceleration }
+        return reports.firstOrNull { it.available } ?: reports.firstOrNull { it.device.isNotBlank() }
+            ?: reports.firstOrNull() ?: AccelerationInfo(detail = if (connected && probes.size < backendPackages.size) "npu_checking" else "npu_unavailable")
+    }
     private var auxiliaryLimits by mutableStateOf(emptyMap<ModelRef, Int>())
     private var auxiliarySelection by mutableStateOf(emptyMap<String, List<String>>())
     val auxiliaryLimit get() = auxiliaryLimits[selectedVoice?.model] ?: 0
@@ -159,12 +165,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         syncDefaults()
     }
 
-    private var modelsWithNpuGraphs by mutableStateOf(emptySet<ModelRef>())
-    val acceleration: AccelerationInfo get() {
-        val ref = selectedVoice?.model
-        val report = accelerationByBackend[ref?.backendId] ?: return AccelerationInfo(detail = "npu_unavailable")
-        return if (report.available && ref !in modelsWithNpuGraphs) report.copy(available = false, detail = "npu_unavailable") else report
-    }
     var deviceAccelerationEnabled by mutableStateOf(settings.deviceAccelerationEnabled); private set
     var theme by mutableStateOf(settings.themeMode); private set
     var apiEnabled by mutableStateOf(settings.apiEnabled); private set
@@ -178,7 +178,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
     val busy get() = state.busy || submitting || importing || officialDownload.running
-    val backend get() = if (gpuAvailable && gpuEnabled) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
+    val backend get() = if (gpuEnabled && ExecutionBackend.WEBGPU in availableBackends) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
     val canGenerate get() = connected && !loading && !busy && !fileBusy && text.isNotBlank() && runtimeReady && availableBackends.isNotEmpty()
 
     private val listener = BackendServiceListener { next ->
@@ -220,9 +220,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             backendService.addListener(listener)
             accelerationUpdates?.cancel()
             accelerationUpdates = viewModelScope.launch {
-                launch { backendService.acceleration.collect { accelerationByBackend = it } }
                 backendService.backendCapabilities.collect {
-                    backendModes = it
+                    probes = it
                     syncDefaults()
                 }
             }
@@ -243,7 +242,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             officialDownload = OfficialDownloadState()
             service = null
             connected = false
-            backendModes = emptyMap()
+            probes = emptyMap()
             pendingRequest = null
             cancelling = false
             submitting = false
@@ -261,7 +260,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val npuGraphs: Set<ModelRef>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>, val capabilities: Map<String, BackendCapabilities>)
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>, val capabilities: Map<String, BackendCapabilities>)
 
     private fun refreshResources() {
         resourceUpdates?.cancel()
@@ -288,15 +287,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (voice.durationMs > 0) voice else voice.copy(
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
-                    val npu = available.filter { modelsRepository.provider(it).hasNpuGraphs(it) }.map { it.ref }.toSet()
                     val auxiliary = available.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
-                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, installed, providers.associate { it.id to it.capabilities })
+                    ResourcesSnapshot(available, voices, ready, catalog, auxiliary, installed, providers.associate { it.id to it.capabilities })
                 }
                 models = data.models
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
                 readyResources = data.ready
                 officialModels = data.catalog
-                modelsWithNpuGraphs = data.npuGraphs
                 auxiliaryLimits = data.auxiliary
                 installedPackages = data.installed
                 capabilities = data.capabilities

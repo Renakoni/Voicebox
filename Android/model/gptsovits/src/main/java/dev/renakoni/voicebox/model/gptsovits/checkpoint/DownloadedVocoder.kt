@@ -17,7 +17,7 @@ class DownloadedVocoder(private val root: File, private val openAsset: (String) 
         try {
             val manifest = openAsset("official-runtime/v5-vocoder.json").use { JSONObject(it.bufferedReader().readText()) }
             val digest = MessageDigest.getInstance("SHA-256")
-            val converter = CheckpointImporter(root, openAsset)
+            val writer = TensorWriter()
             TorchCheckpoint(source, weightsKey = null).use { checkpoint ->
                 DigestOutputStream(File(stage, "v5_vocoder_fp32.bin").outputStream().buffered(), digest).use { output ->
                     val tensors = manifest.getJSONArray("tensors")
@@ -27,7 +27,7 @@ class DownloadedVocoder(private val root: File, private val openAsset: (String) 
                         val tensor = checkpoint.tensor(entry.getString("key"))
                         val expected = entry.getJSONArray("shape").let { shape -> List(shape.length()) { shape.getLong(it) } }
                         requireUi(tensor.shape == expected) { UiText("vocoder_shape_mismatch") }
-                        checkpoint.open(tensor).use { converter.writeTensor(it, output, tensor, false, checkCancelled) }
+                        checkpoint.open(tensor).use { writer.write(it, output, tensor, false, checkCancelled) }
                     }
                 }
             }

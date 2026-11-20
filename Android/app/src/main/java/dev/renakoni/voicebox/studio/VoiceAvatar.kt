@@ -24,7 +24,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -62,7 +61,7 @@ internal fun VoiceAvatarEditor(name: String, path: String, enabled: Boolean, pic
     val resources = LocalResources.current
     var choosing by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth().padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
-        Box(Modifier.size(96.dp).testTag("edit_avatar")
+        Box(Modifier.size(96.dp)
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 52.dp),
                 enabled = enabled, role = Role.Button, onClickLabel = resources.getString(R.string.change_avatar)) { choosing = true }) {
             VoiceAvatar(name, path, Modifier.fillMaxSize())

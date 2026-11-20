@@ -66,7 +66,6 @@
     <string name="checkpoint_storage_full">存储空间不足，无法保存并展开此模型。</string>
     <string name="converting_weights">转换权重 %1$d/%2$d</string>
     <string name="installing_optimized_model">安装优化模型</string>
-    <string name="model_template_corrupt">内置模型模板损坏，请重新安装应用。</string>
     <string name="saving_reference">保存音色参考</string>
     <string name="checkpoint_size_limit">单个权重文件不能超过 2 GB。请选择导出的模型权重。</string>
     <string name="checkpoint_empty">权重文件为空或已损坏。</string>
@@ -108,9 +107,10 @@
     <string name="checkpoint_key_missing">模型缺少所需权重：%1$s</string>
     <string name="weight_data_missing">权重数据缺失：%1$s</string>
     <string name="weight_length_mismatch">权重数据长度不匹配：%1$s</string>
-    <string name="device_loading">正在读取设备信息…</string>
     <string name="npu_checking">正在验证 NPU</string>
-    <string name="npu_unavailable">NPU 验证未通过</string>
+    <string name="npu_probe_failed">未能验证 NPU 加速</string>
+    <string name="npu_runtime_missing">缺少 NPU 加速组件</string>
+    <string name="npu_unavailable">NPU 不可用</string>
     <string name="npu_available">NPU 验证通过</string>
     <string name="model_v5_dev_unsupported">V5 Dev · 暂不支持</string>
     <string name="model_v5_pending">V5 · 导入时确认版本</string>
