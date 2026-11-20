@@ -15,7 +15,7 @@ static std::string utf8(JNIEnv* env, jstring value) {
     return result;
 }
 
-// Runs only in Voicebox's disposable :ming process, never in the UI/ORT process.
+// Runs only in VoiceBox's private backend worker, never in the UI/ORT process.
 extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
     JNIEnv* env, jclass, jobjectArray arguments, jobjectArray variables, jstring log_path) {
     std::vector<std::string> keys;

@@ -7,11 +7,10 @@ import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
 import dev.renakoni.voicebox.model.gptsovits.OfficialModelInstaller
 import dev.renakoni.voicebox.model.gptsovits.ResourcePackageImporter
 
-import dev.renakoni.voicebox.model.ming.MingModel
-import dev.renakoni.voicebox.model.ming.MingPackageRepository
+import dev.renakoni.voicebox.core.BridgePackages
 
 import dev.renakoni.voicebox.core.i18n.UiText
-import dev.renakoni.voicebox.i18n.UiLanguageContext
+import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 import dev.renakoni.voicebox.core.i18n.userMessage
 import dev.renakoni.voicebox.core.i18n.userText
 import dev.renakoni.voicebox.core.i18n.errorUi
@@ -312,7 +311,24 @@ class VoiceBoxBackendService : Service() {
     fun downloadOfficialModel(id: String): Boolean {
         val catalog = OfficialModelCatalog(this)
         val model = catalog.models.firstOrNull { it.id == id }
-        if (model == null && id != MingModel.ID) return false
+        if (model == null) return false
+        return downloadOnWorker(id) { context ->
+            OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open)
+                .install(model, context::checkCancelled) { officialDownloadState.value = it }
+        }
+    }
+
+    fun installBridge(id: String): Boolean {
+        val archive = BridgePackages(this).packages.singleOrNull { it.spec.id == id } ?: return false
+        return downloadOnWorker(id) { context ->
+            archive.install(context::checkCancelled) { percent ->
+                officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), percent, running = true)
+            }
+            enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
+        }
+    }
+
+    private fun downloadOnWorker(id: String, transfer: (GenerationContext) -> Unit): Boolean {
         val previous = officialDownloadState.value
         officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), running = true)
         val accepted = importOnWorker<Unit>(onComplete = { result ->
@@ -324,19 +340,7 @@ class VoiceBoxBackendService : Service() {
                         UiText(R.string.download_cancelled) else error.userText()
                         ?: UiText(R.string.download_failed))
                 })
-        }) { context, _ ->
-            if (id == MingModel.ID) {
-                val ming = MingPackageRepository(this)
-                require(ming.supported) { getString(R.string.ming_device_unsupported) }
-                ming.install(context::checkCancelled) { percent ->
-                    officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.ming_downloading), percent, running = true)
-                }
-            } else {
-                OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open).install(requireNotNull(model), context::checkCancelled) {
-                    officialDownloadState.value = it
-                }
-            }
-        }
+        }) { context, _ -> transfer(context) }
         if (!accepted) officialDownloadState.value = previous
         return accepted
     }

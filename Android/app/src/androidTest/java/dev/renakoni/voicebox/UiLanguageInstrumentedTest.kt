@@ -4,7 +4,7 @@ import android.content.res.Configuration
 import android.os.LocaleList
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import dev.renakoni.voicebox.i18n.UiLanguageContext
+import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith

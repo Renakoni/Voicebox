@@ -1,7 +1,6 @@
 package dev.renakoni.voicebox.studio
 
-import dev.renakoni.voicebox.model.ming.MingModel
-import dev.renakoni.voicebox.model.ming.MingPackageRepository
+import dev.renakoni.voicebox.core.BridgePackages
 
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.core.i18n.UiText
@@ -77,10 +76,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val runtimeRepository = RuntimeAssetRepository(app)
     private val settings = AppSettingsRepository(app)
     private val officialCatalog = OfficialModelCatalog(app)
-    private val mingPackage = MingPackageRepository(app)
+    private val mingPackage = BridgePackages(app).get("ming")
     val mingDownloadBytes get() = mingPackage.spec.downloadBytes
     val mingSupported get() = mingPackage.supported
-    val mingInstalled get() = models.any(MingModel::matches)
+    val mingInstalled get() = models.any { it.ref.backendId == mingPackage.spec.id }
     var mingBackendInstalled by mutableStateOf(false); private set
     val selectedCapabilities get() = selectedVoice?.let(::modelFor)?.let { modelsRepository.provider(it).capabilities }
     val hasSynthesisOptions get() = selectedCapabilities?.optionNames?.isNotEmpty() == true
@@ -106,7 +105,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var synthesisOptions by mutableStateOf(store.synthesisOptions); private set
     var loading by mutableStateOf(true); private set
     private var runtimeResources by mutableStateOf(false to false)
-    val runtimeReady get() = if (selectedVoice?.model == MingModel.model.ref) mingInstalled else runtimeResources.first &&
+    val runtimeReady get() = if (selectedVoice?.model?.backendId == mingPackage.spec.id) mingInstalled else runtimeResources.first &&
         (selectedVoice?.model?.variant != "v5turbo" || runtimeResources.second)
     var connected by mutableStateOf(false); private set
     var state by mutableStateOf(BackendServiceState()); private set
@@ -308,7 +307,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun downloadMing() {
         if (busy || fileBusy) return
-        if (service?.downloadOfficialModel(MingModel.ID) != true) notify(UiText(R.string.engine_busy))
+        if (service?.installBridge(mingPackage.spec.id) != true) notify(UiText(R.string.engine_busy))
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -589,7 +588,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun beginEditVoice(voice: StudioVoice) {
         if (busy || fileBusy) return
-        if (voice.builtIn && voice.model == MingModel.model.ref) {
+        if (voice.builtIn && voice.model.backendId == mingPackage.spec.id) {
             beginVoice(voice.copy(id = UUID.randomUUID().toString(), name = ""))
             return
         }

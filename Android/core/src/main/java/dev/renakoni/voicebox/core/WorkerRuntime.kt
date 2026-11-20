@@ -1,0 +1,132 @@
+package dev.renakoni.voicebox.core
+
+import android.content.*
+import android.os.*
+import dev.renakoni.voicebox.bridge.*
+import java.io.File
+import java.nio.file.Files
+import java.util.UUID
+import java.util.concurrent.*
+
+/** Called on the inference owner thread. Binder callbacks only enqueue events for that thread. */
+internal class WorkerRuntime(private val context: Context, private val id: String, override val backend: ExecutionBackend,
+    private val settings: Bundle, private val retain: Boolean) : BackendRuntime {
+    private var session: WorkerBinding? = null
+    override var runtimeLabel = backend.label
+        private set
+
+    override fun generate(request: GenerationRequest, callbacks: BackendRuntimeCallbacks): GeneratedAudioFile {
+        val result = call(WorkerProtocol.GENERATE, request, callbacks)
+        return GeneratedAudioFile(File(requireNotNull(result.getString("path"))), result.getInt("samples"), result.getInt("rate"))
+    }
+
+    override fun warmup(request: GenerationRequest) { call(WorkerProtocol.WARMUP, request, null) }
+    override fun trimMemory() { if (session != null) call(WorkerProtocol.TRIM, null, null) }
+
+    private fun call(what: Int, request: GenerationRequest?, callbacks: BackendRuntimeCallbacks?): Bundle {
+        val binding = session ?: WorkerBinding(context).also { session = it }
+        var ok = false
+        try {
+            val data = (request?.encode() ?: Bundle()).apply {
+                putString("session", binding.id); putString("backendId", id); putString("execution", backend.name)
+                putBundle("settings", settings)
+                if (request == null) putString("request", UUID.randomUUID().toString())
+            }
+            val result = binding.call(what, data, request?.context, callbacks)
+            runtimeLabel = result.getString("runtime") ?: backend.label
+            ok = true
+            return result
+        } finally { if (!ok || !retain) close() }
+    }
+
+    override fun close() { session?.close(); session = null }
+}
+
+private class WorkerBinding(private val context: Context) : AutoCloseable {
+    val id = UUID.randomUUID().toString()
+    private val connected = CompletableFuture<Messenger>()
+    private val stopped = CountDownLatch(1)
+    private val responses = LinkedBlockingQueue<Bundle>()
+    @Volatile private var remote: Messenger? = null
+    private val receiver = Messenger(Handler(events.looper) { message ->
+        responses.offer(message.data.apply { putInt("type", message.what) })
+        true
+    })
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+            if (connected.isDone) return
+            val messenger = Messenger(binder)
+            try {
+                binder.linkToDeath({ stopped.countDown(); disconnected() }, 0)
+            } catch (_: RemoteException) { stopped.countDown(); disconnected(); return }
+            remote = messenger
+            connected.complete(messenger)
+        }
+        override fun onBindingDied(name: ComponentName) = disconnected()
+        override fun onNullBinding(name: ComponentName) = disconnected()
+        override fun onServiceDisconnected(name: ComponentName) = disconnected()
+    }
+    init {
+        check(context.bindService(Intent(context, BackendWorkerService::class.java),
+            Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT, { events.post(it) }, connection)) { "Cannot bind backend worker" }
+    }
+
+    private fun disconnected() {
+        connected.completeExceptionally(IllegalStateException("Backend worker disconnected"))
+        responses.offer(Bundle().apply { putBoolean("disconnected", true) })
+    }
+
+    fun call(what: Int, data: Bundle, cancellation: GenerationContext?, callbacks: BackendRuntimeCallbacks?): Bundle {
+        val hook = cancellation?.onCancel {
+            connected.completeExceptionally(GenerationCancelledException(cancellation.cancellationReason ?: "CANCELLED"))
+            responses.offer(Bundle().apply { putBoolean("cancelled", true) })
+        }
+        try {
+            cancellation?.checkCancelled()
+            val worker = connected.get(30, TimeUnit.SECONDS)
+            cancellation?.checkCancelled()
+            worker.send(Message.obtain(null, what).apply { this.data = data; replyTo = receiver })
+            val deadline = SystemClock.elapsedRealtime() + TimeUnit.MINUTES.toMillis(15)
+            while (true) {
+                val item = responses.poll((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
+                    ?: throw TimeoutException("Backend worker timed out")
+                cancellation?.checkCancelled()
+                check(!item.getBoolean("disconnected")) { "Backend worker disconnected" }
+                if (item.getString("request") != data.getString("request")) continue
+                if (item.getInt("type") == WorkerProtocol.EVENT) {
+                    callbacks?.onStage(GenerationStage.valueOf(item.getString("stage")!!), item.getString("message").orEmpty(),
+                        if (item.containsKey("percent")) item.getInt("percent") else null, item.getString("label"))
+                } else {
+                    item.getString("error")?.let { throw BackendFailure(item.getString("code")!!, it) }
+                    return item
+                }
+            }
+        } catch (error: ExecutionException) {
+            cancellation?.checkCancelled()
+            throw error.cause ?: error
+        } finally { hook?.close() }
+    }
+
+    override fun close() {
+        val messenger = remote
+        runCatching { messenger?.send(Message.obtain(null, WorkerProtocol.CLOSE).apply {
+            data = Bundle().apply { putString("session", id) }
+        }) }
+        context.unbindService(connection)
+        if (messenger == null || stopped.await(10, TimeUnit.SECONDS)) {
+            val work = File(context.cacheDir, "bridge-workers/$id")
+            deleteWorkerFiles(work)
+        } else error("Backend worker did not exit")
+    }
+
+    private companion object {
+        val events = Handler(HandlerThread("VoiceBox worker IPC").apply { start() }.looper)
+    }
+}
+
+/** No FOLLOW_LINKS: some packages link read-only model data into their scratch directory. */
+internal fun deleteWorkerFiles(work: File) {
+    if (work.exists()) Files.walk(work.toPath()).use { paths ->
+        paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
+    }
+}

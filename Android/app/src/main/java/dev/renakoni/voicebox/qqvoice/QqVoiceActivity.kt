@@ -2,7 +2,7 @@ package dev.renakoni.voicebox.qqvoice
 
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.core.i18n.UiText
-import dev.renakoni.voicebox.i18n.UiLanguageContext
+import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 import dev.renakoni.voicebox.core.i18n.userText
 import dev.renakoni.voicebox.core.i18n.errorUi
 import androidx.compose.ui.platform.LocalResources

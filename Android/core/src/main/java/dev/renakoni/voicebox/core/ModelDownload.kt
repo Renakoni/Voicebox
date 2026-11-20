@@ -154,30 +154,35 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
         target.parentFile?.mkdirs()
         requireUi(target.parentFile?.isDirectory == true) { UiText("download_directory_failed") }
         requireUi(target.parentFile!!.usableSpace > source.bytes) { UiText("download_storage_full") }
-        val digest = MessageDigest.getInstance("SHA-256")
-        var total = 0L
-        var lastPercent = -1
-        progress(0)
-        connection.inputStream.use { input -> target.outputStream().buffered().use { output ->
-            val buffer = ByteArray(128 * 1024)
-            while (true) {
-                checkCancelled()
-                val count = input.read(buffer)
-                if (count < 0) break
-                total += count
-                requireUi(total <= source.bytes) { UiText("download_size_mismatch") }
-                digest.update(buffer, 0, count)
-                output.write(buffer, 0, count)
-                val percent = (total * 100 / source.bytes).toInt()
-                if (percent != lastPercent) { progress(percent); lastPercent = percent }
-            }
-        } }
-        checkCancelled()
-        val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
-        requireUi(total == source.bytes && hash == source.sha256) { UiText("download_checksum_failed") }
+        connection.inputStream.use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }
         complete = true
     } finally {
         connection.disconnect()
         if (!complete) target.delete()
     }
+}
+
+internal fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
+    checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    val digest = MessageDigest.getInstance("SHA-256")
+    var total = 0L
+    var lastPercent = -1
+    progress(0)
+    target.outputStream().buffered().use { output ->
+        val buffer = ByteArray(128 * 1024)
+        while (true) {
+            checkCancelled()
+            val count = input.read(buffer)
+            if (count < 0) break
+            total += count
+            requireUi(total <= source.bytes) { UiText("download_size_mismatch") }
+            digest.update(buffer, 0, count)
+            output.write(buffer, 0, count)
+            val percent = (total * 100 / source.bytes).toInt()
+            if (percent != lastPercent) { progress(percent); lastPercent = percent }
+        }
+    }
+    checkCancelled()
+    val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+    requireUi(total == source.bytes && hash == source.sha256) { UiText("download_checksum_failed") }
 }
