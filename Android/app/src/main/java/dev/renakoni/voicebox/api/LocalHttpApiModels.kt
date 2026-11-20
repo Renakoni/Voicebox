@@ -35,7 +35,7 @@ internal data class HttpResponse(
     val statusCode: Int,
     val body: String,
     val contentType: String = "application/json; charset=utf-8",
-    val binaryBody: ByteArray? = null,
+    val audioFile: File? = null,
 )
 
 internal data class InferPayload(
@@ -95,7 +95,10 @@ internal fun requestOptions(values: Map<String, *>): Map<String, String> =
 
 internal fun parseInferPayload(body: String): InferPayload {
     val parsed = parseJsonObject(body.ifBlank { "{}" })
-    val values = parsed.mapValues { it.value as? String }
+    val values = parsed.filterKeys { it in commonFields && it != "auxReferenceAudioPaths" }.mapValues { (key, value) ->
+        require(value is String) { "$key must be a scalar." }
+        value
+    }
     return InferPayload(
         backendId = values["backendId"],
         variant = values["variant"],
@@ -126,9 +129,9 @@ internal fun jsonArray(items: List<String>): String =
 
 private fun parseReferencePathList(value: Any?): List<String> =
     when (value) {
-        is List<*> -> value.filterIsInstance<String>()
-        is String -> listOf(value)
-        else -> emptyList()
+        is List<*> -> value.map { it as String }
+        null -> emptyList()
+        else -> throw IllegalArgumentException("auxReferenceAudioPaths must be an array of paths.")
     }.map(String::trim).filter(String::isNotBlank)
 
 private fun jsonValue(value: Any?): String =

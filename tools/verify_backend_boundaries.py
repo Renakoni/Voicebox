@@ -75,8 +75,7 @@ def verify_package(spec, data):
     part, = spec["parts"]
     digest = sha(data)
     require(len(data) == part["bytes"] and digest == part["sha256"], f"{backend}: package hash or size differs")
-    revision = digest if backend == "gptsovits" else sha(digest.encode("ascii"))
-    require(spec["revision"] == revision, f"{backend}: revision differs")
+    require(spec["revision"] == digest, f"{backend}: revision differs")
     abi = spec["abi"]
     machine = {"arm64-v8a": 183, "x86_64": 62}[abi]
     with ZipFile(BytesIO(data)) as archive:

@@ -4,7 +4,6 @@ enum class VoiceImport { CHECKPOINT_PAIR, RUNTIME_ARCHIVE }
 
 data class BackendCapabilities(
     val languages: List<String>,
-    val optionNames: Set<String>,
     val imports: Set<VoiceImport>,
 )
 

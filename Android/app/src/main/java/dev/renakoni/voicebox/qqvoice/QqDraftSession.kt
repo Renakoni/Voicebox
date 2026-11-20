@@ -98,15 +98,17 @@ class QqDraftSession(context: Context) {
         checkUi(current.size.toLong() == candidate.size && current.take(10).toByteArray().contentEquals(byteArrayOf(2) + "#!SILK_V3".toByteArray())) {
             UiText(R.string.qq_recording_invalid)
         }
+        val replacement = silk.readBytes()
+        val replacementHash = QqDraftPolicy.sha256(replacement)
         request.put("path", candidate.path)
-            .put("replacementHash", QqDraftPolicy.sha256(silk.readBytes())).put("phase", "writing")
+            .put("replacementHash", replacementHash).put("phase", "writing")
         save(request) // A killed process must not silently retry a possibly completed replacement.
-        guardedWrite(adb, candidate.path, silk.readBytes(), QqDraftPolicy.sha256(current))
+        guardedWrite(adb, candidate.path, replacement, QqDraftPolicy.sha256(current), replacementHash)
         request.put("phase", "replaced")
         save(request)
     }
 
-    private fun guardedWrite(adb: LocalAdb, path: String, data: ByteArray, expectedHash: String) {
+    private fun guardedWrite(adb: LocalAdb, path: String, data: ByteArray, expectedHash: String, replacementHash: String) {
         require(QqDraftPolicy.validPath(path))
         val temporary = "$path.voicebox-${UUID.randomUUID()}.tmp"
         try {
@@ -118,13 +120,12 @@ class QqDraftSession(context: Context) {
             // Preserve the existing inode/owner. A failed write must never reach Send.
             adb.shell("cat ${LocalAdb.quote(temporary)} > ${LocalAdb.quote(path)}")
             checkUi(adb.shell("stat -c %u ${LocalAdb.quote(path)}") == owner) { UiText(R.string.qq_owner_changed) }
-            checkUi(QqDraftPolicy.sha256(adb.readFile(path)) == QqDraftPolicy.sha256(data)) { UiText(R.string.qq_audio_verification_failed) }
+            checkUi(QqDraftPolicy.sha256(adb.readFile(path)) == replacementHash) { UiText(R.string.qq_audio_verification_failed) }
         } finally { runCatching { adb.shell("rm -f ${LocalAdb.quote(temporary)}") } }
     }
 
     fun finish() {
         record.delete()
         silk.delete()
-        File(directory, "original.slk").delete() // Remove backups left by older installed versions.
     }
 }

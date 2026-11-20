@@ -12,17 +12,14 @@ import dev.renakoni.voicebox.core.i18n.requireUi
 
 import dev.renakoni.voicebox.bridge.ModelRef
 import android.content.Context
-import android.content.res.Resources
 import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
 import dev.renakoni.voicebox.model.gptsovits.checkpoint.DownloadedVocoder
 import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
+import java.nio.file.Files
 
 data class OfficialModel(val id: String, val name: String, val architecture: String, val sovits: ModelDownload) {
-    fun displayName(resources: Resources): String =
-        UiText("official_model_name", modelArchitectureLabel(resources, architecture)).resolve(resources)
-
     val ref get() = ModelRef("gptsovits", architecture, id)
     val directory get() = "$architecture/$id/tts_models"
     val requiredFiles get() = when (architecture) {
@@ -68,7 +65,14 @@ class OfficialModelCatalog(json: JSONObject) {
 class OfficialModelInstaller(private val root: File, private val catalog: OfficialModelCatalog,
     private val openAsset: (String) -> InputStream) {
     fun install(model: OfficialModel, checkCancelled: () -> Unit, update: (OfficialDownloadState) -> Unit) {
-        val stage = File(root, ".official-download").apply { mkdirs() }
+        val stage = File(root, ".official-download")
+        val languageBackup = File(stage, ".previous")
+        if (languageBackup.isDirectory) {
+            val target = File(root, "RuntimeAssets/language_frontends")
+            if (!target.exists()) Files.move(languageBackup.toPath(), target.toPath())
+        }
+        if (stage.exists()) check(stage.deleteRecursively())
+        check(stage.mkdirs())
         fun publish(label: UiText, percent: Int? = null) =
             update(OfficialDownloadState(model.ref, label, percent, running = true))
         try {
@@ -104,12 +108,12 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
             val existing = File(root, "CharacterModels/${model.architecture}/${model.id}").isDirectory
             CheckpointImporter(root, openAsset).import(model.name, { gpt.inputStream() }, { sovits.inputStream() },
                 progress = { publish(it) }, checkCancelled = checkCancelled,
-                replaceCharacterId = model.id.takeIf { existing }, newCharacterId = model.id.takeUnless { existing },
+                replace = model.ref.takeIf { existing }, newCharacterId = model.id.takeUnless { existing },
                 gptFilename = "s1v3.ckpt", sovitsFilename = if (model.architecture == "v5turbo") "s2Gv5turbo.pth" else "s2Gv2ProPlus.pth",
                 architectureHint = model.architecture)
             requireUi(catalog.installed(root, model)) {
                 UiText("model_incomplete")
             }
-        } finally { stage.deleteRecursively() }
+        } finally { if (!languageBackup.exists()) stage.deleteRecursively() }
     }
 }

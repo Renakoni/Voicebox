@@ -4,10 +4,6 @@ import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ModelRef
 
 object CharacterModelCatalog {
-    fun v2ProFromCharacterIds(ids: List<String>) = characters("v2Pro", ids)
-    fun v2ProPlusFromCharacterIds(ids: List<String>) = characters("v2ProPlus", ids)
-    fun v2FromCharacterIds(ids: List<String>) = characters("v2", ids)
-
     fun characters(variant: String, ids: List<String>): List<CharacterModel> =
         ids.distinct().sorted().map { id ->
             val ref = ModelRef("gptsovits", variant, id)
@@ -25,5 +21,3 @@ private fun requiredFiles(ref: ModelRef): RequiredModelFiles = when (ref.variant
 }
 
 val CharacterModel.modelFiles get() = requiredFiles(ref)
-val CharacterModel.gptFilename get() = sourceFilenames["gpt"].orEmpty()
-val CharacterModel.sovitsFilename get() = sourceFilenames["sovits"].orEmpty()

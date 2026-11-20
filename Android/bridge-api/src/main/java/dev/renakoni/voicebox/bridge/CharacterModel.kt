@@ -9,6 +9,7 @@ data class CharacterModel(
     val relativeModelDirectory: String,
     val maxAuxiliaryReferences: Int = 0,
     val sourceFilenames: Map<String, String> = emptyMap(),
+    val executionModes: Set<ExecutionBackend> = ExecutionBackend.entries.toSet(),
 ) {
     val id get() = ref.modelId
 }

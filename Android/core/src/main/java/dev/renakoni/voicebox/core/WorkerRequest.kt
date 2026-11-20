@@ -35,11 +35,9 @@ internal fun GenerationRequest.encode() = Bundle().apply {
     require(listOf(context.requestId, language, promptLanguage, characterModel.ref.variant, characterModel.id).all { it.length <= 512 })
 }
 
-internal fun Bundle.decode(provider: BackendProvider): GenerationRequest {
-    val ref = ModelRef(provider.id, getString("variant")!!, getString("model")!!)
-    val model = provider.discoverCharacterModels().single { it.ref == ref }
+internal fun Bundle.decode(model: CharacterModel): GenerationRequest {
     val options = requireNotNull(getBundle("options")).let { values ->
-        provider.validateOptions(values.keySet().associateWith { values.getString(it)!! })
+        values.keySet().associateWith { values.getString(it)!! }
     }
     return GenerationRequest(model, getString("language")!!, getString("promptLanguage")!!, getString("text")!!,
         getString("reference")!!, getString("transcript")!!, getStringArrayList("auxiliary").orEmpty(),

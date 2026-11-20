@@ -12,7 +12,7 @@ class MingEntry : BackendEntry {
 
 internal class MingProvider(private val context: Context, private val directory: File, private val work: File) : BackendProvider {
     override val id = "ming"
-    override val capabilities = BackendCapabilities(listOf("zh", "ja", "en"), emptySet(), emptySet())
+    override val capabilities = BackendCapabilities(listOf("zh", "ja", "en"), emptySet())
     override val supportsWarmup = false
     private val resources = MingModelResources(context)
     override fun discoverCharacterModels() = if (resources.available) listOf(MingModel.model) else emptyList()

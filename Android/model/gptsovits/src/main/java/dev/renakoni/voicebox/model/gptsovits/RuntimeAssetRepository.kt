@@ -6,16 +6,8 @@ import dev.renakoni.voicebox.core.OutputStorage
 import android.content.Context
 import java.io.File
 
-class RuntimeAssetRepository {
-    private val filesRoot: File
-
-    constructor(context: Context) {
-        filesRoot = requireNotNull(context.getExternalFilesDir(null))
-    }
-
-    constructor(filesRoot: File) {
-        this.filesRoot = filesRoot
-    }
+class RuntimeAssetRepository(private val filesRoot: File) {
+    constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)))
 
     fun runtimeRoot(): File = File(filesRoot, RUNTIME_ASSET_DIRECTORY)
 
@@ -47,20 +39,6 @@ class RuntimeAssetRepository {
         HalfPrecisionFileConverter.convertFp16FileToFp32File(source, target, progress)
     }
 
-    /**
-     * Remove only derived runtime data and generated WAV files. Source runtime
-     * assets remain intact and can be used to rebuild the derived weight file.
-     */
-    @Synchronized
-    fun clearCaches(): CacheClearResult {
-        val generatedAudioFiles = OutputStorage(filesRoot).clearGeneratedAudio()
-        val derivedRuntimeFiles = clearDerivedFiles()
-        return CacheClearResult(
-            generatedAudioFiles = generatedAudioFiles,
-            derivedRuntimeFiles = derivedRuntimeFiles,
-        )
-    }
-
     fun clearDerivedFiles() = (listOf(hubertFp32WeightsFile()) +
             referenceAudioCacheDirectory().listFiles().orEmpty().toList())
             .count { file -> file.isFile && file.delete() }
@@ -90,8 +68,3 @@ class RuntimeAssetRepository {
         )
     }
 }
-
-data class CacheClearResult(
-    val generatedAudioFiles: Int,
-    val derivedRuntimeFiles: Int,
-)

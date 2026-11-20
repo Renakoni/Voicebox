@@ -14,7 +14,7 @@ class GptEntry : BackendEntry {
     override fun open(context: Context, directory: File, work: File, settings: Bundle): BackendProvider {
         val device = DeviceAcceleration(context)
         return GptProvider(context, device, { settings.getInt("t2sThreads") }, { settings.getInt("vocoderThreads") },
-            { settings.getBoolean("allowNpu", true) }, settings.getBoolean("webGpuVerified"))
+            { settings.getBoolean("allowNpu", true) })
     }
 }
 
@@ -22,7 +22,7 @@ internal class GptLibrary(private val context: Context, private val device: Devi
     private val root = requireNotNull(context.getExternalFilesDir(null))
     private val catalog by lazy { OfficialModelCatalog(context) }
     override fun officialVoices() = catalog.models.map { OfficialVoice(it.ref, it.name, variantLabel(it.architecture)) }
-    override fun variantLabel(variant: String) = requireNotNull(modelArchitectureText(variant).key)
+    override fun variantLabel(variant: String) = modelArchitectureLabel(variant)
     override fun resourcesReady(variant: String) = catalog.runtimeReady(root, variant)
     override fun resourceHint(variant: String) = if (variant == "v5turbo") "engine_v5_resources" else "engine_resources"
     override val controls = listOf(
@@ -38,7 +38,7 @@ internal class GptLibrary(private val context: Context, private val device: Devi
         return if (model.ref.variant == "v5turbo") V5DiTRuntime.hasHtpGraphs(directory)
         else V2HtpVocoder.hasGraphs(directory)
     }
-    override fun accelerationInfo() = device.status.let { AccelerationInfo(it.device, it.available, requireNotNull(it.detail.key)) }
+    override fun accelerationInfo() = device.status
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext, progress: (String, Int?) -> Unit): Bundle {
         val app = this.context
@@ -49,7 +49,7 @@ internal class GptLibrary(private val context: Context, private val device: Devi
         when (action) {
             LibraryAction.PREVIEW_PAIR -> result.putString("variant", CheckpointPreview.read(app, Uri.parse(value("uri"))))
             LibraryAction.DOWNLOAD_VOICE -> OfficialModelInstaller(root, catalog, app::openBackendAsset)
-                .install(catalog.models.single { it.id == value("model") }, context::checkCancelled) {
+                .install(catalog.models.single { it.id == value("model") && it.architecture == value("variant") }, context::checkCancelled) {
                     it.label?.let { label -> progress(label.resolve(app.resources), it.percent) }
                 }
             LibraryAction.IMPORT_ARCHIVE -> open("uri").use { ResourcePackageImporter(root).importRuntime(it, context::checkCancelled) }
@@ -64,9 +64,9 @@ internal class GptLibrary(private val context: Context, private val device: Devi
                     CheckpointImporter.Result(value("id"), name.trim(), value("variant"))
                 } else CheckpointImporter(root, app::openBackendAsset).import(name,
                     openGpt = { open("first") }, openSovits = { open("second") }, progress = ::report,
-                    checkCancelled = context::checkCancelled, reference = reference, replaceCharacterId = arguments.getString("id"),
-                    gptFilename = arguments.getString("firstName").orEmpty(), sovitsFilename = arguments.getString("secondName").orEmpty(),
-                    architectureHint = arguments.getString("variant"))
+                    checkCancelled = context::checkCancelled, reference = reference,
+                    replace = arguments.getString("id")?.let { ModelRef("gptsovits", value("variant"), it) },
+                    gptFilename = arguments.getString("firstName").orEmpty(), sovitsFilename = arguments.getString("secondName").orEmpty())
                 result.putString("id", imported.characterId); result.putString("name", imported.displayName)
                 result.putString("variant", imported.architecture)
             }

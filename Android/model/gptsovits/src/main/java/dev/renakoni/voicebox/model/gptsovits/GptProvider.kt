@@ -23,11 +23,10 @@ class GptProvider(
     private val t2sThreads: () -> Int,
     private val vocoderThreads: () -> Int,
     private val accelerationEnabled: () -> Boolean,
-    private val webGpuVerified: Boolean = false,
 ) : BackendProvider, dev.renakoni.voicebox.bridge.VoiceLibrary by GptLibrary(context, deviceAcceleration) {
     override val id = "gptsovits"
     override val capabilities = BackendCapabilities(
-        listOf("zh", "ja", "en"), SynthesisOptions.Default.toRequestOptions(500).keys,
+        listOf("zh", "ja", "en"),
         setOf(VoiceImport.CHECKPOINT_PAIR, VoiceImport.RUNTIME_ARCHIVE),
     )
     override fun languageError(language: String, text: String) = LanguageNormalizer.scriptError(language, text)?.key
@@ -73,7 +72,7 @@ class GptProvider(
     }
 
     override fun createRuntime(executionBackend: ExecutionBackend): BackendRuntime {
-        deviceAcceleration.detect(webGpuVerified)
+        if (executionBackend == ExecutionBackend.WEBGPU && accelerationEnabled()) deviceAcceleration.detect(true)
         return OrtSessionRuntime(
             modelRepository = modelRepository,
             runtimeRepository = runtimeRepository,
@@ -90,10 +89,7 @@ class GptProvider(
                 },
                 traceLogger = traceLogger,
                 useNativeDecoder = true,
-                qnnRuntimeDirectory = {
-                    deviceAcceleration.runtimeDirectory.takeIf { accelerationEnabled() }
-                },
-                onNpuUnavailable = deviceAcceleration::modelUnavailable,
+                qnnRuntimeDirectory = deviceAcceleration.runtimeDirectory,
             ),
             featureExtractorFactory = { backend ->
                 OrtRuntimeFeatureExtractor(

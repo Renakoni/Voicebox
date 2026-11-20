@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
@@ -66,9 +67,9 @@ def main():
     args = parser.parse_args()
     source, output = args.source.resolve(), args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    build, runtime = output / 'build', output / 'runtime'
-    for directory in [build, runtime, build / 'java', build / 'classes', build / 'dex']:
-        directory.mkdir(exist_ok=True)
+    build, runtime = output / 'build' / args.abi, output / 'runtime'
+    build.mkdir(parents=True, exist_ok=True)
+    runtime.mkdir(exist_ok=True)
     shutil.copyfile(args.ort_library, runtime / 'libonnxruntime.so')
     sdk = args.sdk.resolve()
     cmake = sdk / 'cmake/3.22.1/bin/cmake.exe'
@@ -82,22 +83,26 @@ def main():
     run(cmake, '--build', build / 'native', '--parallel', '2')
     for library in (build / 'native').glob('*.so'):
         shutil.copyfile(library, runtime / library.name)
-    for name in ['Tokenizer', 'TaskRequest', 'TextSegments', 'Synthesis']:
-        code = (source / f'android/{name}.java').read_text(encoding='utf-8')
-        if name == 'Synthesis':
-            code = adapt_synthesis(code)
-        (build / f'java/{name}.java').write_text(code, encoding='utf-8')
-    shutil.copyfile(ROOT / 'Native.java', build / 'java/Native.java')
-    android_jar = sdk / 'platforms/android-36/android.jar'
-    run('javac', '--release', '11', '-encoding', 'UTF-8', '-cp', android_jar,
-        '-d', build / 'classes', *sorted((build / 'java').glob('*.java')))
-    android_root = ROOT.parents[1]
-    run(android_root / 'gradlew.bat', '-p', android_root, ':model:ming:bundleReleaseAar')
-    adapter = ROOT / 'build/intermediates/aar_main_jar/release/syncReleaseLibJars/classes.jar'
-    run(sdk / 'build-tools/37.0.0/d8.bat', '--min-api', '30', '--lib', android_jar,
-        '--output', build / 'dex', adapter, *sorted((build / 'classes').rglob('*.class')))
-    with zipfile.ZipFile(runtime / 'tasks.jar', 'w') as archive:
-        add_file(archive, build / 'dex/classes.dex', 'classes.dex')
+    with tempfile.TemporaryDirectory(dir=build) as temporary:
+        java, classes, dex = (Path(temporary) / name for name in ('java', 'classes', 'dex'))
+        for directory in (java, classes, dex):
+            directory.mkdir()
+        for name in ['Tokenizer', 'TaskRequest', 'TextSegments', 'Synthesis']:
+            code = (source / f'android/{name}.java').read_text(encoding='utf-8')
+            if name == 'Synthesis':
+                code = adapt_synthesis(code)
+            (java / f'{name}.java').write_text(code, encoding='utf-8')
+        shutil.copyfile(ROOT / 'Native.java', java / 'Native.java')
+        android_jar = sdk / 'platforms/android-36/android.jar'
+        run('javac', '--release', '11', '-encoding', 'UTF-8', '-cp', android_jar,
+            '-d', classes, *sorted(java.glob('*.java')))
+        android_root = ROOT.parents[1]
+        run(android_root / 'gradlew.bat', '-p', android_root, ':model:ming:bundleReleaseAar')
+        adapter = ROOT / 'build/intermediates/aar_main_jar/release/syncReleaseLibJars/classes.jar'
+        run(sdk / 'build-tools/37.0.0/d8.bat', '--min-api', '30', '--lib', android_jar,
+            '--output', dex, adapter, *sorted(classes.rglob('*.class')))
+        with zipfile.ZipFile(runtime / 'tasks.jar', 'w') as archive:
+            add_file(archive, dex / 'classes.dex', 'classes.dex')
     # Explicit code allowlist: never collect model weights, graphs or voice resources.
     manifest = {'contract': 1, 'id': 'ming', 'entry': 'dev.renakoni.voicebox.model.ming.MingEntry',
                 'code': 'tasks.jar', 'abi': args.abi, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
@@ -117,7 +122,7 @@ def main():
     parts = [{'url': args.release_url.rstrip('/') + '/' + name,
               'bytes': archive_path.stat().st_size, 'sha256': sha256(archive_path)}]
     catalog = {**manifest, 'format': 2, 'displayName': 'Ming-TTS 0.5B', 'version': '2',
-               'revision': hashlib.sha256(''.join(p['sha256'] for p in parts).encode()).hexdigest(),
+               'revision': parts[0]['sha256'],
                'parts': parts, 'files': {name: path.stat().st_size for path, name in files}}
     payload = json.dumps(catalog, ensure_ascii=False, indent=2) + '\n'
     (output / 'ming-runtime.json').write_text(payload, encoding='utf-8')

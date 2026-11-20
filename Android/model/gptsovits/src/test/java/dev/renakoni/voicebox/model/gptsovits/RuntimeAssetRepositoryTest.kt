@@ -53,10 +53,8 @@ class RuntimeAssetRepositoryTest {
         val audioCache = RuntimeAssetRepository(root).referenceAudioCacheDirectory().apply { mkdirs() }
         val audioFeatures = File(audioCache, "cached.bin").apply { writeBytes(byteArrayOf(3)) }
 
-        val result = RuntimeAssetRepository(root).clearCaches()
-
-        assertEquals(1, result.generatedAudioFiles)
-        assertEquals(2, result.derivedRuntimeFiles)
+        assertEquals(1, dev.renakoni.voicebox.core.OutputStorage(root).clearGeneratedAudio())
+        assertEquals(2, RuntimeAssetRepository(root).clearDerivedFiles())
         assertTrue(fp16Weights.isFile)
         assertFalse(fp32Weights.exists())
         assertFalse(generatedAudio.exists())

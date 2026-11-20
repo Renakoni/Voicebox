@@ -21,7 +21,10 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
     }
 
     override fun warmup(request: GenerationRequest) { call(WorkerProtocol.WARMUP, request, null) }
-    override fun trimMemory() { if (session != null) call(WorkerProtocol.TRIM, null, null) }
+    override fun trimMemory() {
+        val binding = session ?: return
+        if (binding.dead) close() else call(WorkerProtocol.TRIM, null, null)
+    }
 
     fun probe(): Bundle = call(WorkerProtocol.PROBE, null, null)
 
@@ -33,6 +36,7 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
 
     private fun call(what: Int, request: GenerationRequest?, callbacks: BackendRuntimeCallbacks?,
         arguments: Bundle = Bundle(), cancellation: GenerationContext? = request?.context): Bundle {
+        if (session?.dead == true) close()
         val binding = session ?: WorkerBinding(context).also { session = it }
         var ok = false
         try {
@@ -48,7 +52,11 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
         } finally { if (!ok || !retain) close() }
     }
 
-    override fun close() { session?.close(); session = null }
+    override fun close() {
+        val binding = session
+        session = null
+        binding?.close()
+    }
 }
 
 private class WorkerBinding(private val context: Context) : AutoCloseable {
@@ -57,6 +65,7 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
     private val stopped = CountDownLatch(1)
     private val responses = LinkedBlockingQueue<Bundle>()
     @Volatile private var remote: Messenger? = null
+    val dead get() = stopped.count == 0L || remote?.binder?.isBinderAlive == false
     private val receiver = Messenger(Handler(events.looper) { message ->
         responses.offer(message.data.apply { putInt("type", message.what) })
         true

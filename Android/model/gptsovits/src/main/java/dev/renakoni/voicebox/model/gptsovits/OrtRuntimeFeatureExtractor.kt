@@ -112,11 +112,6 @@ class OrtRuntimeFeatureExtractor(
         val timer = InferenceTimer(traceLogger)
         var retainRobertaSession = false
         try {
-            val inspection = runtimeAssets.inspect()
-            require(inspection.isComplete) {
-                "Missing runtime assets under ${runtimeAssets.runtimeRoot().absolutePath}: ${inspection.missingFiles.joinToString(", ")}"
-            }
-
             val isV2ProPlus = backend.hasPromptEncoder()
             val auxiliaryReferencePaths = canonicalAuxiliaryReferencePaths(request.auxiliaryReferenceAudioPaths)
             if (auxiliaryReferencePaths.isNotEmpty()) {

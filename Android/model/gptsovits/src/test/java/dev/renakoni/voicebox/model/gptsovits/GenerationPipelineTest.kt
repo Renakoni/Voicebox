@@ -18,7 +18,7 @@ class GenerationPipelineTest {
     fun cancellationInOutputReadyCallbackDeletesWrittenAudio() {
         val outputDirectory = java.nio.file.Files.createTempDirectory("voicebox-test-").toFile()
         val request = GenerationRequest(
-            characterModel = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).first(),
+            characterModel = CharacterModelCatalog.characters("v2ProPlus", listOf("mansui")).first(),
             language = "zh", synthesisText = "test",
             referenceAudioPath = "/tmp/ref.wav", referenceText = "reference",
         )
@@ -62,7 +62,7 @@ class GenerationPipelineTest {
         var runtimeLabel = "ORT CPU + WebGPU"
         val recordedRuntimes = mutableListOf<InferenceRuntimeLabel>()
         val request = GenerationRequest(
-            characterModel = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).first(),
+            characterModel = CharacterModelCatalog.characters("v2ProPlus", listOf("mansui")).first(),
             language = "zh",
             synthesisText = "test",
             referenceAudioPath = "/tmp/ref.wav",

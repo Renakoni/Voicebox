@@ -24,15 +24,14 @@ data class SynthesisOptions(
 
     companion object {
         val Default = SynthesisOptions()
+        private val optionNames = Default.toRequestOptions(500).keys
 
         fun validateRequestOptions(values: Map<String, String>): Map<String, String> {
-            require(values.keys.all { it in Default.toRequestOptions(500) }) { "Unknown GPT synthesis parameter." }
-            val steps = values["maxDecoderSteps"]?.toInt() ?: 500
-            require(steps > 0) { "maxDecoderSteps must be positive." }
-            return parse(values).toRequestOptions(steps)
+            return parse(values).toRequestOptions(decoderSteps(values))
         }
 
         fun parse(values: Map<String, String?>, defaults: SynthesisOptions = Default): SynthesisOptions {
+            require(values.keys.all { it in optionNames }) { "Unknown GPT synthesis parameter." }
             fun float(name: String, fallback: Float): Float = if (name !in values) fallback else
                 requireNotNull(values[name]?.toFloatOrNull()) { "$name must be a number." }
             return SynthesisOptions(
@@ -57,5 +56,9 @@ fun SynthesisOptions.toRequestOptions(maxDecoderSteps: Int): Map<String, String>
     "repetitionPenalty" to repetitionPenalty.toString(),
 )
 
-val GenerationRequest.maxDecoderSteps get() = options["maxDecoderSteps"]?.toInt() ?: 500
+private fun decoderSteps(options: Map<String, String>) = (options["maxDecoderSteps"]?.toInt() ?: 500).also {
+    require(it > 0) { "maxDecoderSteps must be positive." }
+}
+
+val GenerationRequest.maxDecoderSteps get() = decoderSteps(options)
 val GenerationRequest.synthesisOptions get() = SynthesisOptions.parse(options)

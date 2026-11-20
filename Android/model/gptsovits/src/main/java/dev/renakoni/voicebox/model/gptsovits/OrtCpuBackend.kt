@@ -24,9 +24,8 @@ class OrtCpuBackend(
     private val configureRoleSessionOptions: ((OrtSession.SessionOptions, InferenceModelRole) -> Unit)? = null,
     // Keep autoregressive execution and shared KV buffers in native code.
     private val useNativeDecoder: Boolean = false,
-    private val qnnRuntimeDirectory: () -> File? = { null },
+    private val qnnRuntimeDirectory: File? = null,
     private val qnnPerformance: String = "balanced",
-    private val onNpuUnavailable: () -> Unit = {},
 ) : AutoCloseable, PreparedTtsBackend {
 
     private val environment: OrtEnvironment by lazy(LazyThreadSafetyMode.NONE) {
@@ -40,6 +39,7 @@ class OrtCpuBackend(
     private var v5Acoustic: V5AcousticRuntime? = null
     private var v5DiT: V5DiTRuntime? = null
     private var v2Htp: V2HtpVocoder? = null
+    private var modelQnnRuntime: File? = null
     val usesNpu: Boolean get() = v5DiT?.lastUsedNpu == true || v2Htp?.lastUsedNpu == true
 
     @Volatile
@@ -101,6 +101,7 @@ class OrtCpuBackend(
 
     fun initialize(modelRoot: File, characterModel: CharacterModel) {
         close()
+        modelQnnRuntime = qnnRuntimeDirectory
 
         val modelDirectory = File(modelRoot, characterModel.relativeModelDirectory)
         val sessionModelNames = characterModel.modelFiles.sessionModelNames(
@@ -127,7 +128,7 @@ class OrtCpuBackend(
                     File(modelDirectory, name).takeIf { it.isFile }?.let { resolvedFiles[name] = it }
                 }
                 v5DiT = V5DiTRuntime(environment, ::session, { name -> closeSessions { it == name } },
-                    modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger, onNpuUnavailable)
+                    modelDirectory, { modelQnnRuntime }, qnnPerformance, traceLogger) { modelQnnRuntime = null }
             }
             v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT,
                 accelerationProgress = { done, total, compiling ->
@@ -140,8 +141,8 @@ class OrtCpuBackend(
             SplitVocoderAssets.validate(modelDirectory).forEach { resolvedFiles[it] = File(modelDirectory, it) }
             if (V2HtpVocoder.hasGraphs(modelDirectory)) {
                 for (name in listOf(V2HtpVocoder.STEM, V2HtpVocoder.HEAD)) resolvedFiles[name] = File(modelDirectory, name)
-                v2Htp = V2HtpVocoder(environment, ::session, modelDirectory, qnnRuntimeDirectory,
-                    qnnPerformance, traceLogger, onNpuUnavailable)
+                v2Htp = V2HtpVocoder(environment, ::session, modelDirectory, { modelQnnRuntime },
+                    qnnPerformance, traceLogger) { modelQnnRuntime = null }
             }
         }
         sessionFiles.putAll(resolvedFiles)
@@ -554,7 +555,7 @@ class OrtCpuBackend(
             session(V5AcousticRuntime.VOCODER)
         } else if (backend == ExecutionBackend.WEBGPU) {
             session(SplitVocoderAssets.ENCODER)
-            if (v2Htp != null && qnnRuntimeDirectory() != null) {
+            if (v2Htp != null && modelQnnRuntime != null) {
                 session(V2HtpVocoder.STEM)
                 session(V2HtpVocoder.HEAD)
             } else session(SplitVocoderAssets.HIFIGAN)

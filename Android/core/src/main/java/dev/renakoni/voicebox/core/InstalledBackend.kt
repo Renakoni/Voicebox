@@ -26,7 +26,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
         val directory = archive.directory ?: return null
         return archive.openProvider(context, directory, context.cacheDir, settings()).also { cached = it }
     }
-    override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet(), emptySet())
+    override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
     override val supportsWarmup get() = metadata()?.supportsWarmup == true
     override fun languageError(language: String, text: String) = metadata()?.languageError(language, text)
     override fun discoverCharacterModels() = metadata()?.discoverCharacterModels().orEmpty()

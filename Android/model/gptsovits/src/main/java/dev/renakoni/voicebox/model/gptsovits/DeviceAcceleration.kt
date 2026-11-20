@@ -2,23 +2,16 @@ package dev.renakoni.voicebox.model.gptsovits
 
 import dev.renakoni.voicebox.core.openBackendAsset
 
-import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.bridge.AccelerationInfo
 
 import android.content.Context
 import dev.renakoni.voicebox.core.DeviceFacts
 import android.util.Log
 import java.io.File
 
-data class DeviceAccelerationStatus(
-    val device: String = "",
-    val available: Boolean = false,
-    val detail: UiText = UiText("npu_checking"),
-    val checking: Boolean = true,
-)
-
 /** Owned by the service; detection and model work run on the same worker. */
 class DeviceAcceleration(private val context: Context) {
-    @Volatile var status = DeviceAccelerationStatus()
+    @Volatile var status = AccelerationInfo()
         private set
     private val capabilityCache = File(context.noBackupFilesDir, "gptsovits-npu-capability")
     @Volatile var runtimeDirectory: File? = null
@@ -33,7 +26,7 @@ class DeviceAcceleration(private val context: Context) {
         fun unavailable(reason: String) {
             Log.i("VoiceBoxAcceleration", reason)
             runtimeDirectory = null
-            status = DeviceAccelerationStatus(device, detail = UiText("npu_unavailable"), checking = false)
+            status = AccelerationInfo(device, detail = "npu_unavailable")
         }
         if (!qualcomm || facts.abi != "arm64-v8a") {
             unavailable("未检测到兼容的高通 NPU")
@@ -42,7 +35,6 @@ class DeviceAcceleration(private val context: Context) {
         if (!webGpu) { unavailable("当前运行库不支持混合加速"); return }
         val runtime = File(context.filesDir, "QualcommRuntime")
         if (!hasRuntimeFiles(runtime)) { unavailable("未安装 NPU 加速组件"); return }
-        status = DeviceAccelerationStatus(device)
         val updatedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
         val key = capabilityCacheKey(facts.fingerprint + ":" + facts.abi, updatedAt, runtime)
         val available = cachedCapability(capabilityCache, key) {
@@ -62,14 +54,8 @@ class DeviceAcceleration(private val context: Context) {
         }
         if (available) {
             runtimeDirectory = runtime
-            status = DeviceAccelerationStatus(device, true, UiText("npu_available"), checking = false)
+            status = AccelerationInfo(device, true, "npu_available")
         } else unavailable("NPU capability check failed")
-    }
-
-    fun modelUnavailable() {
-        capabilityCache.delete()
-        runtimeDirectory = null
-        status = status.copy(available = false, detail = UiText("npu_unavailable"))
     }
 
     companion object {
