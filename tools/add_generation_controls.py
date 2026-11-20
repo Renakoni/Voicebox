@@ -181,15 +181,15 @@ def update(directory):
     for key in ['sources', 'graphs']:
         info[key] = {name: sha(directory / name) for name in info[key]}
     info['shared_cache']['sha256'] = sha(directory / 'mobile-decoder-shared.onnx')
-    mobile.write_text(json.dumps(info, indent=2) + '\n')
+    mobile.write_text(json.dumps(info, indent=2) + '\n', encoding='utf-8', newline='\n')
     split = directory / 'split-vits.json'
     if split.exists():
         info = json.loads(split.read_text())
         info['source_sha256'] = sha(directory / 'vits_fp32.onnx')
         info['graphs'] = {name: sha(directory / name) for name in info['graphs']}
-        split.write_text(json.dumps(info, indent=2) + '\n')
+        split.write_text(json.dumps(info, indent=2) + '\n', encoding='utf-8', newline='\n')
     manifest['files'] = {name: sha(directory / name) for name in manifest['files']}
-    manifest_path.write_text(json.dumps(manifest, indent=2) + '\n')
+    manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8', newline='\n')
     print(f'Updated {directory}')
 
 

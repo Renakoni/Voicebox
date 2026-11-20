@@ -369,6 +369,8 @@ PR1 的混淆 APK 含 12 个以新包名导出的 JNI 方法。MuMu 的 8 个 na
 
 分支 `refactor/voicebox-04-gptsovits-package`，基准 `6e9932d`。本地证据目录为 `artifacts/refactor-pr4/`。GPT 的模型、字典、checkpoint、ORT 与 JNI 实现通过与 Ming 相同的固定目录、安装器、DEX 装载器与 worker 运行。Studio 读取后端提供的选项和操作，已安装桥接与含权重的音源分开检查。
 
+PR6 社区 checkpoint 回归验证发现，规范化后的 JSON 与三个变体模板清单中的五条旧 CRLF 摘要不符。该修复补回本分支：生成器写 LF，桥接打包时交叉校验内部清单和资产允许清单；设备保留逐文件 SHA-256 校验。修复前后的 12 / 15 / 17 个文件逐项对比见 `artifacts/refactor-pr6/template-checks.json`，本分支独立工作树及 MuMu 的真实 V2 Pro 验证见同目录 `parent4-build.log` 和 `parent4-device.log`。
+
 | 验收 | 本轮实测 |
 | --- | --- |
 | 构建与边界 | x86_64 Debug、ARM64 R8 Release、120 项 JVM 测试通过。两种 APK 均只内置各自 ABI 的单个 GPT ZIP；逐文件比较独立包和 APK 中的副本，校验目录 SHA、75 个资产及 DEX 类定义。对 JSON、词表和许可证统一使用 LF 后再按允许清单校验，确保不同 Git 换行配置可重建。最终 ZIP 的字节数和 SHA-256 见本 PR 正文。见 `dex-{debug,release}.json`、`final-{debug,release}.log`。源码提交是构建输入，再次构建会生成对应新目录。 |
