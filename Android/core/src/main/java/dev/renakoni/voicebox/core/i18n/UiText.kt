@@ -10,6 +10,10 @@ class UiText private constructor(@StringRes val resourceId: Int, val key: String
     constructor(@StringRes resourceId: Int, vararg arguments: Any) : this(resourceId = resourceId, key = null, arguments = arguments)
     constructor(key: String, vararg arguments: Any) : this(resourceId = 0, key = key, arguments = arguments)
 
+    companion object {
+        fun literal(text: String) = UiText(dev.renakoni.voicebox.core.R.string.voicebox_literal_message, text)
+    }
+
     fun resolve(resources: Resources): String {
         val id = key?.let {
             val application = resources.getResourcePackageName(dev.renakoni.voicebox.core.R.string.voicebox_message_package)

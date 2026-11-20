@@ -2,41 +2,16 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.tasks.testing.Test
-import org.gradle.api.tasks.Exec
-import org.gradle.api.tasks.InputDirectory
 import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.Sync
 import org.gradle.api.tasks.TaskAction
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.util.zip.Deflater
-import java.util.zip.ZipEntry
-import java.util.zip.ZipOutputStream
 
 plugins {
     id("com.android.application") version "9.2.1"
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.10"
 }
-
-// Common inference models are shipped as one resource package, not copied
-// into every character model package. The source path is configurable so
-// generated model binaries do not need to live in the Git worktree.
-val runtimeAssetSource = providers.gradleProperty("voiceboxRuntimeAssets")
-    .orElse(providers.environmentVariable("VOICEBOX_RUNTIME_ASSETS"))
-    .orElse(providers.provider {
-        throw GradleException("Set -PvoiceboxRuntimeAssets=<GenieData> or VOICEBOX_RUNTIME_ASSETS to package runtime assets.")
-    })
-val pythonExecutable = providers.gradleProperty("voiceboxPython")
-    .orElse(providers.environmentVariable("VOICEBOX_PYTHON"))
-    .orElse("python")
-val runtimeAssetOutput = layout.buildDirectory.dir("generated/runtimeAssets")
-val runtimeAssetManifestOutput = layout.buildDirectory.file(
-    "generated/runtimeAssetManifest/chinese-hubert-base_weights_fp16_manifest.json",
-)
 
 // Release builds are always signed locally. The keystore and password file
 // stay ignored; a missing pair must fail the release task instead of emitting
@@ -73,115 +48,6 @@ val verifyReleaseSigningMaterial = tasks.register<VerifyReleaseSigningMaterialTa
 ) {
     keystoreFile.set(releaseKeystoreFile)
     passwordFile.set(releasePasswordFile)
-}
-
-abstract class HighCompressionRuntimeAssetsTask : DefaultTask() {
-    @get:InputDirectory
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val sourceDirectory: DirectoryProperty
-
-    @get:OutputFile
-    abstract val archiveFile: RegularFileProperty
-
-    @TaskAction
-    fun createArchive() {
-        val sourceRoot = sourceDirectory.get().asFile
-        val outputFile = archiveFile.get().asFile
-        outputFile.parentFile.mkdirs()
-        val temporaryFile = File(
-            outputFile.parentFile,
-            ".${outputFile.name}.${System.nanoTime()}.tmp",
-        )
-        try {
-            temporaryFile.outputStream().buffered().use { output ->
-                ZipOutputStream(output).use { archive ->
-                    // Use the same high-compression policy as character packages.
-                    archive.setLevel(Deflater.BEST_COMPRESSION)
-                    sourceRoot.walkTopDown()
-                        .filter(File::isFile)
-                        .sortedBy { it.relativeTo(sourceRoot).invariantSeparatorsPath }
-                        .forEach { file ->
-                            val entryName = file.relativeTo(sourceRoot).invariantSeparatorsPath
-                            archive.putNextEntry(ZipEntry(entryName))
-                            file.inputStream().use { it.copyTo(archive) }
-                            archive.closeEntry()
-                        }
-                }
-            }
-            Files.move(
-                temporaryFile.toPath(),
-                outputFile.toPath(),
-                StandardCopyOption.REPLACE_EXISTING,
-            )
-        } finally {
-            temporaryFile.delete()
-        }
-    }
-}
-
-val generateRuntimeAssetManifest = tasks.register<Exec>("generateRuntimeAssetManifest") {
-    val sourceRoot = file(runtimeAssetSource.get())
-    inputs.file(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx"))
-    inputs.file(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin"))
-    outputs.file(runtimeAssetManifestOutput)
-    workingDir(rootProject.projectDir.parentFile)
-    commandLine(
-        pythonExecutable.get(),
-        "tools/generate_runtime_asset_manifest.py",
-        File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx").absolutePath,
-        File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin").absolutePath,
-        runtimeAssetManifestOutput.get().asFile.absolutePath,
-    )
-}
-val syncRuntimeAssets = tasks.register<Sync>("syncRuntimeAssets") {
-    dependsOn(generateRuntimeAssetManifest)
-    val sourceRoot = file(runtimeAssetSource.get())
-    val requiredSources = listOf(
-        File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx"),
-        File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin"),
-        File(sourceRoot, "speaker_encoder.onnx"),
-        File(sourceRoot, "RoBERTa/RoBERTa.onnx"),
-        File(sourceRoot, "RoBERTa/roberta_tokenizer/tokenizer.json"),
-    )
-    doFirst {
-        val missing = requiredSources.filterNot(File::isFile)
-        check(missing.isEmpty()) {
-            "Missing Android runtime asset sources: ${missing.joinToString(", ")}. " +
-                "Set -PvoiceboxRuntimeAssets=<GenieData> or VOICEBOX_RUNTIME_ASSETS."
-        }
-    }
-
-    from(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx")) {
-        into("RuntimeAssets/chinese-hubert-base")
-    }
-    from(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin")) {
-        into("RuntimeAssets/chinese-hubert-base")
-    }
-    from(runtimeAssetManifestOutput) {
-        into("RuntimeAssets/chinese-hubert-base")
-    }
-    from(File(sourceRoot, "speaker_encoder.onnx")) {
-        into("RuntimeAssets")
-    }
-    from(File(sourceRoot, "v5-vocoder")) {
-        into("RuntimeAssets/v5-vocoder")
-    }
-    from(File(sourceRoot, "RoBERTa/RoBERTa.onnx")) {
-        into("RuntimeAssets/roberta-wwm-ext-large-onnx")
-        rename { "model.onnx" }
-    }
-    from(File(sourceRoot, "RoBERTa/roberta_tokenizer")) {
-        into("RuntimeAssets/roberta-wwm-ext-large-onnx/roberta_tokenizer")
-    }
-    into(runtimeAssetOutput)
-}
-
-tasks.register<HighCompressionRuntimeAssetsTask>("bundleRuntimeAssets") {
-    dependsOn(syncRuntimeAssets)
-    sourceDirectory.set(runtimeAssetOutput)
-    archiveFile.set(
-        layout.buildDirectory.file("outputs/runtime-assets/genie-tts-runtime-assets.zip"),
-    )
 }
 
 android {
@@ -250,6 +116,12 @@ android {
     }
 }
 
+androidComponents.onVariants { variant ->
+    val name = variant.name.replaceFirstChar(Char::uppercaseChar)
+    android.sourceSets.getByName(variant.name).assets.srcDir(rootProject.file("model/gptsovits/build/outputs/bridge/${variant.name}"))
+    tasks.matching { it.name == "pre${name}Build" || it.name == "merge${name}Assets" }.configureEach { dependsOn(":model:gptsovits:bundle${name}Bridge") }
+}
+
 val syncLicenseAssets = tasks.register<Sync>("syncLicenseAssets") {
     from(rootProject.file("../LICENSE"), rootProject.file("../NOTICE"))
     from(rootProject.file("../licenses")) { into("third-party") }
@@ -272,8 +144,6 @@ afterEvaluate {
 
 dependencies {
     implementation(project(":core"))
-    // PR4 replaces these implementation dependencies with generated bridge packages.
-    implementation(project(":model:gptsovits"))
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
@@ -286,15 +156,7 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.core:core-ktx:1.19.0")
-    // Use the optimized CPU + WebGPU AAR for delivery; stock ORT supports local development.
-    val customOrtAar = providers.gradleProperty("voiceboxOrtAar").orNull
-    if (customOrtAar == null) {
-        implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
-    } else {
-        val runtimeAar = rootProject.file(customOrtAar)
-        check(runtimeAar.isFile) { "Missing ORT AAR: $runtimeAar" }
-        implementation(files(runtimeAar))
-    }
+    testImplementation(project(":model:gptsovits"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     // Align Compose's transitive Espresso version with AndroidX Test 1.3.

@@ -1,2 +1,5 @@
 # Unified diffs contain a single context-marker space on blank lines.
 patches/*.patch text eol=lf whitespace=-blank-at-eol
+
+# Checkpoint import verifies these files against the hashes in its manifest.
+Android/model/gptsovits/src/main/assets/checkpoint-*/*.json text eol=lf

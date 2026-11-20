@@ -33,6 +33,8 @@ class ResourcePackageImporterTest {
             listOf("/RuntimeAssets/outside" to "bad"),
             listOf("CharacterModels/model.onnx" to "bad"),
             runtimeEntries().dropLast(1),
+            runtimeEntries().drop(1),
+            runtimeEntries() + ("RuntimeAssets/language_frontends/english/external/encoder.onnx" to "missing weights"),
         )) {
             assertThrows(IllegalArgumentException::class.java) { importer.importRuntime(zipOf(entries)) }
             assertEquals("previous", existing.readText())
@@ -54,6 +56,17 @@ class ResourcePackageImporterTest {
     }
 
     private fun runtimeEntries(): List<Pair<String, String>> = listOf(
+        "RuntimeAssets/language_frontends/english/encoder.onnx" to "graph",
+        "RuntimeAssets/language_frontends/english/decoder.onnx" to "graph",
+        "RuntimeAssets/language_frontends/english/names.tsv" to "names",
+        "RuntimeAssets/language_frontends/english/dictionary.tsv" to "dictionary",
+        "RuntimeAssets/language_frontends/english/pos-weights.json" to "{}",
+        "RuntimeAssets/language_frontends/english/pos-classes.json" to "{}",
+        "RuntimeAssets/language_frontends/english/pos-tagdict.json" to "{}",
+        "RuntimeAssets/language_frontends/japanese/sys.dic" to "dictionary",
+        "RuntimeAssets/language_frontends/japanese/unk.dic" to "dictionary",
+        "RuntimeAssets/language_frontends/japanese/char.bin" to "classes",
+        "RuntimeAssets/language_frontends/japanese/matrix.bin" to "matrix",
         "RuntimeAssets/chinese-hubert-base/chinese-hubert-base.onnx" to "hubert",
         "RuntimeAssets/chinese-hubert-base/chinese-hubert-base_weights_fp16.bin" to "weights",
         "RuntimeAssets/chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json" to "{}",

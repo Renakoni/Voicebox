@@ -128,10 +128,11 @@ internal class EnglishPosTagger(root: File) {
 /** The original checkpoint20 weights, exported without quantization. */
 internal class EnglishPronunciationModel(private val root: File) : AutoCloseable {
     private val environment = OrtEnvironment.getEnvironment()
+    private val graphs = File(root, "external").takeIf { it.isDirectory } ?: root
     private fun session(file: String) = OrtSession.SessionOptions().use { options ->
         options.setIntraOpNumThreads(1)
         options.setInterOpNumThreads(1)
-        environment.createSession(File(root, file).absolutePath, options)
+        environment.createSession(File(graphs, file).absolutePath, options)
     }
     private val encoder = session("encoder.onnx")
     private val decoder = session("decoder.onnx")

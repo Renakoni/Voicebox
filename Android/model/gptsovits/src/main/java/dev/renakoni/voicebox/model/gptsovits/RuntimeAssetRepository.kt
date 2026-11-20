@@ -54,14 +54,16 @@ class RuntimeAssetRepository {
     @Synchronized
     fun clearCaches(): CacheClearResult {
         val generatedAudioFiles = OutputStorage(filesRoot).clearGeneratedAudio()
-        val derivedRuntimeFiles = (listOf(hubertFp32WeightsFile()) +
-            referenceAudioCacheDirectory().listFiles().orEmpty().toList())
-            .count { file -> file.isFile && file.delete() }
+        val derivedRuntimeFiles = clearDerivedFiles()
         return CacheClearResult(
             generatedAudioFiles = generatedAudioFiles,
             derivedRuntimeFiles = derivedRuntimeFiles,
         )
     }
+
+    fun clearDerivedFiles() = (listOf(hubertFp32WeightsFile()) +
+            referenceAudioCacheDirectory().listFiles().orEmpty().toList())
+            .count { file -> file.isFile && file.delete() }
 
     fun hubertModelFile(): File =
         File(File(runtimeRoot(), "chinese-hubert-base"), "chinese-hubert-base.onnx")

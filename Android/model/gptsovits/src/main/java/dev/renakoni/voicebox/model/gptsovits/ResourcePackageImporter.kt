@@ -49,7 +49,7 @@ class ResourcePackageImporter(private val filesRoot: File) {
                     }
                 }
             }
-            val missing = RuntimeAssetRepository(stage).inspect().missingFiles
+            val missing = RuntimeAssetRepository(stage).inspect().missingFiles + OfficialLanguageAssets.missing(stage)
             requireUi(missing.isEmpty()) { UiText("resource_missing_files", missing.joinToString(", ")) }
             checkCancelled()
             val source = File(stage, "RuntimeAssets")

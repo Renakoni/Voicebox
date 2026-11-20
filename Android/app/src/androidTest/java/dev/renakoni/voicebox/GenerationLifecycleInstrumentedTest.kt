@@ -3,8 +3,6 @@ package dev.renakoni.voicebox
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.GenerationStage
-import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
-import dev.renakoni.voicebox.model.gptsovits.toRequestOptions
 
 import android.content.ComponentName
 import android.content.Context
@@ -24,7 +22,7 @@ import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Requires the locked public runtime, feibi and mansui packages on the target device. */
+/** Runs against two installed voices with real reference audio. */
 @RunWith(AndroidJUnit4::class)
 class GenerationLifecycleInstrumentedTest {
     @get:Rule
@@ -49,16 +47,21 @@ class GenerationLifecycleInstrumentedTest {
         return requireNotNull(service) to connection
     }
 
-    private fun request(long: Boolean = false, voiceId: String = "feibi"): GenerationRequest {
+    private val firstVoice = InstrumentationRegistry.getArguments().getString("firstVoice", "feibi")!!
+    private val secondVoice = InstrumentationRegistry.getArguments().getString("secondVoice", "mansui")!!
+
+    private fun request(long: Boolean = false, voiceId: String = firstVoice): GenerationRequest {
         val repository = registeredBackends(context)
-        val model = repository.discoverCharacterModels().first { it.id == voiceId }
+        val model = repository.discoverCharacterModels().let { models ->
+            requireNotNull(models.singleOrNull { it.id == voiceId }) { "Missing fixture $voiceId: ${models.map { it.ref }}" }
+        }
         val reference = requireNotNull(repository.findReferenceExample(model))
         return GenerationRequest(
-            characterModel = model, language = "zh",
+            characterModel = model, language = "zh", promptLanguage = reference.language,
             synthesisText = if (long) "陈长安走到桥边，望着远处渐渐亮起的灯火。他从口袋里取出那封信，仔细读了一遍，才轻声说道：明天上午九点，我们在银行门口见面。" else "清晨的阳光穿过窗帘，轻轻落在书页上。",
             referenceAudioPath = reference.audioFile.absolutePath,
             referenceText = reference.referenceText,
-            options = SynthesisOptions.Default.toRequestOptions(1500),
+            options = (repository.provider(model) as dev.renakoni.voicebox.bridge.VoiceLibrary).studioOptions(emptyMap()),
         )
     }
 
@@ -84,6 +87,7 @@ class GenerationLifecycleInstrumentedTest {
 
     @Test
     fun timeoutNativeCancelVoiceChangeAndDestroyLeaveNextRequestUsable() {
+        dev.renakoni.voicebox.core.BridgePackages(context).installBundled()
         var (service, connection) = bind()
         try {
             assertWakeLocks(generating = false)
@@ -129,18 +133,18 @@ class GenerationLifecycleInstrumentedTest {
             val switching = request(long = true)
             await { service.synthesize(backend, switching) }
             await { service.currentState().requestId == switching.context.requestId && service.currentState().stage == GenerationStage.RUNNING_INFERENCE }
-            val mansui = request(voiceId = "mansui")
+            val second = request(voiceId = secondVoice)
             service.setActiveDefaults(ActiveDefaults(
-                backend, mansui.characterModel.ref, "zh", mansui.referenceAudioPath, mansui.referenceText, mansui.options,
+                backend, second.characterModel.ref, "zh", second.referenceAudioPath, second.referenceText, second.options,
             ))
             await(10_000) { service.currentState().errorCode == "VOICE_CHANGED" }
             assertNull(service.currentState().latestOutputFilePath)
             assertEquals("VOICE_CHANGED", switching.context.cancellationReason)
-            val switchedResult = service.inferBlocking(backend, mansui, 120_000)
+            val switchedResult = service.inferBlocking(backend, second, 120_000)
             assertTrue("New voice failed: $switchedResult", switchedResult is InferResult.Success)
-            assertEquals("mansui", service.currentState().initializedModelId)
+            assertEquals(secondVoice, service.currentState().initializedModelId)
 
-            val exiting = request(long = true, voiceId = "mansui")
+            val exiting = request(long = true, voiceId = secondVoice)
             await { service.synthesize(backend, exiting) }
             await { service.currentState().requestId == exiting.context.requestId && service.currentState().stage == GenerationStage.RUNNING_INFERENCE }
             context.unbindService(connection)

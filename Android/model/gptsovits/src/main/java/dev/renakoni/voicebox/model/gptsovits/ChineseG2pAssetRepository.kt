@@ -1,5 +1,7 @@
 package dev.renakoni.voicebox.model.gptsovits
 
+import dev.renakoni.voicebox.core.openBackendAsset
+
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,19 +21,19 @@ object ChineseG2pAssetRepository {
     }
 
     private fun loadUncached(context: Context): ChineseG2pResources {
-        val manifest = context.assets.open("chinese_g2p/frontend_manifest.json")
+        val manifest = context.openBackendAsset("chinese_g2p/frontend_manifest.json")
             .bufferedReader(Charsets.UTF_8)
             .use { JSONObject(it.readText()) }
         require(manifest.optInt("schema_version", -1) == 1) {
             "Unsupported Chinese frontend resource schema."
         }
-        val polyphonicJson = context.assets.open("chinese_g2p/polyphonic.json")
+        val polyphonicJson = context.openBackendAsset("chinese_g2p/polyphonic.json")
             .bufferedReader(Charsets.UTF_8)
             .use { it.readText() }
-        val opencpopText = context.assets.open("chinese_g2p/opencpop-strict.txt")
+        val opencpopText = context.openBackendAsset("chinese_g2p/opencpop-strict.txt")
             .bufferedReader(Charsets.UTF_8)
             .use { it.readText() }
-        val singleCharJson = context.assets.open("chinese_g2p/single_char_pinyin.json")
+        val singleCharJson = context.openBackendAsset("chinese_g2p/single_char_pinyin.json")
             .bufferedReader(Charsets.UTF_8)
             .use { it.readText() }
 
@@ -57,7 +59,7 @@ object ChineseG2pAssetRepository {
             }
 
         val wordEntries = mutableMapOf<String, ChineseWordEntry>()
-        context.assets.open("chinese_g2p/contextual_lexicon.tsv")
+        context.openBackendAsset("chinese_g2p/contextual_lexicon.tsv")
             .bufferedReader(Charsets.UTF_8)
             .useLines { lines ->
                 lines.forEach { line ->
@@ -72,7 +74,7 @@ object ChineseG2pAssetRepository {
                 }
             }
 
-        val traditionalToSimplified = context.assets.open("chinese_g2p/traditional_to_simplified.tsv")
+        val traditionalToSimplified = context.openBackendAsset("chinese_g2p/traditional_to_simplified.tsv")
             .bufferedReader(Charsets.UTF_8)
             .useLines { lines ->
                 lines.mapNotNull { line ->

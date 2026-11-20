@@ -2,11 +2,15 @@ package dev.renakoni.voicebox
 
 import dev.renakoni.voicebox.bridge.BackendApiContract
 import dev.renakoni.voicebox.core.GenerationRequestGate
-import dev.renakoni.voicebox.model.gptsovits.OfficialDownloadState
-import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
-import dev.renakoni.voicebox.model.gptsovits.OfficialModelInstaller
-import dev.renakoni.voicebox.model.gptsovits.ResourcePackageImporter
 
+import dev.renakoni.voicebox.core.OfficialDownloadState
+import dev.renakoni.voicebox.core.OutputStorage
+import dev.renakoni.voicebox.bridge.LibraryAction
+import dev.renakoni.voicebox.bridge.VoiceLibrary
+import dev.renakoni.voicebox.bridge.VoiceImport
+import dev.renakoni.voicebox.bridge.ReferenceExample
+import dev.renakoni.voicebox.bridge.OfficialVoice
+import dev.renakoni.voicebox.bridge.AccelerationInfo
 import dev.renakoni.voicebox.core.BridgePackages
 
 import dev.renakoni.voicebox.core.i18n.UiText
@@ -42,13 +46,10 @@ import androidx.core.app.NotificationManagerCompat
 import dev.renakoni.voicebox.api.ActiveDefaults
 import dev.renakoni.voicebox.api.InferResult
 import dev.renakoni.voicebox.api.LocalHttpApiServer
-import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
-import dev.renakoni.voicebox.model.gptsovits.checkpoint.CharacterVoiceEditor
 import dev.renakoni.voicebox.bridge.BackendRuntime
 import dev.renakoni.voicebox.bridge.BackendRuntimeCallbacks
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ExecutionBackend
-import dev.renakoni.voicebox.model.gptsovits.DeviceAcceleration
 import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.GenerationContext
 import dev.renakoni.voicebox.bridge.GenerationCancelledException
@@ -56,7 +57,6 @@ import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
 import dev.renakoni.voicebox.core.BackendRegistry
-import dev.renakoni.voicebox.model.gptsovits.RuntimeAssetRepository
 import java.io.File
 import java.util.Locale
 import java.util.concurrent.ExecutorService
@@ -76,6 +76,7 @@ class VoiceBoxBackendService : Service() {
     private val generationGate = GenerationRequestGate()
     private val officialDownloadState = MutableStateFlow(OfficialDownloadState())
     val officialDownload = officialDownloadState.asStateFlow()
+    @Volatile private var catalogInitialized = false
     @Volatile private var destroyed = false
     @Volatile private var warmupContext: GenerationContext? = null
 
@@ -90,10 +91,8 @@ class VoiceBoxBackendService : Service() {
 
     private lateinit var settingsRepository: AppSettingsRepository
     private lateinit var modelRepository: BackendRegistry
-    private lateinit var runtimeRepository: RuntimeAssetRepository
     private lateinit var localHttpApiServer: LocalHttpApiServer
-    lateinit var deviceAcceleration: DeviceAcceleration
-        private set
+    val acceleration = MutableStateFlow<Map<String, AccelerationInfo>>(emptyMap())
 
     // Mutated only on the serial inference worker.
     private var workerRuntime: BackendRuntime? = null
@@ -121,9 +120,7 @@ class VoiceBoxBackendService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = AppSettingsRepository(this)
-        deviceAcceleration = DeviceAcceleration(this)
-        modelRepository = registeredBackends(this, settingsRepository, deviceAcceleration)
-        runtimeRepository = RuntimeAssetRepository(this)
+        modelRepository = registeredBackends(this, settingsRepository) { id -> ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty() }
         localHttpApiServer = LocalHttpApiServer(
             object : LocalHttpApiServer.Bridge {
                 override fun currentState(): BackendServiceState = this@VoiceBoxBackendService.currentState()
@@ -150,11 +147,13 @@ class VoiceBoxBackendService : Service() {
             },
         )
         worker.execute {
-            enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
+            runCatching { BridgePackages(this).installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
+            catalogInitialized = true
+            mainHandler.post { if (!destroyed) syncLocalHttpApiServer() }
+            refreshBackendModes()
         }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
-        syncLocalHttpApiServer()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -308,13 +307,15 @@ class VoiceBoxBackendService : Service() {
 
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
-    fun downloadOfficialModel(id: String): Boolean {
-        val catalog = OfficialModelCatalog(this)
-        val model = catalog.models.firstOrNull { it.id == id }
-        if (model == null) return false
-        return downloadOnWorker(id) { context ->
-            OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open)
-                .install(model, context::checkCancelled) { officialDownloadState.value = it }
+    private fun refreshBackendModes() {
+        enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
+        acceleration.value = modelRepository.providers.associate { it.id to (it as VoiceLibrary).accelerationInfo() }
+    }
+
+    fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(voice.id) { context ->
+        val library = modelRepository.provider(voice.ref.backendId) as VoiceLibrary
+        library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id) }, context) { label, percent ->
+            officialDownloadState.value = OfficialDownloadState(voice.id, UiText.literal(label), percent, running = true)
         }
     }
 
@@ -324,7 +325,7 @@ class VoiceBoxBackendService : Service() {
             archive.install(context::checkCancelled) { percent ->
                 officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), percent, running = true)
             }
-            enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
+            refreshBackendModes()
         }
     }
 
@@ -350,38 +351,44 @@ class VoiceBoxBackendService : Service() {
         uri: android.net.Uri,
         onComplete: (Result<Unit>) -> Unit,
     ): Boolean = importOnWorker(onComplete) { context, _ ->
-        contentResolver.openInputStream(uri)?.use { input ->
-            ResourcePackageImporter(requireNotNull(getExternalFilesDir(null))).importRuntime(input, context::checkCancelled)
-        } ?: errorUi(UiText(R.string.resource_open_failed))
+        libraryFor(VoiceImport.RUNTIME_ARCHIVE).perform(LibraryAction.IMPORT_ARCHIVE,
+            Bundle().apply { putString("uri", uri.toString()) }, context) { _, _ -> }
+        Unit
     }
+
+    private fun libraryFor(type: VoiceImport) = modelRepository.providers.single { type in it.capabilities.imports } as VoiceLibrary
+
+    /** The caller waits off the main thread while the inference owner switches to the import worker. */
+    fun previewCheckpoint(uri: android.net.Uri): String? = worker.submit<String?> {
+        closeWorkerRuntime()
+        libraryFor(VoiceImport.CHECKPOINT_PAIR).perform(LibraryAction.PREVIEW_PAIR,
+            Bundle().apply { putString("uri", uri.toString()) }, GenerationContext()) { _, _ -> }.getString("variant")
+    }.get()
 
     fun importCheckpointPair(
-        name: String,
-        gpt: android.net.Uri,
-        sovits: android.net.Uri,
-        onProgress: (UiText) -> Unit,
-        onComplete: (Result<CheckpointImporter.Result>) -> Unit,
-        reference: CheckpointImporter.Reference? = null,
-        replaceCharacterId: String? = null,
-        gptFilename: String = "",
-        sovitsFilename: String = "",
-        architectureHint: String? = null,
+        name: String, gpt: android.net.Uri, sovits: android.net.Uri, onProgress: (UiText) -> Unit,
+        onComplete: (Result<ImportedVoice>) -> Unit, reference: ReferenceExample? = null,
+        replaceCharacterId: String? = null, gptFilename: String = "", sovitsFilename: String = "", architectureHint: String? = null,
     ): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
-        CheckpointImporter(requireNotNull(getExternalFilesDir(null))) { file ->
-            assets.open(file)
-        }.import(name,
-            openGpt = { contentResolver.openInputStream(gpt) ?: errorUi(UiText(R.string.gpt_open_failed)) },
-            openSovits = { contentResolver.openInputStream(sovits) ?: errorUi(UiText(R.string.sovits_open_failed)) },
-            progress = progress, checkCancelled = context::checkCancelled, reference = reference,
-            replaceCharacterId = replaceCharacterId, gptFilename = gptFilename, sovitsFilename = sovitsFilename,
-            architectureHint = architectureHint)
+        val arguments = referenceArguments(name, reference).apply {
+            putString("first", gpt.toString()); putString("second", sovits.toString()); putString("id", replaceCharacterId)
+            putString("firstName", gptFilename); putString("secondName", sovitsFilename); putString("variant", architectureHint)
+        }
+        val provider = modelRepository.providers.single { VoiceImport.CHECKPOINT_PAIR in it.capabilities.imports }
+        val result = (provider as VoiceLibrary).perform(LibraryAction.IMPORT_PAIR, arguments, context) { text, _ -> progress(UiText.literal(text)) }
+        ImportedVoice(ModelRef(provider.id, result.getString("variant")!!, result.getString("id")!!), result.getString("name")!!)
     }
 
-    fun editCharacterReference(id: String, name: String, reference: CheckpointImporter.Reference,
-        version: String,
-        onComplete: (Result<CheckpointImporter.Result>) -> Unit): Boolean = importOnWorker(onComplete) { _, _ ->
-        CharacterVoiceEditor(requireNotNull(getExternalFilesDir(null))).updateReference(id, name, reference, version)
-        CheckpointImporter.Result(id, name.trim(), version)
+    fun editCharacterReference(ref: ModelRef, name: String, reference: ReferenceExample,
+        onComplete: (Result<ImportedVoice>) -> Unit): Boolean = importOnWorker(onComplete) { context, _ ->
+        val args = referenceArguments(name, reference).apply { putString("id", ref.modelId); putString("variant", ref.variant) }
+        (modelRepository.provider(ref.backendId) as VoiceLibrary).perform(LibraryAction.EDIT_REFERENCE, args, context) { _, _ -> }
+        ImportedVoice(ref, name.trim())
+    }
+
+    private fun referenceArguments(name: String, reference: ReferenceExample?) = Bundle().apply {
+        putString("name", name)
+        reference?.let { putString("reference", it.audioFile.absolutePath); putString("transcript", it.referenceText); putString("language", it.language) }
     }
 
     private fun <T> importOnWorker(
@@ -585,7 +592,10 @@ class VoiceBoxBackendService : Service() {
                 completedWarmupKey = null
                 queuedWarmupKey = null
             }
-            val result = runtimeRepository.clearCaches()
+            val generated = OutputStorage(requireNotNull(getExternalFilesDir(null))).clearGeneratedAudio()
+            val derived = modelRepository.providers.filter { it.capabilities.imports.isNotEmpty() }.sumOf {
+                (it as VoiceLibrary).perform(LibraryAction.CLEAR_CACHE, Bundle(), GenerationContext()) { _, _ -> }.getInt("derived")
+            }
             publishState(
                 stage = GenerationStage.IDLE,
                 busy = false,
@@ -600,8 +610,8 @@ class VoiceBoxBackendService : Service() {
                 lastCompletedAtMs = null,
                 message = getString(
                     R.string.prototype_cache_cleared,
-                    result.generatedAudioFiles,
-                    result.derivedRuntimeFiles,
+                    generated,
+                    derived,
                 ),
             )
         } catch (error: Throwable) {
@@ -801,6 +811,7 @@ class VoiceBoxBackendService : Service() {
         )
 
     private fun syncLocalHttpApiServer() {
+        if (!catalogInitialized) return
         // Listening on a socket is idle work. Generation and warmup acquire
         // their own bounded wake lock in withActiveGenerationResources.
         if (settingsRepository.apiEnabled) {
@@ -814,26 +825,24 @@ class VoiceBoxBackendService : Service() {
         stage: GenerationStage,
         characterModel: CharacterModel,
         messageKey: String,
-    ): String = when (stage) {
-        GenerationStage.INSPECTING_RESOURCES -> getString(R.string.prototype_stage_inspecting_resources)
-        GenerationStage.INSTALLING_MODEL -> getString(R.string.prototype_stage_installing_model)
-        GenerationStage.INITIALIZING_BACKEND -> getString(
-            R.string.prototype_stage_initializing_backend,
-            characterModel.displayName,
-        )
-        GenerationStage.PREPARING_FEATURES -> {
-            if (messageKey == "preparing_runtime") {
-                getString(R.string.prototype_stage_preparing_runtime)
-            } else {
-                getString(R.string.prototype_stage_preparing_features)
-            }
+    ): String = when {
+        messageKey == "preparing_runtime" -> getString(R.string.prototype_stage_preparing_runtime)
+        messageKey.isNotBlank() && messageKey != stage.name.lowercase(java.util.Locale.ROOT) -> messageKey
+        else -> when (stage) {
+            GenerationStage.INSPECTING_RESOURCES -> getString(R.string.prototype_stage_inspecting_resources)
+            GenerationStage.INSTALLING_MODEL -> getString(R.string.prototype_stage_installing_model)
+            GenerationStage.INITIALIZING_BACKEND -> getString(
+                R.string.prototype_stage_initializing_backend,
+                characterModel.displayName,
+            )
+            GenerationStage.PREPARING_FEATURES -> getString(R.string.prototype_stage_preparing_features)
+            GenerationStage.RUNNING_INFERENCE -> getString(R.string.prototype_stage_running_inference)
+            GenerationStage.WRITING_OUTPUT -> getString(R.string.prototype_stage_writing_output)
+            GenerationStage.COMPLETED -> getString(R.string.prototype_idle_status)
+            GenerationStage.ERROR -> getString(R.string.prototype_generation_error, messageKey)
+            GenerationStage.CANCELLED -> messageKey
+            GenerationStage.IDLE -> getString(R.string.prototype_idle_status)
         }
-        GenerationStage.RUNNING_INFERENCE -> getString(R.string.prototype_stage_running_inference)
-        GenerationStage.WRITING_OUTPUT -> getString(R.string.prototype_stage_writing_output)
-        GenerationStage.COMPLETED -> getString(R.string.prototype_idle_status)
-        GenerationStage.ERROR -> getString(R.string.prototype_generation_error, messageKey)
-        GenerationStage.CANCELLED -> messageKey
-        GenerationStage.IDLE -> getString(R.string.prototype_idle_status)
     }
 
     private fun updateNotification(state: BackendServiceState) {
@@ -914,6 +923,12 @@ class VoiceBoxBackendService : Service() {
                     sendStateTo(message.replyTo)
                 }
                 BackendApiContract.MSG_SYNTHESIZE -> {
+                    if (destroyed) return
+                    if (!catalogInitialized) {
+                        val pending = Message.obtain(message)
+                        worker.execute { post { if (destroyed) pending.recycle() else sendMessage(pending) } }
+                        return
+                    }
                     val request = try { message.data.toGenerationRequest() } catch (error: IllegalArgumentException) {
                         sendErrorTo(message.replyTo, error.userMessage(resources) ?: error.message ?: getString(R.string.prototype_service_api_invalid_request))
                         return
@@ -1014,3 +1029,5 @@ class VoiceBoxBackendService : Service() {
             lastCompletedAtMs?.let { putLong(KEY_LAST_COMPLETED_AT_MS, it) }
         }
 }
+
+data class ImportedVoice(val ref: ModelRef, val displayName: String)

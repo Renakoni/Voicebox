@@ -1,3 +1,4 @@
 <resources>
     <string name="voicebox_message_package" translatable="false">VoiceBox</string>
+    <string name="voicebox_literal_message" translatable="false">%1$s</string>
 </resources>

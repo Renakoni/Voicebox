@@ -2,7 +2,6 @@ package dev.renakoni.voicebox.studio
 
 import dev.renakoni.voicebox.bridge.ModelRef
 import android.content.Context
-import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -44,19 +43,14 @@ class StudioStore(context: Context) {
         get() = preferences.getString("output_language", "zh") ?: "zh"
         set(value) { preferences.edit().putString("output_language", value).apply() }
 
-    var synthesisOptions: SynthesisOptions
-        get() = with(SynthesisOptions.Default) {
-            runCatching { copy(
-                speed = preferences.getString("speed", null)?.toDouble() ?: speed,
-                temperature = preferences.getFloat("temperature", temperature),
-                topK = preferences.getInt("topK", topK),
-                topP = preferences.getFloat("topP", topP),
-                repetitionPenalty = preferences.getFloat("repetitionPenalty", repetitionPenalty),
-            ) }.getOrDefault(this)
-        }
-        set(value) { preferences.edit().putString("speed", value.speed.toString())
-            .putFloat("temperature", value.temperature).putInt("topK", value.topK)
-            .putFloat("topP", value.topP).putFloat("repetitionPenalty", value.repetitionPenalty).apply() }
+    fun options(backendId: String): Map<String, String> {
+        val data = JSONObject(preferences.getString("options/$backendId", "{}")!!)
+        return data.keys().asSequence().associateWith { data.getString(it) }
+    }
+
+    fun saveOptions(backendId: String, values: Map<String, String>) {
+        preferences.edit().putString("options/$backendId", JSONObject(values).toString()).apply()
+    }
 
     fun voices(): List<StudioVoice> {
         val array = JSONArray(preferences.getString("voices", "[]"))

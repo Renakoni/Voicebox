@@ -1,6 +1,9 @@
 package dev.renakoni.voicebox.model.gptsovits
 
+import dev.renakoni.voicebox.core.openBackendAsset
+
 import dev.renakoni.voicebox.core.ModelDownload
+import dev.renakoni.voicebox.core.OfficialDownloadState
 import dev.renakoni.voicebox.core.ModelDownloadFile
 import dev.renakoni.voicebox.core.downloadModelFiles
 
@@ -30,12 +33,16 @@ data class OfficialModel(val id: String, val name: String, val architecture: Str
 }
 
 class OfficialModelCatalog(json: JSONObject) {
-    constructor(context: Context) : this(context.assets.open("official-models.json").use {
+    constructor(context: Context) : this(context.openBackendAsset("official-models.json").use {
         JSONObject(it.bufferedReader().readText())
     })
     val gpt = json.getJSONObject("gpt").download()
     val vocoder = json.getJSONObject("vocoder").download()
     val runtime = json.getJSONArray("runtime").let { list -> List(list.length()) { index ->
+        val item = list.getJSONObject(index)
+        item.getString("path") to item.download()
+    } }
+    val languageFiles = json.getJSONArray("languageFrontends").let { list -> List(list.length()) { index ->
         val item = list.getJSONObject(index)
         item.getString("path") to item.download()
     } }
@@ -46,10 +53,10 @@ class OfficialModelCatalog(json: JSONObject) {
     } }
     fun vocoderReady(root: File): Boolean = listOf("v5-vocoder-subpixel.onnx", "v5_vocoder_fp32.bin")
         .all { File(root, "RuntimeAssets/v5-vocoder/$it").isFile }
-    fun runtimeReady(root: File, model: OfficialModel): Boolean = RuntimeAssetRepository(root).inspect().isComplete &&
-        (model.architecture != "v5turbo" || vocoderReady(root))
+    fun runtimeReady(root: File, variant: String): Boolean = RuntimeAssetRepository(root).inspect().isComplete && OfficialLanguageAssets.ready(root) &&
+        (variant != "v5turbo" || vocoderReady(root))
     fun installed(root: File, model: OfficialModel): Boolean =
-        GptModelRepository(root).inspect(model.requiredFiles).isComplete && runtimeReady(root, model)
+        GptModelRepository(root).inspect(model.requiredFiles).isComplete && runtimeReady(root, model.architecture)
 
     private fun JSONObject.download(): ModelDownload {
         val list = getJSONArray("urls")
@@ -57,9 +64,6 @@ class OfficialModelCatalog(json: JSONObject) {
             (1 until list.length()).map(list::getString))
     }
 }
-
-data class OfficialDownloadState(val modelId: String = "", val label: UiText? = null, val percent: Int? = null,
-    val running: Boolean = false, val completed: Boolean = false, val error: UiText? = null)
 
 class OfficialModelInstaller(private val root: File, private val catalog: OfficialModelCatalog,
     private val openAsset: (String) -> InputStream) {
@@ -72,6 +76,8 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
                 val target = File(root, "RuntimeAssets/$path")
                 if (target.isFile && target.length() == source.bytes) null else ModelDownloadFile(source, target)
             }.toMutableList()
+            val prepareLanguages = !OfficialLanguageAssets.ready(root)
+            if (prepareLanguages) downloads += catalog.languageFiles.map { (name, source) -> ModelDownloadFile(source, File(stage, name)) }
             val vocoder = File(stage, "vocoder.pth").takeIf { model.architecture == "v5turbo" && !catalog.vocoderReady(root) }
             if (vocoder != null) downloads += ModelDownloadFile(catalog.vocoder, vocoder)
             val gpt = File(stage, "model.ckpt")
@@ -83,6 +89,7 @@ class OfficialModelInstaller(private val root: File, private val catalog: Offici
                 publish(UiText("download_resources", completed, total), percent)
             }
             checkCancelled()
+            if (prepareLanguages) OfficialLanguageAssets.install(root, stage, openAsset, checkCancelled)
             val hubertManifest = File(root, "RuntimeAssets/chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json")
             if (!hubertManifest.isFile) openAsset("official-runtime/hubert-manifest.json").use { input ->
                 hubertManifest.outputStream().use(input::copyTo)

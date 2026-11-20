@@ -1,7 +1,5 @@
-package dev.renakoni.voicebox
+package dev.renakoni.voicebox.model.gptsovits
 
-import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
-import dev.renakoni.voicebox.model.gptsovits.OfficialModelInstaller
 
 import android.content.Context
 import android.util.Log
@@ -28,7 +26,7 @@ class OfficialModelInstallInstrumentedTest {
         try {
             var lastLabel = ""
             OfficialModelInstaller(root, catalog, context.assets::open).install(model, {}) { state ->
-                val label = state.label?.resolve(context.resources).orEmpty()
+                val label = state.label?.key.orEmpty()
                 if (label != lastLabel || state.percent == 100) {
                     Log.i("OfficialInstallTest", "$label ${state.percent ?: ""}")
                     lastLabel = label

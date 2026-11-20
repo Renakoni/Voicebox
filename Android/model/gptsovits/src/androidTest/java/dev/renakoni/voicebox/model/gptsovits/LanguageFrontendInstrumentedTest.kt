@@ -14,6 +14,10 @@ import org.junit.runner.RunWith
 class LanguageFrontendInstrumentedTest {
     @Test fun matchesUpstreamJapaneseEnglishAndUnknownWordOracles() {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        InstrumentationRegistry.getArguments().getString("languageFixture")?.let { path ->
+            val destination = java.io.File(context.getExternalFilesDir(null), "RuntimeAssets/language_frontends")
+            java.io.File(path).copyRecursively(destination, overwrite = true)
+        }
         val json = InstrumentationRegistry.getInstrumentation().context.assets.open("language-frontends.json")
             .bufferedReader().use { JSONObject(it.readText()) }
         val japanese = JapaneseTextFeatureExtractor.fromAssets(context)
