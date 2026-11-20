@@ -20,12 +20,6 @@ object BackendApiContract {
     const val KEY_REFERENCE_AUDIO_PATH = "reference_audio_path"
     const val KEY_REFERENCE_TEXT = "reference_text"
     const val KEY_AUXILIARY_REFERENCE_AUDIO_PATHS = "auxiliary_reference_audio_paths"
-    const val KEY_MAX_DECODER_STEPS = "max_decoder_steps"
-    const val KEY_SPEED = "speed"
-    const val KEY_TEMPERATURE = "temperature"
-    const val KEY_TOP_K = "topK"
-    const val KEY_TOP_P = "topP"
-    const val KEY_REPETITION_PENALTY = "repetitionPenalty"
 
     const val KEY_STAGE = "stage"
     const val KEY_MESSAGE = "message"

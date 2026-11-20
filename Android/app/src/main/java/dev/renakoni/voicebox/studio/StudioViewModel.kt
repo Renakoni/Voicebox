@@ -2,12 +2,11 @@ package dev.renakoni.voicebox.studio
 
 import dev.renakoni.voicebox.bridge.AccelerationInfo
 import dev.renakoni.voicebox.bridge.OfficialVoice
-import dev.renakoni.voicebox.bridge.VoiceLibrary
 import dev.renakoni.voicebox.bridge.VoiceImport
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.ImportedVoice
 import dev.renakoni.voicebox.core.OfficialDownloadState
-import dev.renakoni.voicebox.core.BridgePackages
+import dev.renakoni.voicebox.VoiceBoxApplication
 
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.core.i18n.UiText
@@ -44,7 +43,6 @@ import dev.renakoni.voicebox.bridge.GenerationContext
 import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.GenerationStage
-import dev.renakoni.voicebox.registeredBackends
 import dev.renakoni.voicebox.core.ReferenceLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -65,32 +63,34 @@ data class CheckpointDraft(val name: String = "", val gpt: Uri? = null, val sovi
     val editingRef: ModelRef? = null, val avatarPath: String = "")
 
 class StudioViewModel(application: Application) : AndroidViewModel(application) {
-    private val app = application
+    private val app = application as VoiceBoxApplication
     private val store = StudioStore(app)
     private val avatars = VoiceAvatarStore(app)
-    private val modelsRepository = registeredBackends(app)
+    private val modelsRepository = app.backends
     private val settings = AppSettingsRepository(app)
-    private val packages = BridgePackages(app)
-    val backendPackages = packages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
+    val backendPackages = app.bridgePackages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
     var installedPackages by mutableStateOf<Set<String>?>(null); private set
     private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
-    val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
-    val hasSynthesisOptions get() = selectedCapabilities?.optionNames?.isNotEmpty() == true
+    private val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
     var officialModels by mutableStateOf(emptyList<OfficialVoice>()); private set
-    private val importProvider get() = capabilities.entries.firstOrNull { VoiceImport.CHECKPOINT_PAIR in it.value.imports }?.let { modelsRepository.provider(it.key) }
+    private fun providerFor(type: VoiceImport) = capabilities.entries.firstOrNull { type in it.value.imports }?.key
+    private val importProvider get() = (checkpointDraft?.editingRef?.backendId ?: providerFor(VoiceImport.CHECKPOINT_PAIR))
+        ?.let(modelsRepository::provider)
     fun variantLabel(ref: ModelRef): UiText {
-        val key = (modelsRepository.provider(ref.backendId) as VoiceLibrary).variantLabel(ref.variant)
+        val key = modelsRepository.provider(ref.backendId).variantLabel(ref.variant)
         return if (key.isEmpty()) UiText.literal(ref.variant) else UiText(key)
     }
-    val canImportArchive get() = selectedCapabilities?.let { VoiceImport.RUNTIME_ARCHIVE in it.imports }
-        ?: capabilities.values.any { VoiceImport.RUNTIME_ARCHIVE in it.imports }
-    val resourceHint get() = selectedVoice?.model?.let { (modelsRepository.provider(it.backendId) as VoiceLibrary).resourceHint(it.variant) }
+    private val archiveProvider get() = selectedVoice?.let {
+        it.model.backendId.takeIf { VoiceImport.RUNTIME_ARCHIVE in selectedCapabilities?.imports.orEmpty() }
+    } ?: providerFor(VoiceImport.RUNTIME_ARCHIVE)?.takeIf { selectedVoice == null }
+    val canImportArchive get() = archiveProvider != null
+    val resourceHint get() = selectedVoice?.model?.let { modelsRepository.provider(it.backendId).resourceHint(it.variant) }
 
     val canImportCheckpoints get() = importProvider != null
     val importLanguages get() = importProvider?.capabilities?.languages.orEmpty()
     fun languages(ref: ModelRef?) = capabilities[ref?.backendId]?.languages.orEmpty()
-    private fun importVariantLabel(variant: String) = UiText((requireNotNull(importProvider) as VoiceLibrary).variantLabel(variant))
-    val optionControls get() = selectedVoice?.let { (modelsRepository.provider(it.model.backendId) as VoiceLibrary).controls }.orEmpty()
+    private fun importVariantLabel(variant: String) = UiText(requireNotNull(importProvider).variantLabel(variant))
+    val optionControls get() = selectedVoice?.let { modelsRepository.provider(it.model.backendId).controls }.orEmpty()
 
     private val referenceRoot = File(app.filesDir, "studio_references").apply { mkdirs() }
     private var service: VoiceBoxBackendService? = null
@@ -140,7 +140,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
     private var backendModes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
-    private val availableBackends get() = backendModes[selectedVoice?.model?.backendId].orEmpty()
+    private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
+        model.executionModes intersect backendModes[model.ref.backendId].orEmpty()
+    }.orEmpty()
     val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     private var accelerationByBackend by mutableStateOf(emptyMap<String, AccelerationInfo>())
@@ -177,8 +179,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
     val busy get() = state.busy || submitting || importing || officialDownload.running
     val backend get() = if (gpuAvailable && gpuEnabled) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
-    val canGenerate get() = connected && availableBackends.isNotEmpty() && !loading && !busy && !fileBusy && runtimeReady &&
-        selectedVoice != null && text.isNotBlank() && modelFor(selectedVoice!!) != null
+    val canGenerate get() = connected && !loading && !busy && !fileBusy && text.isNotBlank() && runtimeReady && availableBackends.isNotEmpty()
 
     private val listener = BackendServiceListener { next ->
         val ownRequest = pendingRequest != null && next.requestId == pendingRequest?.requestId
@@ -226,10 +227,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
             downloadUpdates?.cancel()
-            downloadUpdates = viewModelScope.launch { service!!.officialDownload.collect {
-                officialDownload = it
-                if (it.completed || it.error != null) refreshResources()
-            } }
+            downloadUpdates = viewModelScope.launch {
+                backendService.catalogReady.await()
+                var first = true
+                backendService.officialDownload.collect {
+                    officialDownload = it
+                    if (first || it.completed || it.error != null) refreshResources()
+                    first = false
+                }
+            }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             accelerationUpdates?.cancel()
@@ -238,6 +244,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             service = null
             connected = false
             backendModes = emptyMap()
+            pendingRequest = null
+            cancelling = false
             submitting = false
             state = BackendServiceState()
             generationError = UiText(R.string.service_disconnected)
@@ -245,12 +253,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
-        refreshResources()
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
             ContextCompat.startForegroundService(app, intent)
             bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
-        }.onFailure { notify(UiText(R.string.service_start_failed)) }
+        }.onFailure { loading = false; notify(UiText(R.string.service_start_failed)) }
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
@@ -262,10 +269,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    runCatching { packages.installBundled() }.onFailure { Log.w("VoiceStudio", "Preinstall failed", it) }
-                    val catalog = modelsRepository.providers.flatMap { (it as VoiceLibrary).officialVoices() }
-                    val discovered = modelsRepository.discoverCharacterModels().filter { modelsRepository.inspect(it).isComplete }
-                    val ready = discovered.filter { (modelsRepository.provider(it) as VoiceLibrary).resourcesReady(it.ref.variant) }.map { it.ref }.toSet()
+                    val installed = backendPackages.filter { it.installed }.map { it.spec.id }.toSet()
+                    val providers = modelsRepository.providers.filter { it.id in installed }
+                    val catalog = providers.flatMap { it.officialVoices() }
+                    val discovered = providers.flatMap { provider -> provider.discoverCharacterModels().filter { provider.inspect(it).isComplete } }
+                    val ready = discovered.groupBy { it.ref.backendId to it.ref.variant }
+                        .filterKeys { (id, variant) -> modelsRepository.provider(id).resourcesReady(variant) }
+                        .values.flatten().map { it.ref }.toSet()
                     val available = discovered.filter { it.ref in ready || catalog.none { voice -> voice.ref == it.ref } }
                     val defaults = available.mapNotNull { model ->
                         runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
@@ -278,10 +288,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (voice.durationMs > 0) voice else voice.copy(
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
-                    val npu = available.filter { (modelsRepository.provider(it) as VoiceLibrary).hasNpuGraphs(it) }.map { it.ref }.toSet()
+                    val npu = available.filter { modelsRepository.provider(it).hasNpuGraphs(it) }.map { it.ref }.toSet()
                     val auxiliary = available.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
-                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, packages.packages.filter { it.installed }.map { it.spec.id }.toSet(),
-                        modelsRepository.providers.associate { it.id to it.capabilities })
+                    ResourcesSnapshot(available, voices, ready, catalog, npu, auxiliary, installed, providers.associate { it.id to it.capabilities })
                 }
                 models = data.models
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
@@ -551,7 +560,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun changeSynthesisOptions(value: Map<String, String>) {
         if (busy) return
         val id = selectedVoice?.model?.backendId ?: return
-        val library = modelsRepository.provider(id) as VoiceLibrary
+        val library = modelsRepository.provider(id)
         val validated = library.studioOptions(value).filterKeys { key -> library.controls.any { it.name == key } && key in value }
         store.saveOptions(id, validated)
         optionsByBackend = optionsByBackend + (id to validated)
@@ -575,7 +584,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val request = GenerationRequest(model, outputLanguage,
             promptLanguage = promptLanguage, synthesisText = text.trim(),
             referenceAudioPath = voice.audioPath, referenceText = voice.transcript, auxiliaryReferenceAudioPaths = auxiliaryPaths,
-            options = (modelsRepository.provider(model) as VoiceLibrary).studioOptions(synthesisOptions))
+            options = provider.studioOptions(synthesisOptions))
         pendingRequest = request.context
         pendingVoiceName = voiceName(voice, app.resources)
         pendingText = text.trim()
@@ -593,24 +602,25 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun syncDefaults() {
-        if (!warmupEnabled || availableBackends.isEmpty() || busy) return
+        if (busy) return
         val voice = selectedVoice
         val model = voice?.let(::modelFor)
-        if (!runtimeReady || voice == null || model == null) {
+        if (!runtimeReady || voice == null || model == null || availableBackends.isEmpty()) {
             service?.setActiveDefaults(null)
             return
         }
         service?.setActiveDefaults(ActiveDefaults(backend, model.ref, outputLanguage, voice.audioPath,
             voice.transcript, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
-            options = (modelsRepository.provider(model) as VoiceLibrary).studioOptions(synthesisOptions), auxiliaryReferenceAudioPaths = auxiliaryPaths))
+            options = modelsRepository.provider(model).studioOptions(synthesisOptions), auxiliaryReferenceAudioPaths = auxiliaryPaths), warmupEnabled)
     }
 
     fun importRuntimePackage(uri: Uri) {
+        val backendId = archiveProvider ?: return
         if (busy || fileBusy) return
         importing = true
         importMessage = UiText(R.string.import_resources_progress)
         audio.stop()
-        val accepted = service?.importRuntimePackage(uri) { result ->
+        val accepted = service?.importRuntimePackage(backendId, uri) { result ->
             importing = false
             importMessage = result.fold({ UiText(R.string.import_resources_complete) }, {
                 Log.e("VoiceStudio", "Resource import failed", it)
@@ -721,7 +731,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             if (selected?.gpt != null && selected.sovits != null) {
                 checkpointRecognition = UiText(R.string.model_identifying)
                 checkpointRecognition = withContext(Dispatchers.IO) {
-                    runCatching { service?.previewCheckpoint(selected.sovits) }
+                    runCatching { importProvider?.let { service?.previewCheckpoint(it.id, selected.sovits) } }
                         .fold({ it?.let { importVariantLabel(it) } ?: UiText(R.string.model_identify_on_import) }, { UiText(R.string.model_identify_failed) })
                 }
             }
@@ -731,6 +741,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun importCheckpoints() {
         val value = checkpointDraft ?: return
+        val backendId = importProvider?.id ?: return
         if (busy || fileBusy) return
         val editing = value.editingRef != null
         if (value.name.isBlank() || (!editing && (value.gpt == null || value.sovits == null))) {
@@ -778,9 +789,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val accepted = if (editing && value.gpt == null) {
             service?.editCharacterReference(requireNotNull(editedModel), value.name, reference, onComplete) == true
         } else {
-            service?.importCheckpointPair(value.name, value.gpt!!, value.sovits!!,
+            service?.importCheckpointPair(backendId, value.name, value.gpt!!, value.sovits!!,
                 onProgress = { importMessage = it }, onComplete = onComplete, reference = reference,
-                replaceCharacterId = value.editingRef?.modelId, gptFilename = value.gptName, sovitsFilename = value.sovitsName) == true
+                replace = value.editingRef, gptFilename = value.gptName, sovitsFilename = value.sovitsName) == true
         }
         if (!accepted) {
             importing = false

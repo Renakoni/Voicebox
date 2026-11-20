@@ -8,6 +8,7 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import java.util.zip.ZipFile
 
@@ -91,8 +92,12 @@ class BridgePackage(
     val supported get() = spec.abi == abi
     private val revisions get() = File(root, spec.revision)
     val directory: File? get() = if (!supported) null else revisions.listFiles()?.firstOrNull { candidate ->
-        File(candidate, ".complete").let { it.isFile && it.readText() == spec.revision } &&
-            spec.files.all { (name, bytes) -> File(candidate, name).let { it.isFile && it.length() == bytes } }
+        spec.files.all { (name, bytes) ->
+            try {
+                val file = Files.readAttributes(File(candidate, name).toPath(), BasicFileAttributes::class.java)
+                file.isRegularFile && file.size() == bytes
+            } catch (_: java.io.IOException) { false }
+        }
     }
     val installed get() = directory != null
 
@@ -103,6 +108,7 @@ class BridgePackage(
             root.mkdirs()
             FileChannel.open(File(root, ".lock").toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
                 channel.lock().use {
+                    checkCancelled()
                     if (installed) return
                     root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
                         ?.forEach { it.deleteRecursively() }
@@ -125,7 +131,6 @@ class BridgePackage(
                         require(File(staging, "bridge.json").length() <= 16_384)
                         spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
                         check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
-                        File(staging, ".complete").writeText(spec.revision)
                         revisions.mkdirs()
                         checkCancelled()
                         Files.move(staging.toPath(), File(revisions, id).toPath(), StandardCopyOption.ATOMIC_MOVE)
@@ -139,12 +144,12 @@ class BridgePackage(
         }
     }
 
-    internal fun extract(archive: File, staging: File, seen: MutableSet<String>, checkCancelled: () -> Unit) {
+    private fun extract(archive: File, staging: File, seen: MutableSet<String>, checkCancelled: () -> Unit) {
         ZipFile(archive).use { zip ->
             val buffer = ByteArray(128 * 1024)
             for (entry in zip.entries()) {
                 checkCancelled()
-                require(!entry.isDirectory && BridgePackageSpec.safePath(entry.name) && seen.add(entry.name)) {
+                require(seen.add(entry.name)) {
                     "Invalid or duplicate runtime path"
                 }
                 val expected = requireNotNull(spec.files[entry.name]) { "Unexpected runtime file" }

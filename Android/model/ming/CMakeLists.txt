@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 project(voicebox_ming LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Keep the build directory out of DWARF and the ELF build ID of release candidates.
+add_compile_options(-fdebug-compilation-dir=.)
 add_library(onnxruntime SHARED IMPORTED)
 set_target_properties(onnxruntime PROPERTIES IMPORTED_LOCATION "${ORT_LIBRARY}")
 foreach(kind IN ITEMS synthesize reference)

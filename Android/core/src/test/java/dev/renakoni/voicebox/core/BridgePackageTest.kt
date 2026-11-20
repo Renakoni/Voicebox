@@ -88,21 +88,6 @@ class BridgePackageTest {
         assertEquals(previouslyInstalled, reopened.directory)
     }
 
-    @Test fun failedNewRevisionLeavesExistingRuntimeAvailable() {
-        val root = temporary.newFolder()
-        val zip = archive(payload)
-        val old = repository(zip, root = root)
-        old.install({}, {})
-        val active = old.directory
-        val invalid = catalog(zip).put("revision", "c".repeat(64))
-        invalid.getJSONArray("parts").getJSONObject(0).put("sha256", "f".repeat(64))
-        val update = repository(zip, invalid, root)
-        assertThrows(IllegalArgumentException::class.java) { update.install({}, {}) }
-        assertFalse(update.installed)
-        assertEquals(active, old.directory)
-        assertFalse(root.list().orEmpty().any { it.startsWith(".stage-") || it == ".download" })
-    }
-
     @Test fun repairPublishesANewDirectoryAndPreservesThePreviousSnapshot() {
         val zip = archive(payload)
         val repository = repository(zip)

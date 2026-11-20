@@ -11,6 +11,7 @@ warranties of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 Source code: https://github.com/Renakoni/Voicebox
 
 Third-party components retain their own copyrights and licenses. Notices are
-preserved in licenses/, Android/app/src/main/cpp/third_party/ and the
-*-licenses directories in Android/app/src/main/assets/.
+preserved in licenses/, in the native third_party/ directories of Android/app,
+Android/core and Android/model/gptsovits, and in the *-licenses asset directories
+of the app and GPT-SoVITS bridge.
 The original High_Logic MIT notice is preserved in licenses/Genie-TTS-MIT.txt.

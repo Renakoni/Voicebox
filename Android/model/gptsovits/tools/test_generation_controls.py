@@ -1,6 +1,6 @@
 """Numerical and layout checks for add_generation_controls.py.
 
-Usage: python tools/test_generation_controls.py --upstream ../ref/GPT-SoVITS
+Usage: python Android/model/gptsovits/tools/test_generation_controls.py --upstream ../ref/GPT-SoVITS
 Requires onnxruntime, numpy and torch; no model weights needed for the unit checks.
 """
 import argparse
@@ -18,7 +18,7 @@ import onnxruntime as ort
 import torch
 from onnx import TensorProto as T, helper as h
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[4]
 ASSETS = ROOT / 'Android/model/gptsovits/src/main/assets'
 DIRECTORIES = [ASSETS / name for name in ['checkpoint-v2proplus', 'checkpoint-v2pro', 'checkpoint-v5turbo']]
 UPSTREAM = ROOT.parent / 'ref/GPT-SoVITS'

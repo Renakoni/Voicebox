@@ -15,6 +15,7 @@ plugins {
 android {
     namespace = "dev.renakoni.voicebox.model.gptsovits"
     compileSdk = 37
+    buildToolsVersion = "37.0.0"
     ndkVersion = "28.2.13676358"
     externalNativeBuild {
         cmake {
@@ -161,13 +162,15 @@ abstract class HighCompressionRuntimeAssetsTask : DefaultTask() {
 
 val generateRuntimeAssetManifest = tasks.register<Exec>("generateRuntimeAssetManifest") {
     val sourceRoot = file(runtimeAssetSource.get())
+    val generator = layout.projectDirectory.file("tools/generate_runtime_asset_manifest.py").asFile
+    inputs.file(generator)
     inputs.file(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx"))
     inputs.file(File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin"))
     outputs.file(runtimeAssetManifestOutput)
     workingDir(rootProject.projectDir.parentFile)
     commandLine(
         pythonExecutable.get(),
-        "tools/generate_runtime_asset_manifest.py",
+        generator.absolutePath,
         File(sourceRoot, "chinese-hubert-base/chinese-hubert-base.onnx").absolutePath,
         File(sourceRoot, "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin").absolutePath,
         runtimeAssetManifestOutput.get().asFile.absolutePath,

@@ -6,5 +6,5 @@ The C/C++ headers and sources for MeCab, NJD, JPCommon and text normalization ar
 No HTS waveform synthesis code or voice model is used.
 
 Frontend stages follow pyopenjtalk 0.4.1. Kotlin prosody extraction follows Genie-TTS `JapaneseG2P.py`.
-The OpenJTalk UTF-8 1.11 dictionary is downloaded and verified by `tools/prepare_language_assets.py`.
-Source licenses remain here and are also bundled in APK `assets/language-licenses/`.
+The module's [language asset tool](../../../../../tools/prepare_language_assets.py) downloads and verifies the OpenJTalk UTF-8 1.11 dictionary.
+Source licenses remain here and are also bundled in the GPT bridge under `assets/language-licenses/`.

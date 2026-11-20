@@ -20,6 +20,8 @@ class GenerationPipeline(
         val timer = InferenceTimer(traceLogger)
         return timer.measure("generation_total_ms") {
             validate(request)
+            val steps = request.maxDecoderSteps
+            val options = request.synthesisOptions
             request.context.checkCancelled()
             executionBackend?.let { timer.event(InferenceTraceEvent.Backend(it)) }
             val preparedInput = timer.measure("prepare_total_ms") {
@@ -33,7 +35,7 @@ class GenerationPipeline(
                 "T2S encoder",
             )
             val result = timer.measure("backend_total_ms") {
-                backend.generatePrepared(preparedInput, request.maxDecoderSteps, request.synthesisOptions)
+                backend.generatePrepared(preparedInput, steps, options)
             }
             request.context.checkCancelled()
             runtimeLabel()?.let { label ->

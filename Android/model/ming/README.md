@@ -8,8 +8,7 @@ existing voice/model flow, using official sources or mirrors separately from Rel
 Voicebox reuses `BackendRuntime`, `GenerationRequest`, `GeneratedAudioFile`,
 `GenerationContext`, `BackendApiContract`, verified downloads and the service request
 gate. Ming and GPT-SoVITS use the same voice list, generation, playback, export and HTTP
-API. There is no new public synthesis interface. The Settings → More models page only
-downloads the backend.
+API. There is no new public synthesis interface. Settings → Models shows the verified installation and offers the backend download.
 
 ## Build the backend Release asset
 
@@ -25,6 +24,7 @@ python Android/model/ming/build_package.py `
   --catalog Android/app/src/main/assets/bridges/ming.json
 ```
 
+The pinned upstream checkout is `7bba07df02d05aadafb0f2886faf98d6b5ceadfc`.
 Requires the project JDK, Python 3.11+, Android platform 36, build-tools 37.0.0, NDK 28.2.13676358,
 CMake 3.22.1 and `ANDROID_HOME`. The script reads only source code and the explicitly
 supplied runtime library. A fixed allowlist determines ZIP contents; model directories
@@ -77,5 +77,5 @@ Stage only `ming-backend-v2-arm64-v8a.zip` in external-files `ming-release/` for
 `MingRuntimeInstrumentedTest`. It verifies the pinned archive, runs the production
 installer, checks real speech and reference cloning, and verifies cancellation followed
 by another request. Use a separate debug application ID to preserve an existing app.
-`MoreModelsInstrumentedTest` covers navigation and the existing creation/playback flow.
+`ModelsInstrumentedTest` covers navigation and the existing creation/playback flow.
 `BridgePackageTest` covers installation rollback, archive boundaries and completion checks.

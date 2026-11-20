@@ -1,6 +1,6 @@
 # VoiceBox 通用模型后端重构执行清单
 
-状态：实施中。各阶段的本轮验证见第 8 节。
+状态：PR1 至 PR7 已实现，综合验证结果与剩余限制见第 8 节。分支按依赖顺序等待审查。
 
 基线：`5b3942f369277f649ac5c129890ad6352bc9c2f6`，`origin/main`，仓库 `Renakoni/Voicebox`。
 
@@ -168,7 +168,7 @@ docs/
 - [x] 运行现有相关单测与设备验证，建立当前状态，区分历史证据与本次重新验证。
 - [x] 保存同设备、同输入、同权重、同执行参数的冷启动/预热生成耗时、RTF、内存峰值、输出长度及听感证据到忽略的本地产物目录。
 - [ ] 记录 GPT 预热、缓存命中、QNN 首次编译与重载、Ming 合成/克隆/取消行为。
-- [ ] 核实 V2 实际可用路径并建立运行样本；不得把缺少原始 checkpoint 导入能力算作重构新引入的回退。
+- [x] PR7 使用原始 V2 权重回测 P0，核实实际可用路径并建立运行样本；不得把缺少原始 checkpoint 导入能力算作重构新引入的回退。
 
 ### PR1：统一自有工程命名
 
@@ -209,25 +209,25 @@ docs/
 
 建议分支：`refactor/voicebox-04-gptsovits-package`，依赖 PR3。
 
-- [ ] GPT bridge 独立生成 DEX/native/必要非权重资源；模板和模型权重逐项分界。
-- [ ] GPT 原生编译、语言前端准备、ORT 和 checkpoint 模板依赖从应用构建移到对应组件；公共音频/SILK 仍归其真实消费者。
-- [ ] 默认应用携带当前构建生成的 GPT 包，首次运行自动验证安装。完全离线且没有权重时，仍能正确完成桥接预装。
-- [ ] GPT 通过公共 loader/worker 执行生成、资源准备和模型专有导入；移除过渡的静态实现链接与宿主 ORT 初始化。
-- [ ] 保留 GPT 的取消、预热、缓存复用和内存释放语义；切换 GPT/Ming 必须实际释放不再使用的运行环境。
-- [ ] APK 宿主主 DEX 不含 GPT/Ming 推理实现；GPT 代码只在预装桥接产物中。宿主可在不提供模型权重的构建环境完成代码产物构建。
-- [ ] 验收：四类 GPT 现有模型运行、已支持的官方下载/本地权重导入、单/多参考能力；GPT → Ming → GPT 轮换；冷/热性能与基线比较；预装失败重试、安装时序、缺权重时的音源侧提示。
-- [ ] 独立桥接包与预装包校验一致；只生成发布候选物，不在此 PR 自动上传或发布。
+- [x] GPT bridge 独立生成 DEX/native/必要非权重资源；模板和模型权重逐项分界。
+- [x] GPT 原生编译、语言前端准备、ORT 和 checkpoint 模板依赖从应用构建移到对应组件；公共音频/SILK 仍归其真实消费者。
+- [x] 默认应用携带当前构建生成的 GPT 包，首次运行自动验证安装。完全离线且没有权重时，仍能正确完成桥接预装。
+- [x] GPT 通过公共 loader/worker 执行生成、资源准备和模型专有导入；移除过渡的静态实现链接与宿主 ORT 初始化。
+- [x] 保留 GPT 的取消、预热、缓存复用和内存释放语义；切换 GPT/Ming 必须实际释放不再使用的运行环境。
+- [x] APK 宿主主 DEX 不含 GPT/Ming 推理实现；GPT 代码只在预装桥接产物中。宿主可在不提供模型权重的构建环境完成代码产物构建。
+- [x] 验收：四类 GPT 现有模型运行、已支持的官方下载/本地权重导入、单/多参考能力；GPT → Ming → GPT 轮换；冷/热性能与基线比较；预装失败重试、安装时序、缺权重时的音源侧提示。
+- [x] 独立桥接包与预装包校验一致；只生成发布候选物，不在此 PR 自动上传或发布。
 
 ### PR5：收敛设备能力与模型加速配置
 
 建议分支：`refactor/voicebox-05-acceleration`，依赖 PR4。
 
-- [ ] 拆分 `DeviceAcceleration`：通用设备信息与后端实际探测分开，运行库句柄留在正确进程。
-- [ ] V2/V5 图、分桶、精度、执行顺序、QNN context 准备与回退完整保留在 GPT 后端。
-- [ ] 能力查询按后端/模型返回，不依赖 GPT 的全局 CPU/GPU/NPU 探测结果控制 Ming。
-- [ ] 缓存加入模型/后端边界，保留图、权重、运行库、设备及形状变更后的失效语义，防止跨后端命中。
-- [ ] 配置仅覆盖已经存在的加速路线；不添加“通用 NPU 图编辑器”，不默认为 Ming 开启尚未接入的 QNN 路线。
-- [ ] 验收：CPU、WebGPU、可用设备上的 GPT QNN；不支持/缺运行库/探测失败时既有回退；编译缓存重载和失效；实际生成期间不意外编译；取消与内存回收。
+- [x] 拆分 `DeviceAcceleration`：通用设备信息与后端实际探测分开，运行库句柄留在正确进程。
+- [x] V2/V5 图、分桶、精度、执行顺序、QNN context 准备与回退完整保留在 GPT 后端。
+- [x] 能力查询按后端/模型返回，不依赖 GPT 的全局 CPU/GPU/NPU 探测结果控制 Ming。
+- [x] 缓存加入模型/后端边界，保留图、权重、运行库、设备及形状变更后的失效语义，防止跨后端命中。
+- [x] 配置仅覆盖已经存在的加速路线；不添加“通用 NPU 图编辑器”，不默认为 Ming 开启尚未接入的 QNN 路线。
+- [x] 验收：CPU、WebGPU、可用设备上的 GPT QNN；不支持/缺运行库/探测失败时既有回退；编译缓存重载和失效；实际生成期间不意外编译；取消与内存回收。
 
 ### PR6：模型页面与音源/生成界面统一使用后端能力
 
@@ -246,13 +246,13 @@ docs/
 
 建议分支：`refactor/voicebox-07-integration`，依赖 PR6。
 
-- [ ] 清除重构引入的过渡入口、重复实现和无主代码；不顺手清理无关历史功能。
-- [ ] 核对源码、原生代码、资源、工具、测试、构建配置与说明的最终归属，避免仓库形成新旧两套结构。
-- [ ] 为已确定的模块边界加入小型自动检查：core 不依赖模型实现；宿主 DEX 不夹带桥接实现；桥接不重复包含契约或官方权重。
-- [ ] 在干净输出目录重建 Debug 与混淆 Release、预装 GPT 包和 Ming 包，验证代码清单、ABI、版本、SHA、依赖和动态入口。
-- [ ] 执行下节矩阵；全部声称支持的能力都附对应证据，任何缺设备/缺模型项明确保留为未验证。
-- [ ] 更新开发构建、目录导航、桥接打包和发布候选物操作文档；删除已失效的本项目命令，不改上游项目用法。
-- [ ] 每个 PR 描述与最终实现一致，记录实际 head、基线、构建参数、测试结果和必要限制。
+- [x] 清除重构引入的过渡入口、重复实现和无主代码；不顺手清理无关历史功能。
+- [x] 核对源码、原生代码、资源、工具、测试、构建配置与说明的最终归属，避免仓库形成新旧两套结构。
+- [x] 为已确定的模块边界加入小型自动检查：core 不依赖模型实现；宿主 DEX 不夹带桥接实现；桥接不重复包含契约或官方权重。
+- [x] 在干净输出目录重建 Debug 与混淆 Release、预装 GPT 包和 Ming 包，验证代码清单、ABI、版本、SHA、依赖和动态入口。
+- [x] 执行下节矩阵；全部声称支持的能力都附对应证据，任何缺设备/缺模型项明确保留为未验证。
+- [x] 更新开发构建、目录导航、桥接打包和发布候选物操作文档；删除已失效的本项目命令，不改上游项目用法。
+- [x] 每个 PR 描述与最终实现一致，记录实际 head、基线、构建参数、测试结果和必要限制。
 - [ ] 只有验收条件满足后才能把本清单状态改为“重构完成”；代码 PR 完成不代表已合并或已发布。
 
 ## 6. 验证矩阵与执行纪律
@@ -312,7 +312,7 @@ docs/
 - [x] PR4 GPT 独立包和默认预装。原版 V2 和原生 ARM64 的限制见下表。
 - [x] PR5 加速职责。硬件执行范围见本节记录。
 - [x] PR6 模型页面与能力驱动流程。
-- [ ] PR7 综合验收。
+- [x] PR7 综合验收。MuMu 和小米 14 的结果、输入约束及未验证项见本节末。
 
 实施时每项完成后填写以下记录，不用对话或工作汇报替代证据：
 
@@ -403,3 +403,22 @@ PR6 社区 checkpoint 回归验证发现，规范化后的 JSON 与三个变体�
 | Studio 与本地音源 | 同一页面验证 Ming 选择、CPU 生成、实际播放位置推进；固定参考及重新编码的参考分别生成 44.1 kHz 单声道 123,480 / 91,728 样本。GPT 克隆经 Activity 重建、生成、播放、暂停和导出，八槽可选图在界面选择了第二段真实参考并生成。社区 V2 Pro 成对导入经过识别、缺参考校验、取消清理、保存及重建，四个转换文件均通过预期 SHA。见 `final-ui.log`、`clone-audio.log`、`final-gpt-studio.log`、`final-aux-retry.log`、`final-community.log`、`community-result.json`。 |
 | i18n 与页面 | 禁网安装实际截屏 `models.png`，中文为主语言时显示「模型」「已安装」，英语、日语、阿拉伯语为主语言时回退英文。见 `offline-screenshot.log`；最终下载验证见 `transfer-final.log` 与 `transfer-final-events.log`。 |
 | 模板回归 | 真正导入时发现 PR4 的换行规范化遗漏模板内部哈希。旧 APK 有五处摘要对应 CRLF，三个模板目录均受影响。修正各自清单、生成器及打包时的交叉检查，保留设备侧的逐文件 SHA 校验。修复包的 12 / 15 / 17 个模板文件全数匹配，见 `template-checks.json`。 |
+
+
+### PR7 产物边界与设备验收
+
+分支 `refactor/voicebox-07-integration`，基准为 PR6 的 `87d8e30`。本节汇总本地测试。PR 正文记录最终提交和该提交重建的候选包摘要。日志、私有测试夹具和生成 WAV 存于 Git 忽略的 `artifacts/refactor-pr7/`。
+
+| 检查 | 结果及复核入口 |
+| --- | --- |
+| 构建和依赖 | 从 clean 输出构建 x86_64 Debug 和 ARM64 R8 Release（engine-v1 AAR）。五个模块共 122 项 JVM 测试通过，跳过 0 项；两个变体的 Lint 各有 43 个 warning、1 个 hint、0 个 error。迁移后的图工具另有 4 项数值测试通过。见 `clean.log`、`precommit-{debug,release}.log`、`graph-controls.log`。 |
+| APK 和代码包 | 标准库脚本 `tools/verify_backend_boundaries.py` 核对 Gradle 项目依赖、源码、宿主 DEX、R8 映射、桥接入口、ELF ABI 及逐项资产清单。APK 内外 GPT ZIP 字节一致，GPT 有 75 项经审计的资产，Ming 只有一个探测图。篡改 SHA、夹带模型文件、把 Ming ZIP 改名后塞进 APK 均被拒绝。ARM64 Ming 从两个输出目录重建均为 17,070,911 字节，SHA-256 为 `e4911a5c74d870b0ef19c75297f38992ed9001cde101e979a20672d2d9abbd16`。见 `*-audit.json`、`negative-boundaries.json`、`negative-apk.log`。 |
+| 混淆和动态装载 | MuMu API 32 原生 x86_64、小米 14 API 34 原生 ARM64。独立包名的 R8 宿主分别安装两个桥接、复用同一份 GPT 预装、从私有 worker 返回模型错误并建立真实 GPT CPU 图会话。见 `mumu-r8.log`、`phone-r8.log`。 |
+| 原版 V2 | 取 GPT-SoVITS 官方 V2 checkpoint 对（修订 `8f885756`，两个 LFS SHA 均已核对），使用 Genie-TTS `d347fd0` 的 V2 转换器和中文参考。上游原样导出的解码图缺少 Android 的 `sampling` 输入，在 P0 和 PR7 都报输入数量错误。使用仓库已有工具给两个解码图和声码器加上 Android 的 `sampling`、`speed` 输入后，同一权重通过 P0 MuMu 和 PR7 小米 14 CPU 合成。PR7 输出 32 kHz、46,080 样本，PCM16 峰值 10,285。原始 V2 checkpoint 的手机端导入未纳入本轮。见 `v2-fixture/inputs.json`、`baseline-v2-{zh,android}.log`、`phone-v2-{final,android}.log` 和 GPT 模块 README。 |
+| GPT 其余变体 | 真正的 V2 Pro 和 V5 Turbo checkpoint 在 MuMu 与小米分别通过导入和文件 SHA 校验。手机 CPU 分别输出 32 kHz / 115,200、48 kHz / 205,440 样本。V2 Pro Plus 在两个 ABI 均生成非静音音频。一次连续 instrumentation 冷启时，Android 将 worker 标为 `process is bad`，首次 V2 Pro 导入绑定失败；随后单个前台会话连续 15 次绑定与错误回传通过，重跑完整导入和合成通过。见 `{v2pro,v5turbo}.json`、`phone-import-*.{log,json}`、`phone-rapid.log`。 |
+| Ming | 小米单独从经校验的 ARM64 ZIP 安装，使用上游导出的模型及真实参考。在 CPU 与 WebGPU 下均完成内置音色、参考重编码克隆和播放进度检查；两种模式分别输出 44.1 kHz 单声道的 123,480 / 91,728 样本。CPU 取消后成功执行下一请求。MuMu 使用同源 x86_64 包复验 CPU。见 `phone-ming-{CPU,WEBGPU}.log`、`ming-runtime.log`、`audio-results.json`。 |
+| GPU / NPU | 小米 14（SM8650）对两个后端分别执行 WebGPU 探测，GPT 使用另行提供的 Qualcomm 运行库。V2 Pro Plus 的 HTP context 首次编译 24,511 ms，V5 的实测桶为 102,592 ms。后续新 worker 均从磁盘重载，两种图均记录实际 HTP 声学生成。V2 Pro Plus 长句两次为 275,200 / 270,080 样本；V5 两次为 230,400 / 211,200 样本。缓存失效的设备、形状和内容变化由 JVM 测试覆盖。见 `phone-events.log`、`phone-{v2plus,v5}-htp.log`。 |
+| 接口、调度与音频 | MuMu 回环 HTTP 在同一宿主完成 GPT → Ming → GPT，依次返回 32 / 44.1 / 32 kHz 非静音 WAV。默认音源、拒绝 Ming 的 GPT 选项、取消、终止活动 worker、模拟低内存回调及后续生成均通过。另测 Studio 生成、播放、导出、MP3/M4A 参考解码、QQ SILK、语言和超时。模型页首次离线启动及网络取消重试详见 PR6。见 `http-recovery.log`、`lifecycle.log`、`studio-audio.log`、`compressed-references.log`。 |
+| 同机性能 | MuMu 使用 P0 的 Roxy 权重、日语参考、中文句和默认 CPU 参数。PR7 冷/热 55,234 / 14,918 ms，同一 worker，两次输出 3.44 s，RTF 16.06 / 4.34。P0 为 49,690 / 14,689 ms，输出 3.72 s，RTF 13.36 / 3.95。PR7 宿主与 worker 的 VmHWM 分别为 316,620 与 1,966,684 KiB。每个状态各一次，缓存和热状态影响结果，不能由此判定稳定的性能变化。见 `refactor-{0,1}.{txt,wav}`。 |
+
+剩余验证范围包括人工盲听和系统真实触发的低内存回收。Ming 下载的正反用例使用本地 HTTPS 及固定候选文件，公开 `ming-runtime-v2` URL 仍待单独发布。

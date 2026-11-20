@@ -1,23 +1,20 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.core.InstalledBackend
 import dev.renakoni.voicebox.bridge.BackendApiContract
 import dev.renakoni.voicebox.core.GenerationRequestGate
 
 import dev.renakoni.voicebox.core.OfficialDownloadState
 import dev.renakoni.voicebox.core.OutputStorage
 import dev.renakoni.voicebox.bridge.LibraryAction
-import dev.renakoni.voicebox.bridge.VoiceLibrary
-import dev.renakoni.voicebox.bridge.VoiceImport
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.OfficialVoice
 import dev.renakoni.voicebox.bridge.AccelerationInfo
-import dev.renakoni.voicebox.core.BridgePackages
 
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 import dev.renakoni.voicebox.core.i18n.userMessage
 import dev.renakoni.voicebox.core.i18n.userText
-import dev.renakoni.voicebox.core.i18n.errorUi
 
 import android.Manifest
 import android.content.Context
@@ -56,11 +53,8 @@ import dev.renakoni.voicebox.bridge.GenerationCancelledException
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
-import dev.renakoni.voicebox.core.BackendRegistry
 import java.io.File
 import java.util.Locale
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -71,26 +65,31 @@ class VoiceBoxBackendService : Service() {
     private val apiClients = linkedSetOf<Messenger>()
     private val listeners = linkedSetOf<BackendServiceListener>()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val worker: ExecutorService = Executors.newSingleThreadExecutor()
     private val apiMessenger = Messenger(ApiHandler())
     private val generationGate = GenerationRequestGate()
     private val officialDownloadState = MutableStateFlow(OfficialDownloadState())
     val officialDownload = officialDownloadState.asStateFlow()
-    @Volatile private var catalogInitialized = false
+    internal val catalogReady = kotlinx.coroutines.CompletableDeferred<Unit>()
     @Volatile private var destroyed = false
     @Volatile private var warmupContext: GenerationContext? = null
 
     private data class WarmupKey(
         val backend: ExecutionBackend,
         val model: ModelRef,
+        val referencePath: String, val transcript: String, val promptLanguage: String,
+        val language: String, val auxiliary: List<String>,
     )
+
+    private val ActiveDefaults.warmupKey get() = WarmupKey(backend, model, referenceAudioPath, referenceText,
+        promptLanguage, language, auxiliaryReferenceAudioPaths)
 
     private val warmupLock = Any()
     private var queuedWarmupKey: WarmupKey? = null
     private var completedWarmupKey: WarmupKey? = null
 
     private lateinit var settingsRepository: AppSettingsRepository
-    private lateinit var modelRepository: BackendRegistry
+    private val app get() = application as VoiceBoxApplication
+    private val modelRepository get() = app.backends
     private lateinit var localHttpApiServer: LocalHttpApiServer
     val acceleration = MutableStateFlow<Map<String, AccelerationInfo>>(emptyMap())
 
@@ -120,14 +119,13 @@ class VoiceBoxBackendService : Service() {
     override fun onCreate() {
         super.onCreate()
         settingsRepository = AppSettingsRepository(this)
-        modelRepository = registeredBackends(this, settingsRepository) { id -> ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty() }
         localHttpApiServer = LocalHttpApiServer(
             object : LocalHttpApiServer.Bridge {
                 override fun currentState(): BackendServiceState = this@VoiceBoxBackendService.currentState()
 
                 override fun availableModels(): List<CharacterModel> = modelRepository.discoverCharacterModels()
 
-                override fun supportedBackends(model: CharacterModel) = this@VoiceBoxBackendService.supportedBackends(model.ref)
+                override fun referenceExample(model: CharacterModel) = modelRepository.findReferenceExample(model)
 
                 override fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
                     modelRepository.provider(model).supportsAuxiliaryReferences(model)
@@ -137,9 +135,6 @@ class VoiceBoxBackendService : Service() {
 
                 override fun activeDefaults(): ActiveDefaults? = this@VoiceBoxBackendService.activeDefaults
 
-                override fun infer(backend: ExecutionBackend, request: GenerationRequest): Boolean =
-                    synthesize(backend, request)
-
                 override fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult =
                     this@VoiceBoxBackendService.inferBlocking(backend, request, timeoutMs)
 
@@ -147,10 +142,10 @@ class VoiceBoxBackendService : Service() {
             },
         )
         worker.execute {
-            runCatching { BridgePackages(this).installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
-            catalogInitialized = true
+            runCatching { app.bridgePackages.installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
+            catalogReady.complete(Unit)
             mainHandler.post { if (!destroyed) syncLocalHttpApiServer() }
-            refreshBackendModes()
+            modelRepository.providers.forEach { if (!destroyed) refreshBackendModes(it) }
         }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
@@ -192,7 +187,6 @@ class VoiceBoxBackendService : Service() {
             closeWorkerRuntime()
             Log.i(TIMING_LOG_TAG, "runtime_closed_after_worker_return")
         }
-        worker.shutdown()
         super.onDestroy()
     }
 
@@ -234,38 +228,40 @@ class VoiceBoxBackendService : Service() {
 
     fun currentState(): BackendServiceState = state
 
-    fun supportedBackends(model: ModelRef): Set<ExecutionBackend> =
-        enabledBackends.value[model.backendId] ?: setOf(ExecutionBackend.CPU)
+    private fun supportedBackends(model: CharacterModel) =
+        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
 
-    fun setActiveDefaults(defaults: ActiveDefaults?) {
-        val supportedDefaults = defaults?.takeIf { it.backend in supportedBackends(it.model) }
+    fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
+        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
-        if (previous != null && (previous.model != supportedDefaults?.model || previous.backend != supportedDefaults?.backend)) {
+        if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
             generationGate.invalidate("VOICE_CHANGED")
             warmupContext?.cancel("VOICE_CHANGED")
         }
         activeDefaults = supportedDefaults
-        supportedDefaults?.let(::scheduleWarmup)
+        if (warmup) supportedDefaults?.let(::scheduleWarmup)
     }
 
     fun synthesize(
         backend: ExecutionBackend,
         request: GenerationRequest,
-    ): Boolean {
-        if (backend !in supportedBackends(request.characterModel.ref)) return false
-        if (!generationGate.tryAcquire(request.context)) {
-            return false
-        }
+    ): Boolean = enqueue(backend, request) == null
+
+    private fun enqueue(
+        backend: ExecutionBackend?,
+        request: GenerationRequest,
+        onComplete: ((InferResult) -> Unit)? = null,
+    ): InferResult.Rejected? {
+        if (backend == null || backend !in supportedBackends(request.characterModel)) return InferResult.BackendUnavailable
+        if (!generationGate.tryAcquire(request.context)) return InferResult.Busy
         try {
-            worker.execute {
-                runSynthesis(backend, request)
-            }
+            worker.execute { runSynthesis(backend, request, onComplete) }
         } catch (error: Throwable) {
             generationGate.release(request.context)
             throw error
         }
-        return true
+        return null
     }
 
     fun inferBlocking(
@@ -273,25 +269,12 @@ class VoiceBoxBackendService : Service() {
         request: GenerationRequest,
         timeoutMs: Long,
     ): InferResult {
-        if (backend !in supportedBackends(request.characterModel.ref)) {
-            return InferResult.Error("Backend is not enabled.")
-        }
-        if (!generationGate.tryAcquire(request.context)) {
-            return InferResult.Busy
-        }
         val latch = java.util.concurrent.CountDownLatch(1)
         val resultHolder = java.util.concurrent.atomic.AtomicReference<InferResult>(InferResult.Timeout)
-        try {
-            worker.execute {
-                runSynthesis(backend, request) { res ->
-                    resultHolder.set(res)
-                    latch.countDown()
-                }
-            }
-        } catch (error: Throwable) {
-            generationGate.release(request.context)
-            throw error
-        }
+        enqueue(backend, request) { result ->
+            resultHolder.set(result)
+            latch.countDown()
+        }?.let { return it }
         try {
             if (!latch.await(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS)) {
                 val cancelled = generationGate.cancel(request.context.requestId, "TIMEOUT")
@@ -307,25 +290,25 @@ class VoiceBoxBackendService : Service() {
 
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
-    private fun refreshBackendModes() {
-        enabledBackends.value = modelRepository.providers.associate { it.id to it.executionModes() }
-        acceleration.value = modelRepository.providers.associate { it.id to (it as VoiceLibrary).accelerationInfo() }
+    private fun refreshBackendModes(provider: InstalledBackend) {
+        enabledBackends.value += provider.id to provider.executionModes()
+        acceleration.value += provider.id to provider.accelerationInfo()
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->
-        val library = modelRepository.provider(voice.ref.backendId) as VoiceLibrary
-        library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id) }, context) { label, percent ->
+        val library = modelRepository.provider(voice.ref.backendId)
+        library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id); putString("variant", voice.ref.variant) }, context) { label, percent ->
             officialDownloadState.value = OfficialDownloadState(voice.ref, UiText.literal(label), percent, running = true)
         }
     }
 
     fun installBridge(id: String): Boolean {
-        val archive = BridgePackages(this).packages.singleOrNull { it.spec.id == id } ?: return false
+        val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
         return downloadOnWorker(OfficialDownloadState(packageId = id)) { context ->
             archive.install(context::checkCancelled) { percent ->
                 officialDownloadState.value = OfficialDownloadState(packageId = id, label = UiText(R.string.download_preparing), percent = percent, running = true)
             }
-            refreshBackendModes()
+            refreshBackendModes(modelRepository.provider(id))
         }
     }
 
@@ -348,41 +331,40 @@ class VoiceBoxBackendService : Service() {
 
     /** Import on the session owner thread; a replacement must never race inference or warmup. */
     fun importRuntimePackage(
-        uri: android.net.Uri,
+        backendId: String, uri: android.net.Uri,
         onComplete: (Result<Unit>) -> Unit,
     ): Boolean = importOnWorker(onComplete) { context, _ ->
-        libraryFor(VoiceImport.RUNTIME_ARCHIVE).perform(LibraryAction.IMPORT_ARCHIVE,
+        modelRepository.provider(backendId).perform(LibraryAction.IMPORT_ARCHIVE,
             Bundle().apply { putString("uri", uri.toString()) }, context) { _, _ -> }
         Unit
     }
 
-    private fun libraryFor(type: VoiceImport) = modelRepository.providers.single { type in it.capabilities.imports } as VoiceLibrary
-
     /** The caller waits off the main thread while the inference owner switches to the import worker. */
-    fun previewCheckpoint(uri: android.net.Uri): String? = worker.submit<String?> {
+    fun previewCheckpoint(backendId: String, uri: android.net.Uri): String? = worker.submit<String?> {
         closeWorkerRuntime()
-        libraryFor(VoiceImport.CHECKPOINT_PAIR).perform(LibraryAction.PREVIEW_PAIR,
+        modelRepository.provider(backendId).perform(LibraryAction.PREVIEW_PAIR,
             Bundle().apply { putString("uri", uri.toString()) }, GenerationContext()) { _, _ -> }.getString("variant")
     }.get()
 
     fun importCheckpointPair(
-        name: String, gpt: android.net.Uri, sovits: android.net.Uri, onProgress: (UiText) -> Unit,
+        backendId: String, name: String, gpt: android.net.Uri, sovits: android.net.Uri, onProgress: (UiText) -> Unit,
         onComplete: (Result<ImportedVoice>) -> Unit, reference: ReferenceExample? = null,
-        replaceCharacterId: String? = null, gptFilename: String = "", sovitsFilename: String = "", architectureHint: String? = null,
+        replace: ModelRef? = null, gptFilename: String = "", sovitsFilename: String = "",
     ): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
         val arguments = referenceArguments(name, reference).apply {
-            putString("first", gpt.toString()); putString("second", sovits.toString()); putString("id", replaceCharacterId)
-            putString("firstName", gptFilename); putString("secondName", sovitsFilename); putString("variant", architectureHint)
+            putString("first", gpt.toString()); putString("second", sovits.toString()); putString("id", replace?.modelId)
+            putString("firstName", gptFilename); putString("secondName", sovitsFilename); putString("variant", replace?.variant)
         }
-        val provider = modelRepository.providers.single { VoiceImport.CHECKPOINT_PAIR in it.capabilities.imports }
-        val result = (provider as VoiceLibrary).perform(LibraryAction.IMPORT_PAIR, arguments, context) { text, _ -> progress(UiText.literal(text)) }
+        val provider = modelRepository.provider(backendId)
+        require(replace == null || replace.backendId == backendId)
+        val result = provider.perform(LibraryAction.IMPORT_PAIR, arguments, context) { text, _ -> progress(UiText.literal(text)) }
         ImportedVoice(ModelRef(provider.id, result.getString("variant")!!, result.getString("id")!!), result.getString("name")!!)
     }
 
     fun editCharacterReference(ref: ModelRef, name: String, reference: ReferenceExample,
         onComplete: (Result<ImportedVoice>) -> Unit): Boolean = importOnWorker(onComplete) { context, _ ->
         val args = referenceArguments(name, reference).apply { putString("id", ref.modelId); putString("variant", ref.variant) }
-        (modelRepository.provider(ref.backendId) as VoiceLibrary).perform(LibraryAction.EDIT_REFERENCE, args, context) { _, _ -> }
+        modelRepository.provider(ref.backendId).perform(LibraryAction.EDIT_REFERENCE, args, context) { _, _ -> }
         ImportedVoice(ref, name.trim())
     }
 
@@ -396,10 +378,10 @@ class VoiceBoxBackendService : Service() {
         onProgress: (UiText) -> Unit = {},
         operation: (GenerationContext, (UiText) -> Unit) -> T,
     ): Boolean {
-        if (generationGate.isClaimed() || destroyed) return false
-        setActiveDefaults(null)
         val context = GenerationContext()
         if (!generationGate.tryAcquire(context)) return false
+        activeDefaults = null
+        warmupContext?.cancel("RESOURCES_CHANGED")
         publishState(GenerationStage.INSTALLING_MODEL, true, state.requestedBackend,
             state.resolvedBackend, state.runtimeLabel, getString(R.string.resources_importing), context = context)
         worker.execute {
@@ -413,6 +395,7 @@ class VoiceBoxBackendService : Service() {
             publishState(GenerationStage.IDLE, false, state.requestedBackend,
                 state.resolvedBackend, state.runtimeLabel, "", initializedModelId = null)
             mainHandler.post { onComplete(result) }
+            finishPendingMaintenance()
         }
         return true
     }
@@ -486,8 +469,7 @@ class VoiceBoxBackendService : Service() {
                         formatAudioDuration(result.audioSamples, result.sampleRate),
                     ),
                 )
-                onComplete?.invoke(InferResult.Success(result.file,
-                    result.audioSamples.toLong() * 1000 / result.sampleRate))
+                onComplete?.invoke(InferResult.Success(result.file))
             }
             if (!delivered) {
                 result.file.delete()
@@ -521,14 +503,16 @@ class VoiceBoxBackendService : Service() {
             onComplete?.invoke(InferResult.Error(error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName, errorCode))
         } finally {
             Log.i(TIMING_LOG_TAG, "request_total_ms=${SystemClock.elapsedRealtime() - startedAtMs} ms")
-            generationGate.release(context)
-            if (!destroyed && resourceReloadPending) {
-                reloadInferenceResources()
-            }
-            if (!destroyed && cacheClearPending) {
-                cacheClearPending = false
-                performCacheClear()
-            }
+            finishPendingMaintenance()
+        }
+    }
+
+    private fun finishPendingMaintenance() {
+        if (destroyed) return
+        if (resourceReloadPending) reloadInferenceResources()
+        if (cacheClearPending) {
+            cacheClearPending = false
+            performCacheClear()
         }
     }
 
@@ -594,7 +578,7 @@ class VoiceBoxBackendService : Service() {
             }
             val generated = OutputStorage(requireNotNull(getExternalFilesDir(null))).clearGeneratedAudio()
             val derived = modelRepository.providers.filter { it.capabilities.imports.isNotEmpty() }.sumOf {
-                (it as VoiceLibrary).perform(LibraryAction.CLEAR_CACHE, Bundle(), GenerationContext()) { _, _ -> }.getInt("derived")
+                it.perform(LibraryAction.CLEAR_CACHE, Bundle(), GenerationContext()) { _, _ -> }.getInt("derived")
             }
             publishState(
                 stage = GenerationStage.IDLE,
@@ -739,7 +723,8 @@ class VoiceBoxBackendService : Service() {
 
     private fun scheduleWarmup(defaults: ActiveDefaults) {
         if (destroyed) return
-        val key = WarmupKey(defaults.backend, defaults.model)
+        if (!modelRepository.provider(defaults.model.backendId).supportsWarmup) return
+        val key = defaults.warmupKey
         synchronized(warmupLock) {
             if (completedWarmupKey == key || queuedWarmupKey == key) return
             queuedWarmupKey = key
@@ -747,15 +732,14 @@ class VoiceBoxBackendService : Service() {
         runCatching {
             worker.execute {
                 try {
-                    if (destroyed || activeDefaults?.let { WarmupKey(it.backend, it.model) } != key) return@execute
+                    if (destroyed || activeDefaults?.warmupKey != key) return@execute
                     val model = modelRepository.discoverCharacterModels()
                         .firstOrNull { it.ref == key.model }
                         ?: return@execute
-                    if (!modelRepository.provider(model).supportsWarmup) return@execute
                     val startedAt = SystemClock.elapsedRealtime()
                     val request = defaults.toWarmupRequest(model)
                     warmupContext = request.context
-                    if (destroyed) request.context.cancel("SERVICE_DESTROYED")
+                    if (destroyed || activeDefaults?.warmupKey != key) return@execute
                     withActiveGenerationResources {
                         request.context.run {
                             selectWorkerRuntime(model, key.backend).warmup(request)
@@ -792,10 +776,11 @@ class VoiceBoxBackendService : Service() {
     }
 
     private fun closeWorkerRuntime() {
-        workerRuntime?.close()
+        val previous = workerRuntime
         workerRuntime = null
         runtimeOwner = null
         synchronized(warmupLock) { completedWarmupKey = null }
+        previous?.close()
     }
 
     private fun ActiveDefaults.toWarmupRequest(model: CharacterModel): GenerationRequest =
@@ -811,7 +796,7 @@ class VoiceBoxBackendService : Service() {
         )
 
     private fun syncLocalHttpApiServer() {
-        if (!catalogInitialized) return
+        if (!catalogReady.isCompleted) return
         // Listening on a socket is idle work. Generation and warmup acquire
         // their own bounded wake lock in withActiveGenerationResources.
         if (settingsRepository.apiEnabled) {
@@ -889,6 +874,9 @@ class VoiceBoxBackendService : Service() {
     }
 
     companion object {
+        // A restarted service shares the queue with the previous instance until its native worker has exited.
+        private val worker = java.util.concurrent.ThreadPoolExecutor(0, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
+            java.util.concurrent.LinkedBlockingQueue<Runnable>())
         private val COMMON_REQUEST_KEYS = with(BackendApiContract) { setOf(KEY_MODEL_ID, KEY_BACKEND_ID, KEY_VARIANT, KEY_LANGUAGE,
             KEY_PROMPT_LANGUAGE, KEY_SYNTHESIS_TEXT, KEY_REFERENCE_AUDIO_PATH, KEY_REFERENCE_TEXT,
             KEY_AUXILIARY_REFERENCE_AUDIO_PATHS, KEY_BACKEND) }
@@ -924,7 +912,7 @@ class VoiceBoxBackendService : Service() {
                 }
                 BackendApiContract.MSG_SYNTHESIZE -> {
                     if (destroyed) return
-                    if (!catalogInitialized) {
+                    if (!catalogReady.isCompleted) {
                         val pending = Message.obtain(message)
                         worker.execute { post { if (destroyed) pending.recycle() else sendMessage(pending) } }
                         return
@@ -936,12 +924,12 @@ class VoiceBoxBackendService : Service() {
                         sendErrorTo(message.replyTo, getString(R.string.prototype_service_api_invalid_request))
                         return
                     }
-                    val backend = message.data.getString(BackendApiContract.KEY_BACKEND)
-                        ?.let { value -> ExecutionBackend.entries.firstOrNull { it.name == value } }
-                        ?: ExecutionBackend.CPU
-                    val started = synthesize(backend, request)
-                    if (!started) {
-                        sendErrorTo(message.replyTo, getString(R.string.prototype_generation_busy))
+                    val requested = message.data.getString(BackendApiContract.KEY_BACKEND) ?: ExecutionBackend.CPU.name
+                    val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(requested, ignoreCase = true) }
+                    when (enqueue(backend, request)) {
+                        InferResult.BackendUnavailable -> sendErrorTo(message.replyTo, getString(R.string.prototype_backend_unavailable, requested))
+                        InferResult.Busy -> sendErrorTo(message.replyTo, getString(R.string.prototype_generation_busy))
+                        null -> Unit
                     }
                 }
                 else -> super.handleMessage(message)
@@ -994,7 +982,7 @@ class VoiceBoxBackendService : Service() {
                     @Suppress("DEPRECATION")
                     val value = this@toGenerationRequest.get(key)
                     require(value is Number || value is String) { "$key must be a scalar." }
-                    put(if (key == BackendApiContract.KEY_MAX_DECODER_STEPS) "maxDecoderSteps" else key, value.toString())
+                    put(key, value.toString())
                 }
             }),
             language = getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),

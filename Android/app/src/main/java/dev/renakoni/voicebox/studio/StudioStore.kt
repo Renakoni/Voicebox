@@ -60,7 +60,7 @@ class StudioStore(context: Context) {
             StudioVoice(item.getString("id"), item.getString("name"),
                 ModelRef(item.getString("backend"), item.getString("variant"), item.getString("model")),
                 item.getString("audio"), item.getString("audioName"), item.getString("transcript"),
-                item.optLong("duration"), referenceLanguage = item.optString("referenceLanguage", "auto"))
+                item.getLong("duration"), referenceLanguage = item.getString("referenceLanguage"))
         }
     }
 

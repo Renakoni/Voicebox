@@ -3,7 +3,6 @@ package dev.renakoni.voicebox.model.gptsovits
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
@@ -73,22 +72,7 @@ class ReferenceConditioningCacheTest {
         assertEquals(1f, first.globalEmbedding.values[0], 0f)
         assertEquals(2f, second.globalEmbedding.values[0], 0f)
         assertEquals(first, cache.get(firstKey))
-    }
-
-    @Test
-    fun auxiliaryPromptKeyIncludesPrimaryReferenceFingerprint() {
-        val auxiliary = listOf(ReferenceAudioFingerprint("/ref/aux.wav", 2L, 2L))
-
-        val first = promptKey(
-            primary = ReferenceAudioFingerprint("/ref/primary-one.wav", 1L, 1L),
-            auxiliary = auxiliary,
-        )
-        val replacementPrimary = promptKey(
-            primary = ReferenceAudioFingerprint("/ref/primary-two.wav", 3L, 3L),
-            auxiliary = auxiliary,
-        )
-
-        assertNotEquals(first, replacementPrimary)
+        assertNull(cache.get(firstKey.copy(primaryReferenceAudio = primary.copy(size = primary.size + 1))))
     }
 
     @Test
@@ -96,7 +80,7 @@ class ReferenceConditioningCacheTest {
         val base = key()
         val changes = listOf(
             base.copy(referenceText = "different text"),
-            base.copy(referenceAudioSize = 42L, referenceAudioLastModified = 7L),
+            base.copy(referenceAudio = base.referenceAudio.copy(size = 42L, lastModified = 7L)),
             base.copy(preprocessingVersion = "new-preprocessing"),
             base.copy(modelInterfaceVersion = "new-interface"),
         )
@@ -115,7 +99,7 @@ class ReferenceConditioningCacheTest {
             characterModelId = "mansui",
             backend = ExecutionBackend.CPU,
             language = "zh",
-            referenceAudioPath = referenceAudioPath,
+            referenceAudio = ReferenceAudioFingerprint(referenceAudioPath, 1L, 1L),
             referenceText = referenceText,
             usesPromptEncoder = true,
             modelInterfaceVersion = "prompt-v2",

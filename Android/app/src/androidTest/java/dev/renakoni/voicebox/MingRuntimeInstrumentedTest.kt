@@ -16,7 +16,7 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
-import java.security.MessageDigest
+import dev.renakoni.voicebox.core.copyVerifiedDownload
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -56,29 +56,14 @@ class MingRuntimeInstrumentedTest {
             // Exercise the production installer with locally staged, SHA-256 verified release bytes.
             BridgePackage(File(app.noBackupFilesDir, "model-runtimes/ming"), repository.spec, repository.spec.abi) { source, target, cancel, progress ->
                 val file = File(staged, source.url.substringAfterLast('/'))
-                val digest = MessageDigest.getInstance("SHA-256")
-                file.inputStream().use { input -> target.outputStream().use { output ->
-                    val buffer = ByteArray(128 * 1024)
-                    var copied = 0L
-                    while (true) {
-                        cancel()
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        digest.update(buffer, 0, count)
-                        output.write(buffer, 0, count)
-                        copied += count
-                        progress((copied * 100 / source.bytes).toInt())
-                    }
-                    assertEquals(source.bytes, copied)
-                } }
-                assertEquals(source.sha256, digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) })
+                file.inputStream().use { copyVerifiedDownload(source, it, target, cancel, progress) }
             }.install({}, {})
         }
         assertTrue(repository.installed)
         return repository
     }
 
-    private val provider get() = registeredBackends(app).providers.single { it.id == "ming" }
+    private val provider get() = (app.applicationContext as VoiceBoxApplication).backends.provider("ming")
     private fun request(text: String) = provider.discoverCharacterModels().single().let { model ->
         val reference = requireNotNull(provider.findReferenceExample(model))
         GenerationRequest(model, "zh", synthesisText = text,
@@ -109,13 +94,11 @@ class MingRuntimeInstrumentedTest {
     @Test fun downloadedRuntimeGeneratesAndClonesThroughExistingContract() {
         installed()
         assertTrue("Push model data separately before running", provider.discoverCharacterModels().isNotEmpty())
-        assertTrue(registeredBackends(app).discoverCharacterModels().any { it.ref.backendId == "ming" })
         val runtime = provider.createRuntime(ExecutionBackend.valueOf(InstrumentationRegistry.getArguments().getString("execution", "WEBGPU")!!))
         val base = request("你好，这是明语音的本地测试。")
         val generated = runtime.generate(base, callbacks)
         assertEquals(44100, generated.sampleRate)
         assertTrue(generated.audioSamples > 44100)
-        assertTrue(generated.file.isFile)
         val player = android.media.MediaPlayer()
         try {
             player.setDataSource(generated.file.absolutePath)

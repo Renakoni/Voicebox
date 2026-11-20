@@ -12,7 +12,7 @@ import numpy as np
 import onnx
 from onnx import helper as h, numpy_helper as nh, TensorProto as T
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[4]
 DOWNLOADS = ROOT.parent / "assets/downloads"
 OUT = ROOT.parent / "assets/language-frontends"
 REVISION = "52b17272e0b7032415e85ad37b551db2386b1810"

@@ -4,27 +4,27 @@
   "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "fb63258478704b656e1db08b8144966a16367c3b71d7bb8eb00e4ba931ad4798",
+  "adapterSourceSha256": "bd918485d457933834d20fa981ff1e18b913e0da79b9f70f9a08fe37d23afce8",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
   "version": "2",
-  "revision": "edbd174320de0bc90fa91c915de16af891a7ff74b14916dbc2d8fccaf93ac8e0",
+  "revision": "73f4924c8e50210ca2451fe44764b3b66483f55b437a1f2f146fd44147fd775e",
   "parts": [
     {
       "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2/ming-backend-v2-arm64-v8a.zip",
-      "bytes": 17070889,
-      "sha256": "f55f3c7766538dd2f67d9a9fd1254538d2345a2c66b03b63a0b748a261d4382b"
+      "bytes": 17070908,
+      "sha256": "73f4924c8e50210ca2451fe44764b3b66483f55b437a1f2f146fd44147fd775e"
     }
   ],
   "files": {
     "webgpu-probe.onnx": 95,
     "bridge.json": 276,
-    "tasks.jar": 51636,
+    "tasks.jar": 51624,
     "libonnxruntime.so": 29166016,
-    "libming-synthesize.so": 11979520,
-    "libming-reference.so": 10026072,
-    "libming-mmla-neon.so": 1990384,
-    "libming-mmla-bf16.so": 3308720
+    "libming-synthesize.so": 11978848,
+    "libming-reference.so": 10025888,
+    "libming-mmla-neon.so": 1990168,
+    "libming-mmla-bf16.so": 3308488
   }
 }

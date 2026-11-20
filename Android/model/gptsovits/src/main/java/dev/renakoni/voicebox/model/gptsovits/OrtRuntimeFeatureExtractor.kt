@@ -112,26 +112,34 @@ class OrtRuntimeFeatureExtractor(
         val timer = InferenceTimer(traceLogger)
         var retainRobertaSession = false
         try {
-            val inspection = runtimeAssets.inspect()
-            require(inspection.isComplete) {
-                "Missing runtime assets under ${runtimeAssets.runtimeRoot().absolutePath}: ${inspection.missingFiles.joinToString(", ")}"
-            }
-
             val isV2ProPlus = backend.hasPromptEncoder()
-            val auxiliaryReferencePaths = canonicalAuxiliaryReferencePaths(request.auxiliaryReferenceAudioPaths)
-            if (auxiliaryReferencePaths.isNotEmpty()) {
+            val primaryAudio = referenceAudioFingerprint(request.referenceAudioPath)
+            val auxiliaryAudio = request.auxiliaryReferenceAudioPaths.map(::referenceAudioFingerprint)
+            if (auxiliaryAudio.isNotEmpty()) {
                 require(isV2ProPlus) { "Auxiliary references require a V2ProPlus prompt encoder." }
-                val primaryReferencePath = canonicalReferencePath(request.referenceAudioPath)
-                require(auxiliaryReferencePaths.none { it == primaryReferencePath }) {
-                    "Auxiliary reference path duplicates the primary reference."
+                val seen = mutableSetOf<String>()
+                for (audio in auxiliaryAudio) {
+                    require(audio.size >= 0) { "Auxiliary reference audio not found: ${audio.canonicalPath}" }
+                    require(audio.canonicalPath != primaryAudio.canonicalPath) { "Auxiliary reference path duplicates the primary reference." }
+                    require(seen.add(audio.canonicalPath)) { "Auxiliary reference paths must be unique." }
                 }
             }
 
             val normalizedPromptLanguage = LanguageTags.normalize(request.promptLanguage)
-            val primaryCacheKey = referenceCacheKey(request, normalizedPromptLanguage, isV2ProPlus)
+            val modelVersion = modelInterfaceVersion(request.characterModel)
+            val primaryCacheKey = ReferenceConditioningCacheKey(
+                characterModelId = request.characterModel.id, backend = backend.backend, language = normalizedPromptLanguage,
+                referenceAudio = primaryAudio, referenceText = request.referenceText, usesPromptEncoder = isV2ProPlus,
+                modelInterfaceVersion = modelVersion, preprocessingVersion = REFERENCE_PREPROCESSING_VERSION,
+                conditioningRole = if (isV2ProPlus) InferenceModelRole.PROMPT_ENCODER else InferenceModelRole.VOCODER,
+            )
             val cachedPrimary = referenceCache.get(primaryCacheKey)
             val promptCacheKey = if (isV2ProPlus) {
-                promptConditioningCacheKey(request, auxiliaryReferencePaths)
+                PromptConditioningCacheKey(
+                    characterModelId = request.characterModel.id, backend = backend.backend, modelInterfaceVersion = modelVersion,
+                    preprocessingVersion = REFERENCE_PREPROCESSING_VERSION, conditioningRole = InferenceModelRole.PROMPT_ENCODER,
+                    primaryReferenceAudio = primaryAudio, auxiliaryReferenceAudioFingerprints = auxiliaryAudio,
+                )
             } else {
                 null
             }
@@ -240,17 +248,14 @@ class OrtRuntimeFeatureExtractor(
                             GenerationProgress.PROMPT_CONDITIONING_START,
                             "Prompt conditioning",
                         )
-                        // Capability inspection opens the optional prompt graph.
                         if (!retainRoberta) {
                             closeRobertaSession()
                         }
-                        requireNotNull(backend.multiReferenceCapability())
-                            .validateAuxiliaryReferencePaths(auxiliaryReferencePaths)
                         backend.releasePreparationSessions()
                         computePromptConditioning(
                             primary = primary,
-                            auxiliaryReferencePaths = auxiliaryReferencePaths,
-                            modelInterfaceVersion = modelInterfaceVersion(request.characterModel),
+                            auxiliaryAudio = auxiliaryAudio,
+                            modelInterfaceVersion = modelVersion,
                             timer = timer,
                         )
                     }
@@ -487,7 +492,7 @@ class OrtRuntimeFeatureExtractor(
 
     private fun computePromptConditioning(
         primary: ReferenceConditioning,
-        auxiliaryReferencePaths: List<String>,
+        auxiliaryAudio: List<ReferenceAudioFingerprint>,
         modelInterfaceVersion: String,
         timer: InferenceTimer,
     ): PromptEmbeddings {
@@ -495,7 +500,7 @@ class OrtRuntimeFeatureExtractor(
             speakerEmbeddingMetric(0),
             requireNotNull(primary.primarySpeakerEmbedding).values,
         )
-        val promptEmbeddings = if (auxiliaryReferencePaths.isEmpty()) {
+        val promptEmbeddings = if (auxiliaryAudio.isEmpty()) {
             timer.measure("prompt_encoder_ms") {
                 backend.encodePrompt(
                     requireNotNull(primary.primaryAudio32k),
@@ -506,8 +511,8 @@ class OrtRuntimeFeatureExtractor(
             val auxiliaryConditioning = run {
                 ensureSpeakerSession()
                 try {
-                    auxiliaryReferencePaths.mapIndexed { index, path ->
-                        loadAuxiliaryReference(path, modelInterfaceVersion).also { conditioning ->
+                    auxiliaryAudio.mapIndexed { index, audio ->
+                        loadAuxiliaryReference(audio, modelInterfaceVersion).also { conditioning ->
                             timer.traceFloatTensor(
                                 speakerEmbeddingMetric(index + 1),
                                 conditioning.speakerEmbedding.values,
@@ -549,11 +554,11 @@ class OrtRuntimeFeatureExtractor(
         NamedInferenceTensorMetric("speaker_embedding_${referenceIndex}_hash")
 
     private fun loadAuxiliaryReference(
-        path: String,
+        audio: ReferenceAudioFingerprint,
         modelInterfaceVersion: String,
     ): AuxiliaryReferenceConditioning {
         val cacheKey = AuxiliaryReferenceCacheKey(
-            audio = referenceAudioFingerprint(path),
+            audio = audio,
             modelInterfaceVersion = modelInterfaceVersion,
             preprocessingVersion = REFERENCE_PREPROCESSING_VERSION,
             backend = backend.backend,
@@ -570,84 +575,15 @@ class OrtRuntimeFeatureExtractor(
         }
     }
 
-    private fun referenceCacheKey(
-        request: GenerationRequest,
-        normalizedPromptLanguage: String,
-        isV2ProPlus: Boolean,
-    ): ReferenceConditioningCacheKey =
-        ReferenceConditioningCacheKey(
-            characterModelId = request.characterModel.id,
-            backend = backend.backend,
-            language = normalizedPromptLanguage,
-            referenceAudioPath = canonicalReferencePath(request.referenceAudioPath),
-            referenceAudioSize = File(request.referenceAudioPath)
-                .takeIf(File::exists)
-                ?.length()
-                ?: -1L,
-            referenceAudioLastModified = File(request.referenceAudioPath)
-                .takeIf(File::exists)
-                ?.lastModified()
-                ?: -1L,
-            referenceText = request.referenceText,
-            usesPromptEncoder = isV2ProPlus,
-            modelInterfaceVersion = modelInterfaceVersion(request.characterModel),
-            preprocessingVersion = REFERENCE_PREPROCESSING_VERSION,
-            conditioningRole = if (isV2ProPlus) {
-                InferenceModelRole.PROMPT_ENCODER
-            } else {
-                InferenceModelRole.VOCODER
-            },
-        )
-
-    private fun promptConditioningCacheKey(
-        request: GenerationRequest,
-        auxiliaryReferencePaths: List<String>,
-    ): PromptConditioningCacheKey =
-        PromptConditioningCacheKey(
-            characterModelId = request.characterModel.id,
-            backend = backend.backend,
-            modelInterfaceVersion = modelInterfaceVersion(request.characterModel),
-            preprocessingVersion = REFERENCE_PREPROCESSING_VERSION,
-            conditioningRole = InferenceModelRole.PROMPT_ENCODER,
-            primaryReferenceAudio = referenceAudioFingerprint(request.referenceAudioPath),
-            auxiliaryReferenceAudioFingerprints = auxiliaryReferencePaths.map(::referenceAudioFingerprint),
-        )
-
-    private fun modelInterfaceVersion(characterModel: CharacterModel): String =
-        buildString {
-            append(characterModel.modelFiles.variantName)
-            append("|storage=")
-            append(characterModel.modelFiles.storageVersion)
-            append("|sessions=")
-            append(characterModel.modelFiles.sessionModels.joinToString(","))
-            append("|optional_sessions=")
-            append(characterModel.modelFiles.optionalSessionModels.joinToString(","))
-        }
-
-    private fun canonicalReferencePath(path: String): String {
-        val file = File(path)
-        return runCatching { file.canonicalPath }.getOrElse { file.absolutePath }
-    }
-
-    private fun canonicalAuxiliaryReferencePaths(paths: List<String>): List<String> {
-        val canonical = paths.map(::canonicalReferencePath)
-        require(canonical.none(String::isBlank)) { "Auxiliary reference paths cannot be blank." }
-        require(canonical.distinct().size == canonical.size) {
-            "Auxiliary reference paths must be unique."
-        }
-        canonical.forEach { path ->
-            require(File(path).isFile) { "Auxiliary reference audio not found: $path" }
-        }
-        return canonical
+    private fun modelInterfaceVersion(characterModel: CharacterModel): String = with(characterModel.modelFiles) {
+        "$variantName|storage=$storageVersion|sessions=${sessionModels.joinToString(",")}|optional_sessions=${optionalSessionModels.joinToString(",")}"
     }
 
     private fun referenceAudioFingerprint(path: String): ReferenceAudioFingerprint {
-        val file = File(canonicalReferencePath(path))
-        return ReferenceAudioFingerprint(
-            canonicalPath = file.absolutePath,
-            size = if (file.isFile) file.length() else -1L,
-            lastModified = if (file.isFile) file.lastModified() else -1L,
-        )
+        val input = File(path)
+        val file = runCatching { input.canonicalFile }.getOrElse { input.absoluteFile }
+        return if (file.isFile) ReferenceAudioFingerprint(file.path, file.length(), file.lastModified())
+            else ReferenceAudioFingerprint(file.path, -1L, -1L)
     }
 
     private fun ReferenceConditioning.toPreparedInput(textFeatures: TextFeatures): TtsPreparedInput =

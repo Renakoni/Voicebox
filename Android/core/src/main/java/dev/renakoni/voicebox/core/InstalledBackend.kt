@@ -26,7 +26,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
         val directory = archive.directory ?: return null
         return archive.openProvider(context, directory, context.cacheDir, settings()).also { cached = it }
     }
-    override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet(), emptySet())
+    override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
     override val supportsWarmup get() = metadata()?.supportsWarmup == true
     override fun languageError(language: String, text: String) = metadata()?.languageError(language, text)
     override fun discoverCharacterModels() = metadata()?.discoverCharacterModels().orEmpty()
@@ -36,7 +36,10 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     private fun library() = metadata() as? VoiceLibrary
     override fun officialVoices() = library()?.officialVoices().orEmpty()
     override fun variantLabel(variant: String) = library()?.variantLabel(variant) ?: ""
-    override fun resourcesReady(variant: String) = library()?.resourcesReady(variant) ?: archive.installed
+    override fun resourcesReady(variant: String): Boolean {
+        val provider = metadata() ?: return false
+        return provider !is VoiceLibrary || provider.resourcesReady(variant)
+    }
     override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)

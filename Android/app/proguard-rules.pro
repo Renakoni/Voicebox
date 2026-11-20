@@ -11,5 +11,4 @@
 # The separately compiled packages resolve their API and Kotlin runtime through the parent loader.
 -keep class dev.renakoni.voicebox.bridge.** { *; }
 -keep class dev.renakoni.voicebox.core.** { *; }
--keep interface dev.renakoni.voicebox.bridge.** { *; }
 -keep class kotlin.** { *; }

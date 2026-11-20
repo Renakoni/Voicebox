@@ -24,9 +24,8 @@ class OrtCpuBackend(
     private val configureRoleSessionOptions: ((OrtSession.SessionOptions, InferenceModelRole) -> Unit)? = null,
     // Keep autoregressive execution and shared KV buffers in native code.
     private val useNativeDecoder: Boolean = false,
-    private val qnnRuntimeDirectory: () -> File? = { null },
+    private val qnnRuntimeDirectory: File? = null,
     private val qnnPerformance: String = "balanced",
-    private val onNpuUnavailable: () -> Unit = {},
 ) : AutoCloseable, PreparedTtsBackend {
 
     private val environment: OrtEnvironment by lazy(LazyThreadSafetyMode.NONE) {
@@ -35,11 +34,11 @@ class OrtCpuBackend(
     private val sessions: MutableMap<String, OrtSession> = linkedMapOf()
     private val sessionFiles: MutableMap<String, File> = linkedMapOf()
     private var modelFiles: RequiredModelFiles? = null
-    private var multiReferenceCapabilityResolved = false
     private var cachedMultiReferenceCapability: MultiReferenceCapability? = null
     private var v5Acoustic: V5AcousticRuntime? = null
     private var v5DiT: V5DiTRuntime? = null
     private var v2Htp: V2HtpVocoder? = null
+    private var modelQnnRuntime: File? = null
     val usesNpu: Boolean get() = v5DiT?.lastUsedNpu == true || v2Htp?.lastUsedNpu == true
 
     @Volatile
@@ -72,21 +71,6 @@ class OrtCpuBackend(
     fun hasPromptEncoder(): Boolean =
         sessionFiles.keys.any { it.contains("prompt_encoder", ignoreCase = true) }
 
-    fun multiReferenceCapability(): MultiReferenceCapability? {
-        if (multiReferenceCapabilityResolved) return cachedMultiReferenceCapability
-        val resolved = when {
-            !hasPromptEncoder() -> null
-            MULTI_REFERENCE_PROMPT_ENCODER !in sessionFiles ->
-                MultiReferenceCapability(supported = false)
-            else -> runCatching {
-                MultiReferenceCapability.fromSession(session(MULTI_REFERENCE_PROMPT_ENCODER))
-            }.getOrDefault(MultiReferenceCapability(supported = false))
-        }
-        multiReferenceCapabilityResolved = true
-        cachedMultiReferenceCapability = resolved
-        return resolved
-    }
-
     data class CpuThreadPlan(
         val intraOpThreads: Int,
         val interOpThreads: Int,
@@ -101,6 +85,7 @@ class OrtCpuBackend(
 
     fun initialize(modelRoot: File, characterModel: CharacterModel) {
         close()
+        modelQnnRuntime = qnnRuntimeDirectory
 
         val modelDirectory = File(modelRoot, characterModel.relativeModelDirectory)
         val sessionModelNames = characterModel.modelFiles.sessionModelNames(
@@ -127,7 +112,7 @@ class OrtCpuBackend(
                     File(modelDirectory, name).takeIf { it.isFile }?.let { resolvedFiles[name] = it }
                 }
                 v5DiT = V5DiTRuntime(environment, ::session, { name -> closeSessions { it == name } },
-                    modelDirectory, qnnRuntimeDirectory, qnnPerformance, traceLogger, onNpuUnavailable)
+                    modelDirectory, { modelQnnRuntime }, qnnPerformance, traceLogger) { modelQnnRuntime = null }
             }
             v5Acoustic = V5AcousticRuntime(environment, ::session, traceLogger, v5DiT,
                 accelerationProgress = { done, total, compiling ->
@@ -140,8 +125,8 @@ class OrtCpuBackend(
             SplitVocoderAssets.validate(modelDirectory).forEach { resolvedFiles[it] = File(modelDirectory, it) }
             if (V2HtpVocoder.hasGraphs(modelDirectory)) {
                 for (name in listOf(V2HtpVocoder.STEM, V2HtpVocoder.HEAD)) resolvedFiles[name] = File(modelDirectory, name)
-                v2Htp = V2HtpVocoder(environment, ::session, modelDirectory, qnnRuntimeDirectory,
-                    qnnPerformance, traceLogger, onNpuUnavailable)
+                v2Htp = V2HtpVocoder(environment, ::session, modelDirectory, { modelQnnRuntime },
+                    qnnPerformance, traceLogger) { modelQnnRuntime = null }
             }
         }
         sessionFiles.putAll(resolvedFiles)
@@ -554,7 +539,7 @@ class OrtCpuBackend(
             session(V5AcousticRuntime.VOCODER)
         } else if (backend == ExecutionBackend.WEBGPU) {
             session(SplitVocoderAssets.ENCODER)
-            if (v2Htp != null && qnnRuntimeDirectory() != null) {
+            if (v2Htp != null && modelQnnRuntime != null) {
                 session(V2HtpVocoder.STEM)
                 session(V2HtpVocoder.HEAD)
             } else session(SplitVocoderAssets.HIFIGAN)
@@ -607,22 +592,12 @@ class OrtCpuBackend(
         referenceAudio32k: List<FloatArray>,
         speakerEmbeddings: List<FloatTensorData>,
     ): PromptEmbeddings {
-        require(referenceAudio32k.isNotEmpty()) { "At least one reference audio is required." }
         require(referenceAudio32k.size == speakerEmbeddings.size) {
             "Reference audio and speaker embedding counts must match."
         }
-        return runPromptBatchGraph(referenceAudio32k, speakerEmbeddings)
-    }
-
-    private fun runPromptBatchGraph(
-        referenceAudio32k: List<FloatArray>,
-        speakerEmbeddings: List<FloatTensorData>,
-    ): PromptEmbeddings {
-        val capability = requireNotNull(multiReferenceCapability()) {
-            "The loaded model does not provide the multi-reference prompt encoder."
-        }
-        // This layer receives tensors rather than paths; validate the count without
-        // inventing duplicate path values that would reject valid ordered slots.
+        require(MULTI_REFERENCE_PROMPT_ENCODER in sessionFiles) { "The loaded model does not provide the multi-reference prompt encoder." }
+        val promptSession = session(MULTI_REFERENCE_PROMPT_ENCODER)
+        val capability = cachedMultiReferenceCapability ?: MultiReferenceCapability.fromSession(promptSession).also { cachedMultiReferenceCapability = it }
         capability.validateReferenceCount(referenceAudio32k.size)
         val maxReferenceCount = capability.maxReferenceCount
         val placeholderAudioSamples = capability.placeholderAudioSamples
@@ -653,7 +628,7 @@ class OrtCpuBackend(
                 ).also(ownedTensors::add)
                 feed["sv_emb_$index"] = createFloatTensor(embedding).also(ownedTensors::add)
             }
-            session(MULTI_REFERENCE_PROMPT_ENCODER).runCancellable(feed).use { result ->
+            promptSession.runCancellable(feed).use { result ->
                 return PromptEmbeddings(
                     globalEmbedding = floatTensorData(result.get(0) as OnnxTensor),
                     advancedGlobalEmbedding = floatTensorData(result.get(1) as OnnxTensor),
@@ -674,7 +649,6 @@ class OrtCpuBackend(
         sessionFiles.clear()
         modelFiles = null
         v5Acoustic = null
-        multiReferenceCapabilityResolved = false
         cachedMultiReferenceCapability = null
         retainT2SSessionsAfterGeneration = false
         retainVocoderSessionAfterGeneration = false

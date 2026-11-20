@@ -11,7 +11,7 @@ class GenerationRequestGate {
     private var delivered = false
 
     @Synchronized
-    fun tryAcquire(context: GenerationContext = GenerationContext()): Boolean {
+    fun tryAcquire(context: GenerationContext): Boolean {
         if (stopped || active != null || context.cancellationReason != null) return false
         context.generationEpoch = epoch
         active = context
@@ -21,7 +21,7 @@ class GenerationRequestGate {
     }
 
     @Synchronized
-    fun release(context: GenerationContext? = active) {
+    fun release(context: GenerationContext) {
         if (active === context) active = null
     }
 

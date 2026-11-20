@@ -1,7 +1,7 @@
 package dev.renakoni.voicebox.core
 
 
-/** Text-based default for old packages without language metadata, never audio recognition. */
+/** Resolve automatic reference language from the supplied transcript. */
 object ReferenceLanguage {
     fun resolve(language: String, text: String): String = when {
         language.isNotBlank() && language != "auto" -> LanguageTags.normalize(language)

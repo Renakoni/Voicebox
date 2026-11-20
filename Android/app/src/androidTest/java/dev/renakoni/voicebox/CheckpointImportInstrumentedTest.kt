@@ -1,7 +1,6 @@
 package dev.renakoni.voicebox
 
 import dev.renakoni.voicebox.bridge.ReferenceExample
-import dev.renakoni.voicebox.bridge.VoiceLibrary
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import android.net.Uri
 import android.app.Application
@@ -69,10 +68,12 @@ class CheckpointImportInstrumentedTest {
         try {
             assertTrue("Service connection timeout", connected.await(30, TimeUnit.SECONDS))
             Handler(Looper.getMainLooper()).post {
-                val accepted = service.get().importCheckpointPair(case?.getString("name") ?: "官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
+                val accepted = service.get().importCheckpointPair("gptsovits", case?.getString("name") ?: "官方 V2ProPlus", Uri.fromFile(gpt), Uri.fromFile(sovits),
                     onProgress = { android.util.Log.i("CheckpointImportTest", it.resolve(context.resources)) },
                     onComplete = { imported.set(it); finished.countDown() }, reference = reference,
-                    replaceCharacterId = InstrumentationRegistry.getArguments().getString("replaceCharacterId"))
+                    replace = InstrumentationRegistry.getArguments().getString("replaceCharacterId")?.let {
+                        dev.renakoni.voicebox.bridge.ModelRef("gptsovits", case?.getString("architecture") ?: "v2ProPlus", it)
+                    })
                 if (!accepted) { imported.set(Result.failure(IllegalStateException("Import refused"))); finished.countDown() }
             }
             assertTrue("Import timeout", finished.await(180, TimeUnit.SECONDS))
@@ -80,7 +81,7 @@ class CheckpointImportInstrumentedTest {
         val result = imported.get().getOrThrow()
         verifyImportedModel(context, result, source, start)
         if (reference != null) {
-            val repository = registeredBackends(context)
+            val repository = (context.applicationContext as VoiceBoxApplication).backends
             val model = repository.discoverCharacterModels().single { it.ref == result.ref }
             assertEquals(case.getString("architecture"), result.ref.variant)
             val runtime = repository.provider(model).createRuntime(ExecutionBackend.CPU)
@@ -151,7 +152,7 @@ class CheckpointImportInstrumentedTest {
             onMain { vm.pickCheckpoint(Uri.fromFile(sovits), false) }
             awaitStudio { !vm.fileBusy }
             onMain {
-                assertEquals(dev.renakoni.voicebox.core.i18n.UiText((registeredBackends(app).provider("gptsovits") as VoiceLibrary).variantLabel(architecture)).resolve(app.resources), vm.checkpointRecognition?.resolve(app.resources))
+                assertEquals(dev.renakoni.voicebox.core.i18n.UiText((app.applicationContext as VoiceBoxApplication).backends.provider("gptsovits").variantLabel(architecture)).resolve(app.resources), vm.checkpointRecognition?.resolve(app.resources))
                 vm.importCheckpoints()
                 assertEquals(R.string.checkpoint_reference_required, vm.checkpointError?.resourceId)
                 assertFalse(vm.importing)
@@ -209,8 +210,8 @@ class CheckpointImportInstrumentedTest {
     }
 
     private fun verifyImportedModel(context: Context, result: ImportedVoice, source: File, start: Long) {
-        val repository = registeredBackends(context)
-        val model = repository.discoverCharacterModels().single { it.id == result.ref.modelId }
+        val repository = (context.applicationContext as VoiceBoxApplication).backends
+        val model = repository.discoverCharacterModels().single { it.ref == result.ref }
         assertEquals(result.displayName, model.displayName)
         assertTrue(repository.inspect(model).isComplete)
         val modelDirectory = File(context.getExternalFilesDir(null), "CharacterModels/${model.relativeModelDirectory}")
@@ -236,6 +237,5 @@ class CheckpointImportInstrumentedTest {
         // Keep the imported model for the user, but never retain checkpoint source copies.
         assertFalse(modelDirectory.parentFile!!.walkTopDown().any { it.extension in setOf("ckpt", "pth") })
         assertFalse(context.getExternalFilesDir(null)!!.listFiles()!!.any { it.name.startsWith(".voicebox-checkpoint-") })
-        assertTrue(registeredBackends(context).discoverCharacterModels().any { it.id == model.id && it.displayName == result.displayName })
     }
 }

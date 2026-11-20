@@ -5,7 +5,7 @@
 <h1 align="center">Voicebox</h1>
 
 <p align="center">
-  <strong>GPT-SoVITS in your pocket.</strong><br>
+  <strong>Voice synthesis and cloning on Android</strong><br>
   High-quality on-device voice cloning for Android, no cloud or external GPUs required.
 </p>
 
@@ -104,13 +104,13 @@ Requires JDK 21, Android SDK 37 (with NDK and CMake) and Python 3.12+.
 ```powershell
 git clone https://github.com/Renakoni/Voicebox.git
 cd Voicebox
-python -m pip install numpy onnx
-python tools/prepare_language_assets.py
 cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-The default build uses the CPU for inference. To enable WebGPU, build the custom ONNX Runtime and pass its AAR to Gradle with `-PvoiceboxOrtAar=<path-to-AAR>`. [Build script](tools/build_ort_webgpu.ps1) · [Patches](patches)
+The app builds its GPT-SoVITS bridge from source. Settings → Models shows its installation separately from voice weights. Ming uses the same generation and audio API after its bridge and Android-exported voice data are installed. [Backend build and verification](Android/model/gptsovits/README.md) · [Ming package](Android/model/ming/README.md)
+
+The default build uses the CPU for inference. To enable WebGPU, build the custom ONNX Runtime and pass its AAR to Gradle with `-PvoiceboxOrtAar=<path-to-AAR>`. [Build script](tools/build_ort_webgpu.ps1) · [Patches](Android/model/gptsovits/patches)
 
 ## Feedback and contributing
 
@@ -124,4 +124,4 @@ The Roxy voice in the demo videos comes from [Shinowing](https://github.com/Shin
 
 Voicebox's original code and modifications are licensed under [GNU AGPL-3.0](LICENSE).
 
-Third-party components retain their own copyrights and licenses; see [licenses](licenses), the [native dependency directory](Android/app/src/main/cpp/third_party) and the `*-licenses` directories in the app assets. Releases include the corresponding source for the relevant dependencies.
+Third-party components retain their own copyrights and licenses; see [licenses](licenses), the native dependencies in [app](Android/app/src/main/cpp/third_party), [core](Android/core/src/main/cpp/third_party) and [GPT-SoVITS](Android/model/gptsovits/src/main/cpp/third_party), and the `*-licenses` assets in the app and bridge. Releases include the corresponding source for the relevant dependencies.

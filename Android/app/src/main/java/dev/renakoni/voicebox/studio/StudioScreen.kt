@@ -257,7 +257,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                         inner()
                     }
                 })
-            if (vm.hasSynthesisOptions) AdvancedSynthesisSettings(vm)
+            if (vm.optionControls.isNotEmpty()) AdvancedSynthesisSettings(vm)
             FlowRow(Modifier.fillMaxWidth().padding(bottom = 16.dp), itemVerticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 Text(resources.getString(R.string.character_count, vm.text.length), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,

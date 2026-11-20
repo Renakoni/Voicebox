@@ -51,7 +51,7 @@ class GenerationLifecycleInstrumentedTest {
     private val secondVoice = InstrumentationRegistry.getArguments().getString("secondVoice", "mansui")!!
 
     private fun request(long: Boolean = false, voiceId: String = firstVoice): GenerationRequest {
-        val repository = registeredBackends(context)
+        val repository = (context.applicationContext as VoiceBoxApplication).backends
         val model = repository.discoverCharacterModels().let { models ->
             requireNotNull(models.singleOrNull { it.id == voiceId }) { "Missing fixture $voiceId: ${models.map { it.ref }}" }
         }
@@ -61,7 +61,7 @@ class GenerationLifecycleInstrumentedTest {
             synthesisText = if (long) "陈长安走到桥边，望着远处渐渐亮起的灯火。他从口袋里取出那封信，仔细读了一遍，才轻声说道：明天上午九点，我们在银行门口见面。" else "清晨的阳光穿过窗帘，轻轻落在书页上。",
             referenceAudioPath = reference.audioFile.absolutePath,
             referenceText = reference.referenceText,
-            options = (repository.provider(model) as dev.renakoni.voicebox.bridge.VoiceLibrary).studioOptions(emptyMap()),
+            options = repository.provider(model).studioOptions(emptyMap()),
         )
     }
 
@@ -87,9 +87,9 @@ class GenerationLifecycleInstrumentedTest {
 
     @Test
     fun timeoutNativeCancelVoiceChangeAndDestroyLeaveNextRequestUsable() {
-        dev.renakoni.voicebox.core.BridgePackages(context).installBundled()
         var (service, connection) = bind()
         try {
+            await { service.catalogReady.isCompleted }
             assertWakeLocks(generating = false)
             val timed = request()
             assertEquals(InferResult.Timeout, service.inferBlocking(backend, timed, 1))

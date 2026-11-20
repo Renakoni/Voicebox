@@ -5,6 +5,7 @@ import dev.renakoni.voicebox.core.i18n.requireUi
 import dev.renakoni.voicebox.core.i18n.errorUi
 
 import dev.renakoni.voicebox.model.gptsovits.HalfPrecision
+import dev.renakoni.voicebox.bridge.ModelRef
 import org.json.JSONObject
 import java.io.File
 import java.io.InputStream
@@ -31,7 +32,7 @@ class CheckpointImporter(
         progress: (UiText) -> Unit = {},
         checkCancelled: () -> Unit = {},
         reference: Reference? = null,
-        replaceCharacterId: String? = null,
+        replace: ModelRef? = null,
         gptFilename: String = "",
         sovitsFilename: String = "",
         architectureHint: String? = null,
@@ -51,20 +52,22 @@ class CheckpointImporter(
             lateinit var architecture: String
             lateinit var manifestBytes: ByteArray
             lateinit var manifest: JSONObject
-            var existing: File? = null
+            val existing = replace?.let { CharacterVoiceEditor(filesRoot).character(it.modelId, it.variant) }
             progress(UiText("reading_gpt"))
             val gptFile = File(staging, "source.ckpt")
             val gptHash = copyCheckpoint(openGpt, gptFile, checkCancelled)
             progress(UiText("reading_sovits"))
             val sovitsFile = File(staging, "source.pth")
             val sovitsHash = copyCheckpoint(openSovits, sovitsFile, checkCancelled)
-            val characterId = replaceCharacterId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
+            val characterId = replace?.modelId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
             val character = File(staging, characterId).apply { mkdirs() }
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
                 TorchCheckpoint(sovitsFile).use { sovits ->
                     architecture = validateArchitecture(gpt, sovits, sovitsHash, architectureHint)
-                    existing = replaceCharacterId?.let { CharacterVoiceEditor(filesRoot).character(it, architecture) }
+                    replace?.let { target -> requireUi(target.variant == architecture) {
+                        UiText("checkpoint_structure_mismatch", target.variant, architecture)
+                    } }
                     progress(UiText("reading_architecture", architecture))
                     manifestBytes = openAsset("${assetDirectory(architecture)}/manifest.json").use { it.readBytes() }
                     manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
@@ -140,7 +143,7 @@ class CheckpointImporter(
             checkCancelled()
             val parent = File(filesRoot, "CharacterModels/$architecture").apply { mkdirs() }
             if (existing == null) Files.move(character.toPath(), File(parent, characterId).toPath())
-            else CharacterVoiceEditor.replaceDirectory(character, requireNotNull(existing))
+            else CharacterVoiceEditor.replaceDirectory(character, existing)
             return Result(characterId, name.trim(), architecture)
         } finally {
             // A failed rollback must never erase the last working weights.

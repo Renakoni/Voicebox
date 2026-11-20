@@ -1,5 +1,6 @@
 package dev.renakoni.voicebox.model.gptsovits
 
+import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ModelInspectionResult
 import dev.renakoni.voicebox.bridge.ReferenceExample
@@ -23,11 +24,15 @@ class GptModelRepository(private val filesRoot: File) {
             CharacterModelCatalog.characters(variant, ids)
         }
         return result.map { model ->
-            val character = File(modelRoot, model.relativeModelDirectory).parentFile
+            val directory = File(modelRoot, model.relativeModelDirectory)
+            val character = directory.parentFile
             val imported = runCatching { JSONObject(File(character, "checkpoint-import.json").readText()) }.getOrNull()
             val displayName = runCatching { JSONObject(File(character, "prompt_wav.json").readText()).optString("display_name") }
                 .getOrNull()?.takeIf { it.isNotBlank() } ?: imported?.optString("display_name")
-            model.copy(displayName = displayName?.takeIf { it.isNotBlank() } ?: model.displayName,
+            val webGpu = model.ref.variant == "v5turbo" ||
+                listOf("split-vits.json", SplitVocoderAssets.ENCODER, SplitVocoderAssets.HIFIGAN).all { File(directory, it).isFile }
+            model.copy(executionModes = if (webGpu) ExecutionBackend.entries.toSet() else setOf(ExecutionBackend.CPU),
+                displayName = displayName?.takeIf { it.isNotBlank() } ?: model.displayName,
                 sourceFilenames = if (imported == null) emptyMap() else mapOf(
                     "gpt" to imported.optString("gpt_filename"), "sovits" to imported.optString("sovits_filename")))
         }
@@ -120,7 +125,7 @@ class GptModelRepository(private val filesRoot: File) {
         modelDirectory: File,
         requiredModelFiles: RequiredModelFiles,
     ): List<String> =
-        requiredModelFiles.sessionModelNames(modelDirectory).filterNot { fileName ->
+        requiredModelFiles.sessionModels.filterNot { fileName ->
             File(modelDirectory, fileName).isFile
         }
 }

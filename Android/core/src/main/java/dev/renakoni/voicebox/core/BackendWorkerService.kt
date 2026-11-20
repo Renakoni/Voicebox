@@ -17,6 +17,7 @@ class BackendWorkerService : Service() {
     private var owner: String? = null
     private var provider: BackendProvider? = null
     private var runtime: BackendRuntime? = null
+    private var lastModel: CharacterModel? = null
     private val messenger = Messenger(Handler(Looper.getMainLooper()) { message ->
         val data = Bundle(message.data)
         val session = data.getString("session")
@@ -69,6 +70,12 @@ class BackendWorkerService : Service() {
             val engine by lazy {
                 runtime ?: backend.createRuntime(ExecutionBackend.valueOf(data.getString("execution")!!)).also { runtime = it }
             }
+            fun request(): GenerationRequest {
+                val ref = ModelRef(backend.id, data.getString("variant")!!, data.getString("model")!!)
+                val model = lastModel?.takeIf { it.ref == ref }
+                    ?: backend.discoverCharacterModels().single { it.ref == ref }.also { lastModel = it }
+                return data.decode(model)
+            }
             when (what) {
                 WorkerProtocol.PROBE -> {
                     result.putStringArrayList("modes", ArrayList(backend.executionModes().map { it.name }))
@@ -91,9 +98,9 @@ class BackendWorkerService : Service() {
                     })
                 }
                 WorkerProtocol.TRIM -> engine.trimMemory()
-                WorkerProtocol.WARMUP -> data.decode(backend).let { it.context.run { engine.warmup(it) } }
+                WorkerProtocol.WARMUP -> request().let { it.context.run { engine.warmup(it) } }
                 WorkerProtocol.GENERATE -> {
-                    val request = data.decode(backend)
+                    val request = request()
                     val audio = request.context.run { engine.generate(request, object : BackendRuntimeCallbacks {
                         override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
                             send(WorkerProtocol.EVENT, Bundle().apply {

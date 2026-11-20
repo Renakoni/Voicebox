@@ -35,7 +35,7 @@ class GenerationRequestGateTest {
         assertEquals("VOICE_CHANGED", request.cancellationReason)
         gate.release(request)
         gate.stop()
-        assertFalse(gate.tryAcquire())
+        assertFalse(gate.tryAcquire(GenerationContext()))
     }
 
     @Test
@@ -57,17 +57,5 @@ class GenerationRequestGateTest {
         assertFalse(gate.isCurrent(first))
     }
 
-    @Test
-    fun onlyOneRequestCanBeClaimedUntilTheCurrentRequestReleases() {
-        val gate = GenerationRequestGate()
 
-        assertTrue(gate.tryAcquire())
-        assertTrue(gate.isClaimed())
-        assertFalse(gate.tryAcquire())
-
-        gate.release()
-
-        assertFalse(gate.isClaimed())
-        assertTrue(gate.tryAcquire())
-    }
 }

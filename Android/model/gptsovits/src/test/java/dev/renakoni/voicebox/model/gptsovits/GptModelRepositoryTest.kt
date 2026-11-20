@@ -33,8 +33,9 @@ class GptModelRepositoryTest {
             val metadata = File(models.parentFile, "checkpoint-import.json")
             metadata.writeText("""{"display_name":"音色","gpt_filename":"模型名称-e15.ckpt","sovits_filename":"模型名称-e8-s120.pth"}""")
             val model = GptModelRepository(root).discoverCharacterModels().single()
-            assertEquals("模型名称-e15.ckpt", model.gptFilename)
-            assertEquals("模型名称-e8-s120.pth", model.sovitsFilename)
+            assertEquals(setOf(dev.renakoni.voicebox.bridge.ExecutionBackend.CPU), model.executionModes)
+            assertEquals("模型名称-e15.ckpt", model.sourceFilenames["gpt"])
+            assertEquals("模型名称-e8-s120.pth", model.sourceFilenames["sovits"])
         } finally { root.deleteRecursively() }
     }
 
@@ -105,6 +106,6 @@ class GptModelRepositoryTest {
     }
 
     private fun modelV2ProPlus(id: String): CharacterModel =
-        CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf(id)).first()
+        CharacterModelCatalog.characters("v2ProPlus", listOf(id)).first()
 
 }

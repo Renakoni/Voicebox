@@ -4,6 +4,7 @@ import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.core.ReferenceLanguage
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -26,12 +27,11 @@ class LocalHttpApiServer(
     interface Bridge {
         fun currentState(): BackendServiceState
         fun availableModels(): List<CharacterModel>
-        fun supportedBackends(model: CharacterModel): Set<ExecutionBackend>
+        fun referenceExample(model: CharacterModel): dev.renakoni.voicebox.bridge.ReferenceExample?
         fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
             model.maxAuxiliaryReferences > 0
         fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String>
         fun activeDefaults(): ActiveDefaults?
-        fun infer(backend: ExecutionBackend, request: GenerationRequest): Boolean
         fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult
         fun cancel(requestId: String): Boolean = false
     }
@@ -121,7 +121,7 @@ class LocalHttpApiServer(
         }
     }
 
-    private fun route(method: String, path: String, body: String, queryParams: Map<String, String>): HttpResponse =
+    internal fun route(method: String, path: String, body: String = "", queryParams: Map<String, String> = emptyMap()): HttpResponse =
         when {
             method == "GET" && path == "/health" -> HttpResponse(
                 200,
@@ -170,13 +170,6 @@ class LocalHttpApiServer(
             else -> HttpResponse(404, errorJson("Route not found."))
         }
 
-    internal fun handleRequestForTest(
-        method: String,
-        path: String,
-        body: String = "",
-        queryParams: Map<String, String> = emptyMap(),
-    ): HttpResponse = route(method, path, body, queryParams)
-
     private fun infer(body: String): HttpResponse {
         val payload = runCatching { parseInferPayload(body) }.getOrElse {
             return HttpResponse(400, errorJson(it.message ?: "Invalid JSON body."))
@@ -186,38 +179,50 @@ class LocalHttpApiServer(
 
     private fun inferGet(params: Map<String, String>): HttpResponse {
         val defaults = bridge.activeDefaults()
+        val explicitModel = params.keys.any { it == "modelId" || it == "variant" || it == "backendId" }
         val payload = InferPayload(
             options = requestOptions(params),
-            backendId = params["backendId"] ?: defaults?.model?.backendId?.takeIf { "modelId" !in params },
-            variant = params["variant"] ?: defaults?.model?.variant?.takeIf { "modelId" !in params },
-            backendName = params["backend"] ?: defaults?.backend?.name ?: "",
-            modelId = params["modelId"] ?: defaults?.model?.modelId ?: "",
-            language = params["language"] ?: defaults?.language ?: "",
-            promptLanguage = params["promptLanguage"] ?: params["language"] ?: defaults?.promptLanguage ?: "",
-            text = params["text"] ?: "",
-            referenceAudioPath = params["referenceAudioPath"] ?: defaults?.referenceAudioPath ?: "",
-            referenceText = params["referenceText"] ?: defaults?.referenceText ?: "",
-            auxiliaryReferenceAudioPaths = params["auxReferenceAudioPaths"]
-                ?.split('|')
-                ?.map(String::trim)
-                ?.filter(String::isNotBlank)
-                ?: defaults?.auxiliaryReferenceAudioPaths.orEmpty(),
+            backendId = if (explicitModel) params["backendId"] else defaults?.model?.backendId,
+            variant = if (explicitModel) params["variant"] else defaults?.model?.variant,
+            modelId = params["modelId"] ?: defaults?.model?.modelId.orEmpty(),
+            backendName = params["backend"].orEmpty(),
+            language = params["language"].orEmpty(),
+            promptLanguage = params["promptLanguage"].orEmpty(),
+            text = params["text"].orEmpty(),
+            referenceAudioPath = params["referenceAudioPath"].orEmpty(),
+            referenceText = params["referenceText"].orEmpty(),
+            auxiliaryReferenceAudioPaths = params["auxReferenceAudioPaths"]?.split('|')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(),
         )
-        return inferWithPayload(payload)
+        return inferWithPayload(payload, defaults, useVoiceDefaults = true, useDefaultAuxiliary = "auxReferenceAudioPaths" !in params)
     }
 
-    private fun inferWithPayload(payload: InferPayload): HttpResponse {
-        val backend = payload.backendName
-            .ifBlank { ExecutionBackend.CPU.name }
-            .let { value -> ExecutionBackend.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
-            ?: return HttpResponse(400, errorJson("Unknown backend."))
+    private fun inferWithPayload(input: InferPayload, defaults: ActiveDefaults? = bridge.activeDefaults(),
+        useVoiceDefaults: Boolean = false, useDefaultAuxiliary: Boolean = false): HttpResponse {
         val matches = bridge.availableModels().filter {
-            it.id == payload.modelId && (payload.backendId == null || it.ref.backendId == payload.backendId) &&
-                (payload.variant == null || it.ref.variant == payload.variant)
+            it.id == input.modelId && (input.backendId == null || it.ref.backendId == input.backendId) &&
+                (input.variant == null || it.ref.variant == input.variant)
         }
         if (matches.isEmpty()) return HttpResponse(400, errorJson("Unknown modelId."))
         val model = matches.singleOrNull() ?: return HttpResponse(400, errorJson("Specify backendId and variant for this modelId."))
-        if (backend !in bridge.supportedBackends(model)) return HttpResponse(400, errorJson("Backend is not enabled."))
+        val active = defaults?.takeIf { it.model == model.ref }
+        val payload = if (useVoiceDefaults) {
+            val reference = if (active == null && (input.referenceAudioPath.isBlank() || input.referenceText.isBlank()))
+                runCatching { bridge.referenceExample(model) }.getOrNull() else null
+            val referenceLanguage = reference?.let {
+                if (it.language == "auto") ReferenceLanguage.resolve(it.language, it.referenceText.orEmpty()) else it.language
+            }
+            val language = input.language.ifBlank { active?.language ?: referenceLanguage.orEmpty() }
+            input.copy(
+                backendName = input.backendName.ifBlank { active?.backend?.name.orEmpty() },
+                language = language,
+                promptLanguage = input.promptLanguage.ifBlank { active?.promptLanguage ?: referenceLanguage ?: language },
+                referenceAudioPath = input.referenceAudioPath.ifBlank { active?.referenceAudioPath ?: reference?.audioFile?.absolutePath.orEmpty() },
+                referenceText = input.referenceText.ifBlank { active?.referenceText ?: reference?.referenceText.orEmpty() },
+                auxiliaryReferenceAudioPaths = if (useDefaultAuxiliary) active?.auxiliaryReferenceAudioPaths.orEmpty() else input.auxiliaryReferenceAudioPaths,
+            )
+        } else input
+        val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(payload.backendName.ifBlank { "CPU" }, ignoreCase = true) }
+            ?: return HttpResponse(400, errorJson("Unknown backend."))
         if (
             payload.language.isBlank() ||
             payload.text.isBlank() ||
@@ -226,11 +231,10 @@ class LocalHttpApiServer(
         ) {
             return HttpResponse(400, errorJson("language, text, referenceAudioPath, and referenceText are required."))
         }
-        validateReferenceAudioPath(payload.referenceAudioPath)?.let { error ->
-            return HttpResponse(400, errorJson(error))
+        if (!File(payload.referenceAudioPath).isFile) {
+            return HttpResponse(400, errorJson("Reference audio not found: ${payload.referenceAudioPath}"))
         }
-        val defaults = bridge.activeDefaults()?.takeIf { it.model == model.ref }?.options.orEmpty()
-        val options = try { bridge.validateOptions(model, defaults + payload.options) }
+        val options = try { bridge.validateOptions(model, active?.options.orEmpty() + payload.options) }
         catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
         validateAuxiliaryReferencePaths(
             paths = payload.auxiliaryReferenceAudioPaths,
@@ -257,56 +261,31 @@ class LocalHttpApiServer(
             timeoutMs = INFER_TIMEOUT_MS,
         )
         return when (result) {
-            is InferResult.Success -> {
-                val wavBytes = runCatching { result.outputFile.readBytes() }.getOrElse {
-                    return HttpResponse(500, errorJson("Failed to read output file: ${it.message}"))
-                }
-                HttpResponse(
-                    statusCode = 200,
-                    body = "",
-                    contentType = "audio/wav",
-                    binaryBody = wavBytes,
-                )
-            }
+            is InferResult.Success -> HttpResponse(200, "", "audio/wav", result.outputFile)
             is InferResult.Error -> HttpResponse(500, errorJson(result.message, result.code))
+            InferResult.BackendUnavailable -> HttpResponse(400, errorJson("Backend is not enabled."))
             InferResult.Busy -> HttpResponse(409, errorJson("Inference is already running."))
             InferResult.Timeout -> HttpResponse(504, errorJson("Inference timed out.", "TIMEOUT"))
         }
     }
 
-    private fun validateReferenceAudioPath(path: String): String? {
-        val file = File(path)
-        val canonical = runCatching { file.canonicalFile }.getOrElse { file.absoluteFile }
-        if (!canonical.isFile) {
-            return "Reference audio not found: $path"
-        }
-        return null
-    }
-
     private fun validateAuxiliaryReferencePaths(
         paths: List<String>,
-        primaryPath: String? = null,
+        primaryPath: String,
     ): String? {
-        val canonicalPrimaryPath = primaryPath?.let { rawPath ->
-            val file = File(rawPath)
-            runCatching { file.canonicalFile }.getOrElse { file.absoluteFile }.absolutePath
-        }
-        val canonicalPaths = paths.map { rawPath ->
-            if (rawPath.isBlank()) {
-                return "Auxiliary reference paths cannot be blank."
-            }
-            val file = File(rawPath)
-            val canonical = runCatching { file.canonicalFile }.getOrElse { file.absoluteFile }
+        if (paths.isEmpty()) return null
+        fun canonicalFile(path: String) = File(path).let { runCatching { it.canonicalFile }.getOrDefault(it.absoluteFile) }
+        val primary = canonicalFile(primaryPath)
+        val seen = mutableSetOf<File>()
+        for (rawPath in paths) {
+            val canonical = canonicalFile(rawPath)
             if (!canonical.isFile) {
                 return "Auxiliary reference audio not found: $rawPath"
             }
-            if (canonical.absolutePath == canonicalPrimaryPath) {
+            if (canonical == primary) {
                 return "Auxiliary reference path duplicates the primary reference."
             }
-            canonical.absolutePath
-        }
-        if (canonicalPaths.distinct().size != canonicalPaths.size) {
-            return "Auxiliary reference paths must be unique."
+            if (!seen.add(canonical)) return "Auxiliary reference paths must be unique."
         }
         return null
     }
@@ -384,32 +363,35 @@ class LocalHttpApiServer(
     }
 
     private fun writeResponse(socket: Socket, response: HttpResponse) {
-        val output = BufferedOutputStream(socket.getOutputStream())
-        val bodyBytes = response.binaryBody ?: response.body.toByteArray(StandardCharsets.UTF_8)
-        val statusText = when (response.statusCode) {
-            200 -> "OK"
-            202 -> "Accepted"
-            400 -> "Bad Request"
-            403 -> "Forbidden"
-            404 -> "Not Found"
-            409 -> "Conflict"
-            500 -> "Internal Server Error"
-            504 -> "Gateway Timeout"
-            else -> "Error"
+        val input = try { response.audioFile?.inputStream() } catch (error: java.io.IOException) {
+            return writeResponse(socket, HttpResponse(500, errorJson("Failed to open output: ${error.message}")))
         }
-        val header = buildString {
-            append("HTTP/1.1 ${response.statusCode} $statusText\r\n")
-            append("Content-Type: ${response.contentType}\r\n")
-            if (response.binaryBody != null) {
-                append("Content-Disposition: inline; filename=\"tts_output.wav\"\r\n")
+        input.use { audio ->
+            val output = BufferedOutputStream(socket.getOutputStream())
+            val bodyBytes = response.body.toByteArray(StandardCharsets.UTF_8)
+            val statusText = when (response.statusCode) {
+                200 -> "OK"
+                400 -> "Bad Request"
+                404 -> "Not Found"
+                409 -> "Conflict"
+                500 -> "Internal Server Error"
+                504 -> "Gateway Timeout"
+                else -> "Error"
             }
-            append("Content-Length: ${bodyBytes.size}\r\n")
-            append("Connection: close\r\n")
-            append("\r\n")
+            val header = buildString {
+                append("HTTP/1.1 ${response.statusCode} $statusText\r\n")
+                append("Content-Type: ${response.contentType}\r\n")
+                if (audio != null) {
+                    append("Content-Disposition: inline; filename=\"tts_output.wav\"\r\n")
+                }
+                append("Content-Length: ${audio?.channel?.size() ?: bodyBytes.size.toLong()}\r\n")
+                append("Connection: close\r\n")
+                append("\r\n")
+            }
+            output.write(header.toByteArray(StandardCharsets.UTF_8))
+            if (audio == null) output.write(bodyBytes) else audio.copyTo(output)
+            output.flush()
         }
-        output.write(header.toByteArray(StandardCharsets.UTF_8))
-        output.write(bodyBytes)
-        output.flush()
     }
 
     private fun readAsciiLine(input: BufferedInputStream): String {
