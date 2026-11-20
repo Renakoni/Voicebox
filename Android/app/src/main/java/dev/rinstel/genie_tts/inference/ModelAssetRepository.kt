@@ -3,11 +3,16 @@ package dev.rinstel.genie_tts.inference
 import android.content.Context
 import java.io.File
 import org.json.JSONObject
+import dev.rinstel.genie_tts.moremodels.MingModel
+import dev.rinstel.genie_tts.moremodels.MingPackageRepository
+import dev.rinstel.genie_tts.moremodels.MingModelResources
 
 class ModelAssetRepository(
     private val filesRoot: File,
+    private val ming: MingPackageRepository? = null,
+    private val mingResources: MingModelResources? = null,
 ) {
-    constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)))
+    constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)), MingPackageRepository(context), MingModelResources(context))
 
     private val modelRoot: File
         get() = File(filesRoot, "CharacterModels")
@@ -48,10 +53,13 @@ class ModelAssetRepository(
             model.copy(displayName = displayName?.takeIf { it.isNotBlank() } ?: model.displayName,
                 gptFilename = imported?.optString("gpt_filename").orEmpty(),
                 sovitsFilename = imported?.optString("sovits_filename").orEmpty())
-        }
+        } + if (ming?.installed == true && ming.supported && mingResources?.available == true) listOf(MingModel.model) else emptyList()
     }
 
     fun inspect(requiredModelFiles: RequiredModelFiles): ModelInspectionResult {
+        if (requiredModelFiles.assetSubdirectory == MingModel.DIRECTORY) {
+            return ModelInspectionResult(if (ming?.installed == true && mingResources?.available == true) emptyList() else listOf("ming-runtime"))
+        }
         val modelDirectory = File(modelRoot, requiredModelFiles.assetSubdirectory)
         val missingFiles = requiredModelFiles.files.filterNot { fileName ->
             File(modelDirectory, fileName).isFile ||
@@ -94,6 +102,7 @@ class ModelAssetRepository(
     }
 
     fun findReferenceExample(characterModel: CharacterModel): ReferenceExample? {
+        if (MingModel.matches(characterModel)) return mingResources?.takeIf { it.available }?.reference()
         // Reference assets live next to each character's tts_models directory for both v2 and v2ProPlus.
         val characterRoot = File(modelRoot, characterModel.relativeModelDirectory).parentFile
             ?: return null

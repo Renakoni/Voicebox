@@ -1,5 +1,8 @@
 package dev.rinstel.genie_tts.studio
 
+import dev.rinstel.genie_tts.moremodels.MingModel
+import dev.rinstel.genie_tts.moremodels.MingPackageRepository
+
 import dev.rinstel.genie_tts.R
 import dev.rinstel.genie_tts.i18n.UiText
 import dev.rinstel.genie_tts.i18n.userText
@@ -71,6 +74,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val runtimeRepository = RuntimeAssetRepository(app)
     private val settings = AppSettingsRepository(app)
     private val officialCatalog = OfficialModelCatalog(app)
+    private val mingPackage = MingPackageRepository(app)
+    val mingDownloadBytes get() = mingPackage.spec.downloadBytes
+    val mingSupported get() = mingPackage.supported
+    val mingInstalled get() = models.any(MingModel::matches)
+    var mingBackendInstalled by mutableStateOf(false); private set
+    val mingSelected get() = selectedVoice?.modelDirectory == MingModel.DIRECTORY
     val officialModels = officialCatalog.models
     private val referenceRoot = File(app.filesDir, "studio_references").apply { mkdirs() }
     private var service: GenieBackendService? = null
@@ -93,7 +102,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var synthesisOptions by mutableStateOf(store.synthesisOptions); private set
     var loading by mutableStateOf(true); private set
     private var runtimeResources by mutableStateOf(false to false)
-    val runtimeReady get() = runtimeResources.first &&
+    val runtimeReady get() = if (mingSelected) mingInstalled else runtimeResources.first &&
         (selectedVoice?.modelDirectory?.startsWith("v5turbo/") != true || runtimeResources.second)
     var connected by mutableStateOf(false); private set
     var state by mutableStateOf(BackendServiceState()); private set
@@ -231,11 +240,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (voice.durationMs > 0) voice else voice.copy(
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
-                    Triple(available, voices, runtimeReady to vocoderReady)
+                    Triple(available, voices, Triple(runtimeReady, vocoderReady, mingPackage.installed))
                 }
                 models = data.first
                 voices = data.second.map { it.copy(avatarPath = avatars.path(it.id)) }
-                runtimeResources = data.third
+                runtimeResources = data.third.first to data.third.second
+                mingBackendInstalled = data.third.third
                 if (voices.none { it.id == selectedId }) {
                     selectedId = voices.firstOrNull()?.id.orEmpty()
                     store.selectedId = selectedId
@@ -288,6 +298,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun downloadOfficial(official: OfficialModel) {
         if (busy || fileBusy) return
         if (service?.downloadOfficialModel(official.id) != true) notify(UiText(R.string.engine_busy))
+    }
+    fun downloadMing() {
+        if (busy || fileBusy) return
+        if (service?.downloadOfficialModel(MingModel.ID) != true) notify(UiText(R.string.engine_busy))
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -510,7 +524,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val request = GenerationRequest(model, outputLanguage,
             promptLanguage = promptLanguage, synthesisText = text.trim(),
             referenceAudioPath = voice.audioPath, referenceText = voice.transcript, maxDecoderSteps = 1500,
-            synthesisOptions = synthesisOptions)
+            synthesisOptions = if (mingSelected) SynthesisOptions.Default else synthesisOptions)
         pendingRequest = request.context
         pendingVoiceName = voiceName(voice, app.resources)
         pendingText = text.trim()
@@ -537,7 +551,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         service?.setActiveDefaults(ActiveDefaults(backend, model.id, outputLanguage, voice.audioPath,
             voice.transcript, 1500, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
-            synthesisOptions = synthesisOptions))
+            synthesisOptions = if (mingSelected) SynthesisOptions.Default else synthesisOptions))
     }
 
     fun importRuntimePackage(uri: Uri) {
@@ -569,6 +583,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun beginEditVoice(voice: StudioVoice) {
         if (busy || fileBusy) return
+        if (voice.builtIn && voice.modelDirectory == MingModel.DIRECTORY) {
+            beginVoice(voice.copy(id = UUID.randomUUID().toString(), name = ""))
+            return
+        }
         if (!voice.builtIn) { beginVoice(voice); return }
         val model = modelFor(voice) ?: return
         checkpointDraft = CheckpointDraft(name = voice.name, audioPath = voice.audioPath,

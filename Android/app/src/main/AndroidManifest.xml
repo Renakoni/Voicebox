@@ -44,6 +44,8 @@
                 android:resource="@xml/audio_paths" />
         </provider>
 
+        <service android:name=".moremodels.MingWorkerService" android:exported="false" android:process=":ming" />
+
         <service
             android:name=".GenieBackendService"
             android:enabled="true"

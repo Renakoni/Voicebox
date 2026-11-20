@@ -1,5 +1,9 @@
 package dev.rinstel.genie_tts
 
+import dev.rinstel.genie_tts.moremodels.MingModel
+import dev.rinstel.genie_tts.moremodels.MingPackageRepository
+import dev.rinstel.genie_tts.moremodels.MingBackendRuntime
+
 import dev.rinstel.genie_tts.i18n.UiText
 import dev.rinstel.genie_tts.i18n.UiLanguageContext
 import dev.rinstel.genie_tts.i18n.userMessage
@@ -359,7 +363,8 @@ class GenieBackendService : Service() {
 
     fun downloadOfficialModel(id: String): Boolean {
         val catalog = OfficialModelCatalog(this)
-        val model = catalog.models.firstOrNull { it.id == id } ?: return false
+        val model = catalog.models.firstOrNull { it.id == id }
+        if (model == null && id != MingModel.ID) return false
         val previous = officialDownloadState.value
         officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.download_preparing), running = true)
         val accepted = importOnWorker<Unit>(onComplete = { result ->
@@ -372,8 +377,16 @@ class GenieBackendService : Service() {
                         ?: UiText(R.string.download_failed))
                 })
         }) { context, _ ->
-            OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open).install(model, context::checkCancelled) {
-                officialDownloadState.value = it
+            if (id == MingModel.ID) {
+                val ming = MingPackageRepository(this)
+                require(ming.supported) { getString(R.string.ming_device_unsupported) }
+                ming.install(context::checkCancelled) { percent ->
+                    officialDownloadState.value = OfficialDownloadState(id, UiText(R.string.ming_downloading), percent, running = true)
+                }
+            } else {
+                OfficialModelInstaller(requireNotNull(getExternalFilesDir(null)), catalog, assets::open).install(requireNotNull(model), context::checkCancelled) {
+                    officialDownloadState.value = it
+                }
             }
         }
         if (!accepted) officialDownloadState.value = previous
@@ -451,14 +464,19 @@ class GenieBackendService : Service() {
         request: GenerationRequest,
         onComplete: ((InferResult) -> Unit)? = null,
     ) {
-        val runtime = runtimes[backend]
+        val ming = MingModel.matches(request.characterModel)
+        val runtime = if (ming) MingBackendRuntime(this, backend) else runtimes[backend]
         val startedAtMs = SystemClock.elapsedRealtime()
         val context = request.context
         Log.i(TIMING_LOG_TAG, "request_id: ${context.requestId}")
         Log.i(TIMING_LOG_TAG, "generation_epoch: ${context.generationEpoch}")
         try {
             context.checkCancelled()
-            selectWorkerBackend(backend)
+            if (ming) {
+                runtimes.values.forEach(BackendRuntime::close)
+                workerBackend = null
+                synchronized(warmupLock) { completedWarmupKey = null }
+            } else selectWorkerBackend(backend)
             val activeRuntime = requireNotNull(runtime) {
                 getString(R.string.prototype_backend_unavailable, backend.label)
             }
@@ -779,6 +797,7 @@ class GenieBackendService : Service() {
                     val model = modelRepository.discoverCharacterModels()
                         .firstOrNull { it.id == key.modelId }
                         ?: return@execute
+                    if (MingModel.matches(model)) return@execute
                     val startedAt = SystemClock.elapsedRealtime()
                     val request = defaults.toWarmupRequest(model)
                     warmupContext = request.context

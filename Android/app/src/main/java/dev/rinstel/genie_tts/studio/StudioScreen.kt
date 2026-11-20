@@ -76,7 +76,7 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 private enum class StudioDestination(val depth: Int) {
-    CREATE(0), VOICES(0), SETTINGS(0), PICKER(1), VOICE_EDITOR(1), CHECKPOINT_EDITOR(1), ABOUT(1),
+    CREATE(0), VOICES(0), SETTINGS(0), PICKER(1), VOICE_EDITOR(1), CHECKPOINT_EDITOR(1), ABOUT(1), MORE_MODELS(1),
 }
 
 private data class StudioPage(
@@ -94,8 +94,10 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
     val snackbar = remember { SnackbarHostState() }
     val focus = LocalFocusManager.current
     var showingAbout by rememberSaveable { mutableStateOf(false) }
+    var showingMoreModels by rememberSaveable { mutableStateOf(false) }
     val closeAbout = { showingAbout = false; vm.tab = 2 }
     val page = when {
+        showingMoreModels -> StudioPage(StudioDestination.MORE_MODELS)
         showingAbout -> StudioPage(StudioDestination.ABOUT)
         vm.checkpointDraft != null -> StudioPage(StudioDestination.CHECKPOINT_EDITOR, checkpoint = vm.checkpointDraft)
         vm.draft != null -> StudioPage(StudioDestination.VOICE_EDITOR, voice = vm.draft)
@@ -106,8 +108,9 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
     }
     val notice = vm.notice?.resolve(resources)
     LaunchedEffect(vm.notice, notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
-    BackHandler(showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
-        if (showingAbout) closeAbout()
+    BackHandler(showingMoreModels || showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
+        if (showingMoreModels) showingMoreModels = false
+        else if (showingAbout) closeAbout()
         else if (vm.recordingMs != null) vm.cancelReferenceRecording()
         else if (vm.checkpointDraft != null) vm.closeCheckpointImport()
         else if (vm.draft != null) vm.closeEditor()
@@ -156,7 +159,8 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
                     StudioDestination.PICKER -> VoicePickerPage(vm, Modifier.fillMaxWidth())
                     StudioDestination.CREATE -> CreatePage(vm, saveAudio, shareAudio, sendQqAudio, pickRuntimePackage, Modifier.fillMaxWidth())
                     StudioDestination.VOICES -> VoicesPage(vm, Modifier.fillMaxWidth())
-                    StudioDestination.SETTINGS -> SettingsPage(vm, { showingAbout = true }, Modifier.fillMaxWidth())
+                    StudioDestination.SETTINGS -> SettingsPage(vm, { showingAbout = true }, { showingMoreModels = true }, Modifier.fillMaxWidth())
+                    StudioDestination.MORE_MODELS -> MoreModelsPage(vm, { showingMoreModels = false }, Modifier.fillMaxWidth())
                     StudioDestination.ABOUT -> AboutPage(closeAbout, vm::notify, Modifier.fillMaxWidth())
                 }
             }
@@ -235,7 +239,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                         inner()
                     }
                 })
-            AdvancedSynthesisSettings(vm)
+            if (!vm.mingSelected) AdvancedSynthesisSettings(vm)
             FlowRow(Modifier.fillMaxWidth().padding(bottom = 16.dp), itemVerticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 Text(resources.getString(R.string.character_count, vm.text.length), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
@@ -706,7 +710,7 @@ private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Bo
 }
 
 @Composable
-private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, modifier: Modifier) {
+private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openMoreModels: () -> Unit, modifier: Modifier) {
     val resources = LocalResources.current
     val uriHandler = LocalUriHandler.current
     var advanced by rememberSaveable { mutableStateOf(false) }
@@ -745,6 +749,12 @@ private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, modifier: M
                     modifier = Modifier.testTag("device_acceleration"))
             }
             HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            Row(Modifier.fillMaxWidth().clickable(onClick = openMoreModels).heightIn(min = 56.dp).testTag("more_models"),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(resources.getString(R.string.more_models), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             Row(Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 56.dp).testTag("advanced_settings"),
                 verticalAlignment = Alignment.CenterVertically) {
                 Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))

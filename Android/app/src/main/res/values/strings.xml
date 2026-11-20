@@ -177,7 +177,6 @@
     <string name="qq_select_send">Choose contact and send</string>
     <string name="link_open_failed">Could not open the link. Check that a browser is available.</string>
     <string name="about">About</string>
-    <string name="back_settings">Back to settings</string>
     <string name="app_icon">Voicebox icon</string>
     <string name="app_version">Version %1$s</string>
     <string name="app_description">On-device speech synthesis and voice cloning</string>
@@ -370,4 +369,20 @@
     <string name="model_v5_turbo">V5 Turbo</string>
     <string name="language_contains_kana">This text contains Japanese kana. Change the language to Japanese.</string>
     <string name="language_not_english">English mode does not support Chinese or Japanese text. Set the language to Chinese or Japanese.</string>
+    <string name="more_models">More models</string>
+    <string name="back_settings">Back to settings</string>
+    <string name="ming_name">Ming-TTS 0.5B</string>
+    <string name="ming_description">Local speech generation and voice cloning with Ming-TTS.</string>
+    <string name="ming_download_size">Download size: %1$s</string>
+    <string name="ming_download">Download backend</string>
+    <string name="ming_retry">Retry download</string>
+    <string name="ming_cancel_download">Cancel download</string>
+    <string name="ming_installed">Installed</string>
+    <string name="ming_device_unsupported">This model package does not support this device architecture.</string>
+    <string name="ming_downloading">Downloading and verifying Ming-TTS…</string>
+    <string name="ming_not_installed">Download Ming-TTS in Settings → More models first.</string>
+    <string name="ming_preparing">Preparing the Ming-TTS reference…</string>
+    <string name="ming_generating">Generating speech with Ming-TTS…</string>
+    <string name="ming_worker_failed">Ming-TTS stopped unexpectedly. Please try again.</string>
+    <string name="ming_unsupported_options">Ming-TTS currently supports one reference recording and its default synthesis settings.</string>
 </resources>
