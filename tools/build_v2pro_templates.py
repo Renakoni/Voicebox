@@ -71,7 +71,7 @@ def build(checkpoint, source, output):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument("--source", type=Path, default=Path("Android/app/src/main/assets/checkpoint-v2proplus"))
-    parser.add_argument("--output", type=Path, default=Path("Android/app/src/main/assets/checkpoint-v2pro"))
+    parser.add_argument("--source", type=Path, default=Path("Android/model/gptsovits/src/main/assets/checkpoint-v2proplus"))
+    parser.add_argument("--output", type=Path, default=Path("Android/model/gptsovits/src/main/assets/checkpoint-v2pro"))
     args = parser.parse_args()
     build(args.checkpoint, args.source, args.output)

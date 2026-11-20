@@ -187,7 +187,6 @@ tasks.register<HighCompressionRuntimeAssetsTask>("bundleRuntimeAssets") {
 android {
     namespace = "dev.renakoni.voicebox"
     ndkVersion = "28.2.13676358"
-    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/languageAssets").get().asFile)
     sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/licenseAssets").get().asFile)
     buildFeatures {
         buildConfig = true
@@ -202,14 +201,14 @@ android {
         minSdk = 30
         targetSdk = 36
         versionCode = 10
-        versionName = "1.1.3"
+        versionName = providers.gradleProperty("voiceboxVersionName").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
             cmake {
                 cppFlags += "-std=c++17"
-                arguments += listOf("-DANDROID_STL=c++_shared", "-DVOICEBOX_ENABLE_NATIVE_DECODER=ON")
+                arguments += listOf("-DANDROID_STL=c++_shared")
             }
         }
     }
@@ -251,22 +250,12 @@ android {
     }
 }
 
-val syncLanguageAssets = tasks.register<Sync>("syncLanguageAssets") {
-    val source = rootProject.file("../../assets/language-frontends")
-    from(source) { into("language_frontends") }
-    into(layout.buildDirectory.dir("generated/languageAssets"))
-    doFirst {
-        check(File(source, "japanese/manifest.json").isFile && File(source, "english/manifest.json").isFile) {
-            "Run tools/prepare_language_assets.py to prepare the offline language frontends."
-        }
-    }
-}
 val syncLicenseAssets = tasks.register<Sync>("syncLicenseAssets") {
     from(rootProject.file("../LICENSE"), rootProject.file("../NOTICE"))
     from(rootProject.file("../licenses")) { into("third-party") }
     into(layout.buildDirectory.dir("generated/licenseAssets/voicebox-licenses"))
 }
-tasks.named("preBuild").configure { dependsOn(syncLanguageAssets, syncLicenseAssets) }
+tasks.named("preBuild").configure { dependsOn(syncLicenseAssets) }
 
 tasks.withType<Test>().configureEach {
     maxParallelForks = 1
@@ -282,7 +271,10 @@ afterEvaluate {
 }
 
 dependencies {
-    implementation("net.lingala.zip4j:zip4j:2.11.5")
+    implementation(project(":core"))
+    // PR4 replaces these implementation dependencies with generated bridge packages.
+    implementation(project(":model:gptsovits"))
+    implementation(project(":model:ming"))
     implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
     implementation("org.conscrypt:conscrypt-android:2.5.3")
     implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")

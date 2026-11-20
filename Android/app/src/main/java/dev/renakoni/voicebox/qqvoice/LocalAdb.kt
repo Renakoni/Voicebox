@@ -1,9 +1,9 @@
 package dev.renakoni.voicebox.qqvoice
 
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.i18n.UiText
-import dev.renakoni.voicebox.i18n.requireUi
-import dev.renakoni.voicebox.i18n.checkUi
+import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.requireUi
+import dev.renakoni.voicebox.core.i18n.checkUi
 
 import android.content.Context
 import android.os.Build

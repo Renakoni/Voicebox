@@ -16,7 +16,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.moremodels.MingModel
+import dev.renakoni.voicebox.model.ming.MingModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

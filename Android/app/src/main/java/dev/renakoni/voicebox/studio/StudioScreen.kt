@@ -2,10 +2,12 @@
 
 package dev.renakoni.voicebox.studio
 
+import dev.renakoni.voicebox.core.LanguageTags
+
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import android.content.res.Resources
-import dev.renakoni.voicebox.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.UiText
 import kotlinx.coroutines.delay
 
 import androidx.activity.compose.BackHandler
@@ -66,12 +68,11 @@ import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.OfficialModel
-import dev.renakoni.voicebox.inference.GenerationStage
-import dev.renakoni.voicebox.inference.ReferenceLanguage
-import dev.renakoni.voicebox.inference.LanguageNormalizer
-import dev.renakoni.voicebox.inference.modelArchitectureLabel
-import dev.renakoni.voicebox.inference.SynthesisOptions
+import dev.renakoni.voicebox.model.gptsovits.OfficialModel
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.core.ReferenceLanguage
+import dev.renakoni.voicebox.model.gptsovits.modelArchitectureLabel
+import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -201,7 +202,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
             } else if (!vm.runtimeReady) {
                 Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(resources.getString(R.string.engine_setup), style = MaterialTheme.typography.titleMedium)
-                    Text(if (vm.selectedVoice?.modelDirectory?.startsWith("v5turbo/") == true)
+                    Text(if (vm.selectedVoice?.model?.variant == "v5turbo")
                         resources.getString(R.string.engine_v5_resources)
                         else resources.getString(R.string.engine_resources), style = MaterialTheme.typography.bodyMedium)
                     StudioButton(onClick = pickRuntime, enabled = vm.connected && !vm.busy) { Text(resources.getString(R.string.import_resources)) }
@@ -239,7 +240,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                         inner()
                     }
                 })
-            if (!vm.mingSelected) AdvancedSynthesisSettings(vm)
+            if (vm.hasSynthesisOptions) AdvancedSynthesisSettings(vm)
             FlowRow(Modifier.fillMaxWidth().padding(bottom = 16.dp), itemVerticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 Text(resources.getString(R.string.character_count, vm.text.length), modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelMedium,
@@ -361,7 +362,7 @@ private fun SynthesisSlider(label: String, displayValue: String, value: Float, r
     }
 }
 
-private fun languageName(resources: Resources, value: String) = when (LanguageNormalizer.normalize(value)) {
+private fun languageName(resources: Resources, value: String) = when (LanguageTags.normalize(value)) {
     "japanese" -> resources.getString(R.string.language_japanese)
     "english" -> resources.getString(R.string.language_english)
     else -> resources.getString(R.string.language_chinese)
@@ -444,7 +445,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
             vm.officialModels.forEach { official ->
                 item(key = official.id) { OfficialVoiceRow(vm, official) }
             }
-            val otherVoices = vm.voices.filterNot { voice -> voice.builtIn && vm.isOfficialDirectory(voice.modelDirectory) }
+            val otherVoices = vm.voices.filterNot { voice -> voice.builtIn && vm.isOfficial(voice.model) }
             itemsIndexed(otherVoices, key = { _, voice -> voice.id }) { index, voice ->
                 val available = vm.modelFor(voice) != null
                 Column {
@@ -457,7 +458,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                             Column(Modifier.weight(1f)) {
                                 Text(voice.name, style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(modelArchitectureLabel(resources, voice.modelDirectory.substringBefore('/')),
+                                Text(modelArchitectureLabel(resources, voice.model.variant),
                                     style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (!available) Text(resources.getString(R.string.model_unavailable),
                                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -501,7 +502,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialModel) {
                         color = MaterialTheme.colorScheme.onSurface)
                     val detail = when {
                         downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
-                        status?.error != null -> status.error.resolve(resources)
+                        status?.error != null -> status.error?.resolve(resources).orEmpty()
                         !ready -> resources.getString(R.string.not_downloaded)
                         else -> null
                     }
@@ -651,15 +652,15 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 vm.officialModels.forEach { model ->
                     val installed = vm.modelFor(model)
-                    FilterChip(selected = installed != null && draft.modelDirectory == installed.relativeModelDirectory,
-                        onClick = { installed?.let { vm.edit(draft.copy(modelDirectory = it.relativeModelDirectory)) } },
+                    FilterChip(selected = installed != null && draft.modelRef == installed.ref,
+                        onClick = { installed?.let { vm.edit(draft.copy(modelRef = it.ref)) } },
                         label = { Text(model.displayName(resources)) }, enabled = vm.modelFor(model) != null && !vm.fileBusy && !vm.busy)
                 }
-                vm.models.filterNot { vm.isOfficialDirectory(it.relativeModelDirectory) }.forEach { model ->
-                    FilterChip(selected = draft.modelDirectory == model.relativeModelDirectory,
-                        onClick = { vm.edit(draft.copy(modelDirectory = model.relativeModelDirectory)) },
+                vm.models.filterNot { vm.isOfficial(it.ref) }.forEach { model ->
+                    FilterChip(selected = draft.modelRef == model.ref,
+                        onClick = { vm.edit(draft.copy(modelRef = model.ref)) },
                         label = { Text(model.displayName) }, enabled = !vm.fileBusy,
-                        leadingIcon = if (draft.modelDirectory == model.relativeModelDirectory) {
+                        leadingIcon = if (draft.modelRef == model.ref) {
                             { Icon(Icons.Default.Check, null, Modifier.size(18.dp)) }
                         } else null)
                 }

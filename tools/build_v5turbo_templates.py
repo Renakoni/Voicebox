@@ -322,7 +322,7 @@ def main():
 
 
 def assemble_import(output, gpt_path, sovits):
-    base = Path(__file__).resolve().parents[1]/'Android/app/src/main/assets/checkpoint-v2proplus'
+    base = Path(__file__).resolve().parents[1]/'Android/model/gptsovits/src/main/assets/checkpoint-v2proplus'
     manifest = json.loads((base/'manifest.json').read_text())
     acoustic = json.loads((output/'acoustic-manifest.json').read_text())
     manifest['architecture'] = 'v5turbo'

@@ -1,7 +1,7 @@
 package dev.renakoni.voicebox
 
-import dev.renakoni.voicebox.i18n.UiText
-import dev.renakoni.voicebox.i18n.requireUi
+import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.requireUi
 
 import android.content.Context
 import android.net.Uri

@@ -2,7 +2,7 @@
 
 package dev.renakoni.voicebox.studio
 
-import dev.renakoni.voicebox.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.UiText
 import androidx.compose.ui.platform.LocalResources
 
 import androidx.compose.foundation.Image

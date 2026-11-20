@@ -23,4 +23,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "VoiceBox"
-include(":app")
+include(":app", ":bridge-api", ":core", ":model:gptsovits", ":model:ming")

@@ -1,11 +1,11 @@
 package dev.renakoni.voicebox.qqvoice
 
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.i18n.UiText
-import dev.renakoni.voicebox.i18n.requireUi
+import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.requireUi
 
-import dev.renakoni.voicebox.inference.ReferenceAudioResampler
-import dev.renakoni.voicebox.inference.WavAudioReader
+import dev.renakoni.voicebox.core.ReferenceAudioResampler
+import dev.renakoni.voicebox.core.WavAudioReader
 import java.io.File
 import kotlin.math.roundToInt
 import kotlin.math.sqrt

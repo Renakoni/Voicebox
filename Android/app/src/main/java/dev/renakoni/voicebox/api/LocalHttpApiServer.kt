@@ -1,10 +1,9 @@
 package dev.renakoni.voicebox.api
 
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.inference.CharacterModel
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.GenerationRequest
-import dev.renakoni.voicebox.inference.SynthesisOptions
+import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationRequest
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -27,10 +26,10 @@ class LocalHttpApiServer(
     interface Bridge {
         fun currentState(): BackendServiceState
         fun availableModels(): List<CharacterModel>
-        fun supportedBackends(): Set<ExecutionBackend>
+        fun supportedBackends(model: CharacterModel): Set<ExecutionBackend>
         fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
-            model.modelFiles.maxAuxiliaryReferenceCount > 0 &&
-                model.modelFiles.optionalSessionModels.contains("prompt_encoder_multi_fp32.onnx")
+            model.maxAuxiliaryReferences > 0
+        fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String>
         fun activeDefaults(): ActiveDefaults?
         fun infer(backend: ExecutionBackend, request: GenerationRequest): Boolean
         fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult
@@ -179,8 +178,7 @@ class LocalHttpApiServer(
     ): HttpResponse = route(method, path, body, queryParams)
 
     private fun infer(body: String): HttpResponse {
-        val payload = runCatching { parseInferPayload(body,
-            bridge.activeDefaults()?.synthesisOptions ?: SynthesisOptions.Default) }.getOrElse {
+        val payload = runCatching { parseInferPayload(body) }.getOrElse {
             return HttpResponse(400, errorJson(it.message ?: "Invalid JSON body."))
         }
         return inferWithPayload(payload)
@@ -188,20 +186,17 @@ class LocalHttpApiServer(
 
     private fun inferGet(params: Map<String, String>): HttpResponse {
         val defaults = bridge.activeDefaults()
-        val options = runCatching { SynthesisOptions.parse(params,
-            defaults?.synthesisOptions ?: SynthesisOptions.Default) }.getOrElse {
-            return HttpResponse(400, errorJson(it.message ?: "Invalid synthesis options."))
-        }
         val payload = InferPayload(
-            synthesisOptions = options,
+            options = requestOptions(params),
+            backendId = params["backendId"] ?: defaults?.model?.backendId?.takeIf { "modelId" !in params },
+            variant = params["variant"] ?: defaults?.model?.variant?.takeIf { "modelId" !in params },
             backendName = params["backend"] ?: defaults?.backend?.name ?: "",
-            modelId = params["modelId"] ?: defaults?.modelId ?: "",
+            modelId = params["modelId"] ?: defaults?.model?.modelId ?: "",
             language = params["language"] ?: defaults?.language ?: "",
             promptLanguage = params["promptLanguage"] ?: params["language"] ?: defaults?.promptLanguage ?: "",
             text = params["text"] ?: "",
             referenceAudioPath = params["referenceAudioPath"] ?: defaults?.referenceAudioPath ?: "",
             referenceText = params["referenceText"] ?: defaults?.referenceText ?: "",
-            maxDecoderSteps = params["maxDecoderSteps"]?.toIntOrNull() ?: defaults?.maxDecoderSteps ?: 500,
             auxiliaryReferenceAudioPaths = params["auxReferenceAudioPaths"]
                 ?.split('|')
                 ?.map(String::trim)
@@ -216,12 +211,13 @@ class LocalHttpApiServer(
             .ifBlank { ExecutionBackend.CPU.name }
             .let { value -> ExecutionBackend.entries.firstOrNull { it.name.equals(value, ignoreCase = true) } }
             ?: return HttpResponse(400, errorJson("Unknown backend."))
-        if (backend !in bridge.supportedBackends()) {
-            return HttpResponse(400, errorJson("Backend is not enabled."))
+        val matches = bridge.availableModels().filter {
+            it.id == payload.modelId && (payload.backendId == null || it.ref.backendId == payload.backendId) &&
+                (payload.variant == null || it.ref.variant == payload.variant)
         }
-
-        val model = bridge.availableModels().firstOrNull { it.id == payload.modelId }
-            ?: return HttpResponse(400, errorJson("Unknown modelId."))
+        if (matches.isEmpty()) return HttpResponse(400, errorJson("Unknown modelId."))
+        val model = matches.singleOrNull() ?: return HttpResponse(400, errorJson("Specify backendId and variant for this modelId."))
+        if (backend !in bridge.supportedBackends(model)) return HttpResponse(400, errorJson("Backend is not enabled."))
         if (
             payload.language.isBlank() ||
             payload.text.isBlank() ||
@@ -233,9 +229,9 @@ class LocalHttpApiServer(
         validateReferenceAudioPath(payload.referenceAudioPath)?.let { error ->
             return HttpResponse(400, errorJson(error))
         }
-        if (payload.maxDecoderSteps <= 0) {
-            return HttpResponse(400, errorJson("maxDecoderSteps must be positive."))
-        }
+        val defaults = bridge.activeDefaults()?.takeIf { it.model == model.ref }?.options.orEmpty()
+        val options = try { bridge.validateOptions(model, defaults + payload.options) }
+        catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
         validateAuxiliaryReferencePaths(
             paths = payload.auxiliaryReferenceAudioPaths,
             primaryPath = payload.referenceAudioPath,
@@ -255,9 +251,8 @@ class LocalHttpApiServer(
                 synthesisText = payload.text,
                 referenceAudioPath = payload.referenceAudioPath,
                 referenceText = payload.referenceText,
-                maxDecoderSteps = payload.maxDecoderSteps,
                 auxiliaryReferenceAudioPaths = payload.auxiliaryReferenceAudioPaths,
-                synthesisOptions = payload.synthesisOptions,
+                options = options,
             ),
             timeoutMs = INFER_TIMEOUT_MS,
         )
@@ -321,18 +316,14 @@ class LocalHttpApiServer(
         paths: List<String>,
     ): String? {
         if (paths.isEmpty()) return null
-        val modelFiles = model.modelFiles
-        if (
-            modelFiles.maxAuxiliaryReferenceCount <= 0 ||
-            !modelFiles.optionalSessionModels.contains("prompt_encoder_multi_fp32.onnx")
-        ) {
+        if (model.maxAuxiliaryReferences <= 0) {
             return "The selected model does not support auxiliary references."
         }
         if (!bridge.supportsAuxiliaryReferences(model)) {
             return "The selected model does not have the multi-reference prompt encoder installed."
         }
-        if (paths.size > modelFiles.maxAuxiliaryReferenceCount) {
-            return "At most ${modelFiles.maxAuxiliaryReferenceCount} auxiliary references are supported."
+        if (paths.size > model.maxAuxiliaryReferences) {
+            return "At most ${model.maxAuxiliaryReferences} auxiliary references are supported."
         }
         return null
     }

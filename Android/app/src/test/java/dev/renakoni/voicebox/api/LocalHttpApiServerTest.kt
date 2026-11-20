@@ -1,11 +1,15 @@
 package dev.renakoni.voicebox.api
 
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.inference.CharacterModel
-import dev.renakoni.voicebox.inference.CharacterModelCatalog
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.GenerationRequest
-import dev.renakoni.voicebox.inference.SynthesisOptions
+import dev.renakoni.voicebox.bridge.ModelRef
+import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.model.gptsovits.CharacterModelCatalog
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.model.gptsovits.toRequestOptions
+import dev.renakoni.voicebox.model.gptsovits.synthesisOptions
+import dev.renakoni.voicebox.model.gptsovits.maxDecoderSteps
+import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
@@ -16,14 +20,35 @@ import org.junit.Test
 
 class LocalHttpApiServerTest {
     @Test
+    fun sameModelIdRoutesByBackendAndDoesNotInheritAnotherBackendsOptions() {
+        val gpt = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).single()
+        val ming = CharacterModel(ModelRef("ming", "dense-0.5b", gpt.id), "Ming", "ming/models")
+        val capture = FakeBridge(models = listOf(gpt, ming),
+            defaults = ActiveDefaults(ExecutionBackend.CPU, gpt.ref, "zh", FakeBridge.primaryReferencePath,
+                "sample", mapOf("speed" to "1.5")))
+        val server = LocalHttpApiServer(object : LocalHttpApiServer.Bridge by capture {
+            override fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String> {
+                require(model.ref == ming.ref && options.isEmpty())
+                return options
+            }
+        })
+        val request = mapOf("modelId" to gpt.id, "text" to "hello")
+        assertEquals(400, server.handleRequestForTest("GET", "/infer", queryParams = request).statusCode)
+        val routed = request + ("backendId" to "ming")
+        assertEquals(200, server.handleRequestForTest("GET", "/infer", queryParams = routed).statusCode)
+        assertEquals(ming.ref, capture.capturedRequest?.characterModel?.ref)
+        assertEquals(400, server.handleRequestForTest("GET", "/infer", queryParams = routed + ("speed" to "2")).statusCode)
+    }
+
+    @Test
     fun synthesisControlsUseActiveDefaultsAndRejectInvalidOverrides() {
-        val defaults = ActiveDefaults(ExecutionBackend.CPU, "mansui", "zh", FakeBridge.primaryReferencePath,
-            "sample", 500, synthesisOptions = SynthesisOptions(speed = 0.6, temperature = .7f, topK = 30, topP = .9f))
+        val defaults = ActiveDefaults(ExecutionBackend.CPU, ModelRef("gptsovits", "v2ProPlus", "mansui"), "zh", FakeBridge.primaryReferencePath,
+            "sample", SynthesisOptions(speed = 0.6, temperature = .7f, topK = 30, topP = .9f).toRequestOptions(500))
         val bridge = FakeBridge(defaults = defaults)
         val server = LocalHttpApiServer(bridge)
         val response = server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "test", "topK" to "1"))
         assertEquals(200, response.statusCode)
-        assertEquals(defaults.synthesisOptions.copy(topK = 1), bridge.capturedRequest?.synthesisOptions)
+        assertEquals(SynthesisOptions.parse(defaults.options).copy(topK = 1), bridge.capturedRequest?.synthesisOptions)
         val body = """{"modelId":"mansui","language":"zh","text":"test",
             "referenceAudioPath":"${FakeBridge.primaryReferenceJsonPath}","referenceText":"sample",
             "speed":1.65,"temperature":0,"topP":0,"repetitionPenalty":2}"""
@@ -39,7 +64,7 @@ class LocalHttpApiServerTest {
         assertEquals(200, server.handleRequestForTest("POST", "/infer", body).statusCode)
         assertEquals(SynthesisOptions(1.65, 0f, 30, 0f, 2f), bridge.capturedRequest?.synthesisOptions)
         assertEquals(200, server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "next")).statusCode)
-        assertEquals(defaults.synthesisOptions, bridge.capturedRequest?.synthesisOptions)
+        assertEquals(SynthesisOptions.parse(defaults.options), bridge.capturedRequest?.synthesisOptions)
     }
 
     @Test
@@ -399,12 +424,12 @@ class LocalHttpApiServerTest {
         val bridge = FakeBridge(
             defaults = ActiveDefaults(
                 backend = ExecutionBackend.CPU,
-                modelId = "mansui",
+                model = ModelRef("gptsovits", "v2ProPlus", "mansui"),
                 language = "en",
                 promptLanguage = "zh",
                 referenceAudioPath = FakeBridge.primaryReferencePath,
                 referenceText = "sample",
-                maxDecoderSteps = 500,
+                options = mapOf("maxDecoderSteps" to "500"),
             ),
         )
         val server = LocalHttpApiServer(bridge)
@@ -442,11 +467,11 @@ class LocalHttpApiServerTest {
         private val models: List<CharacterModel> = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")),
         private val defaults: ActiveDefaults = ActiveDefaults(
             backend = ExecutionBackend.CPU,
-            modelId = "mansui",
+            model = ModelRef("gptsovits", "v2ProPlus", "mansui"),
             language = "zh",
             referenceAudioPath = FakeBridge.primaryReferencePath,
             referenceText = "sample",
-            maxDecoderSteps = 500,
+            options = mapOf("maxDecoderSteps" to "500"),
         ),
     ) : LocalHttpApiServer.Bridge {
         companion object {
@@ -462,9 +487,12 @@ class LocalHttpApiServerTest {
 
         override fun currentState(): BackendServiceState = BackendServiceState(message = "Idle")
 
+        override fun validateOptions(model: CharacterModel, options: Map<String, String>) =
+            SynthesisOptions.validateRequestOptions(options)
+
         override fun availableModels(): List<CharacterModel> = models
 
-        override fun supportedBackends(): Set<ExecutionBackend> = enabledBackends
+        override fun supportedBackends(model: CharacterModel): Set<ExecutionBackend> = enabledBackends
 
         override fun activeDefaults(): ActiveDefaults = defaults
 

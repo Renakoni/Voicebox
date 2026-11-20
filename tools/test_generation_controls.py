@@ -19,7 +19,7 @@ import torch
 from onnx import TensorProto as T, helper as h
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / 'Android/app/src/main/assets'
+ASSETS = ROOT / 'Android/model/gptsovits/src/main/assets'
 DIRECTORIES = [ASSETS / name for name in ['checkpoint-v2proplus', 'checkpoint-v2pro', 'checkpoint-v5turbo']]
 UPSTREAM = ROOT.parent / 'ref/GPT-SoVITS'
 

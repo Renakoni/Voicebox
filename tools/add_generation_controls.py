@@ -197,6 +197,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('directories', nargs='*', type=Path)
     args = parser.parse_args()
-    for directory in args.directories or [Path(__file__).resolve().parents[1] / 'Android/app/src/main/assets' / name
+    for directory in args.directories or [Path(__file__).resolve().parents[1] / 'Android/model/gptsovits/src/main/assets' / name
             for name in ['checkpoint-v2proplus', 'checkpoint-v2pro', 'checkpoint-v5turbo']]:
         update(directory)

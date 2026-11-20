@@ -1,13 +1,13 @@
 package dev.renakoni.voicebox.studio
 
-import dev.renakoni.voicebox.moremodels.MingModel
-import dev.renakoni.voicebox.moremodels.MingPackageRepository
+import dev.renakoni.voicebox.model.ming.MingModel
+import dev.renakoni.voicebox.model.ming.MingPackageRepository
 
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.i18n.UiText
-import dev.renakoni.voicebox.i18n.userText
-import dev.renakoni.voicebox.i18n.requireUi
-import dev.renakoni.voicebox.i18n.errorUi
+import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.userText
+import dev.renakoni.voicebox.core.i18n.requireUi
+import dev.renakoni.voicebox.core.i18n.errorUi
 
 import android.app.Application
 import android.content.res.Resources
@@ -30,24 +30,27 @@ import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
-import dev.renakoni.voicebox.OfficialModel
-import dev.renakoni.voicebox.OfficialModelCatalog
-import dev.renakoni.voicebox.OfficialDownloadState
+import dev.renakoni.voicebox.model.gptsovits.OfficialModel
+import dev.renakoni.voicebox.model.gptsovits.OfficialModelCatalog
+import dev.renakoni.voicebox.model.gptsovits.OfficialDownloadState
 import dev.renakoni.voicebox.api.ActiveDefaults
-import dev.renakoni.voicebox.checkpoint.CheckpointImporter
-import dev.renakoni.voicebox.checkpoint.CheckpointPreview
-import dev.renakoni.voicebox.inference.modelArchitectureText
-import dev.renakoni.voicebox.inference.DeviceAccelerationStatus
-import dev.renakoni.voicebox.inference.CharacterModel
-import dev.renakoni.voicebox.inference.ExecutionBackend
-import dev.renakoni.voicebox.inference.GenerationContext
-import dev.renakoni.voicebox.inference.GenerationRequest
-import dev.renakoni.voicebox.inference.SynthesisOptions
-import dev.renakoni.voicebox.inference.GenerationStage
-import dev.renakoni.voicebox.inference.ModelAssetRepository
-import dev.renakoni.voicebox.inference.RuntimeAssetRepository
-import dev.renakoni.voicebox.inference.ReferenceLanguage
-import dev.renakoni.voicebox.inference.LanguageNormalizer
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointPreview
+import dev.renakoni.voicebox.model.gptsovits.modelArchitectureText
+import dev.renakoni.voicebox.model.gptsovits.DeviceAccelerationStatus
+import dev.renakoni.voicebox.bridge.CharacterModel
+import dev.renakoni.voicebox.bridge.ExecutionBackend
+import dev.renakoni.voicebox.bridge.GenerationContext
+import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.ModelRef
+import dev.renakoni.voicebox.model.gptsovits.gptFilename
+import dev.renakoni.voicebox.model.gptsovits.sovitsFilename
+import dev.renakoni.voicebox.model.gptsovits.toRequestOptions
+import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
+import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.registeredBackends
+import dev.renakoni.voicebox.model.gptsovits.RuntimeAssetRepository
+import dev.renakoni.voicebox.core.ReferenceLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -58,7 +61,7 @@ import java.nio.file.Files
 import java.util.UUID
 
 data class VoiceDraft(val id: String = UUID.randomUUID().toString(), val name: String = "",
-    val modelDirectory: String = "", val audioPath: String = "", val audioName: String = "",
+    val modelRef: ModelRef? = null, val audioPath: String = "", val audioName: String = "",
     val transcript: String = "", val durationMs: Long = 0, val referenceLanguage: String = "auto", val avatarPath: String = "")
 
 data class CheckpointDraft(val name: String = "", val gpt: Uri? = null, val sovits: Uri? = null,
@@ -70,7 +73,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val app = application
     private val store = StudioStore(app)
     private val avatars = VoiceAvatarStore(app)
-    private val modelsRepository = ModelAssetRepository(app)
+    private val modelsRepository = registeredBackends(app)
     private val runtimeRepository = RuntimeAssetRepository(app)
     private val settings = AppSettingsRepository(app)
     private val officialCatalog = OfficialModelCatalog(app)
@@ -79,7 +82,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val mingSupported get() = mingPackage.supported
     val mingInstalled get() = models.any(MingModel::matches)
     var mingBackendInstalled by mutableStateOf(false); private set
-    val mingSelected get() = selectedVoice?.modelDirectory == MingModel.DIRECTORY
+    val selectedCapabilities get() = selectedVoice?.let(::modelFor)?.let { modelsRepository.provider(it).capabilities }
+    val hasSynthesisOptions get() = selectedCapabilities?.optionNames?.isNotEmpty() == true
     val officialModels = officialCatalog.models
     private val referenceRoot = File(app.filesDir, "studio_references").apply { mkdirs() }
     private var service: VoiceBoxBackendService? = null
@@ -102,8 +106,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var synthesisOptions by mutableStateOf(store.synthesisOptions); private set
     var loading by mutableStateOf(true); private set
     private var runtimeResources by mutableStateOf(false to false)
-    val runtimeReady get() = if (mingSelected) mingInstalled else runtimeResources.first &&
-        (selectedVoice?.modelDirectory?.startsWith("v5turbo/") != true || runtimeResources.second)
+    val runtimeReady get() = if (selectedVoice?.model == MingModel.model.ref) mingInstalled else runtimeResources.first &&
+        (selectedVoice?.model?.variant != "v5turbo" || runtimeResources.second)
     var connected by mutableStateOf(false); private set
     var state by mutableStateOf(BackendServiceState()); private set
     var draft by mutableStateOf<VoiceDraft?>(null); private set
@@ -123,7 +127,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
-    private var availableBackends by mutableStateOf(emptySet<ExecutionBackend>())
+    private var backendModes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
+    private val availableBackends get() = backendModes[selectedVoice?.model?.backendId].orEmpty()
     val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     var acceleration by mutableStateOf(DeviceAccelerationStatus()); private set
@@ -185,7 +190,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             accelerationUpdates = viewModelScope.launch {
                 launch { backendService.deviceAcceleration.status.collect { acceleration = it } }
                 backendService.backendCapabilities.collect {
-                    availableBackends = it
+                    backendModes = it
                     syncDefaults()
                 }
             }
@@ -201,7 +206,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             officialDownload = OfficialDownloadState()
             service = null
             connected = false
-            availableBackends = emptySet()
+            backendModes = emptyMap()
             submitting = false
             state = BackendServiceState()
             generationError = UiText(R.string.service_disconnected)
@@ -226,13 +231,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val runtimeReady = runtimeRepository.inspect().isComplete
                     val vocoderReady = officialCatalog.vocoderReady(requireNotNull(app.getExternalFilesDir(null)))
                     val available = modelsRepository.discoverCharacterModels()
-                        .filter { modelsRepository.inspect(it.modelFiles).isComplete }
-                        .filter { model -> officialModels.firstOrNull { it.directory == model.relativeModelDirectory }
+                        .filter { modelsRepository.inspect(it).isComplete }
+                        .filter { model -> officialModels.firstOrNull { it.ref == model.ref }
                             ?.let { runtimeReady && (it.architecture != "v5turbo" || vocoderReady) } ?: true }
                     val defaults = available.mapNotNull { model ->
                         runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
-                            StudioVoice("default:${model.relativeModelDirectory}", model.displayName,
-                                model.relativeModelDirectory, reference.audioFile.absolutePath,
+                            StudioVoice(defaultVoiceId(model.ref), model.displayName,
+                                model.ref, reference.audioFile.absolutePath,
                                 reference.audioFile.name, reference.referenceText.orEmpty(), builtIn = true, referenceLanguage = reference.language)
                         }
                     }
@@ -282,17 +287,19 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         audio.stop()
         syncDefaults()
     }
-    fun modelFor(voice: StudioVoice): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == voice.modelDirectory }
-    fun modelFor(official: OfficialModel): CharacterModel? = models.firstOrNull { it.relativeModelDirectory == official.directory }
-    fun isOfficialDirectory(directory: String) = officialModels.any { it.directory == directory }
-    fun voiceFor(official: OfficialModel): StudioVoice? = voices.firstOrNull { it.builtIn && it.modelDirectory == official.directory }
+    private fun defaultVoiceId(ref: ModelRef) = "default:${ref.backendId}/${ref.variant}/${ref.modelId}"
+
+    fun modelFor(voice: StudioVoice): CharacterModel? = models.firstOrNull { it.ref == voice.model }
+    fun modelFor(official: OfficialModel): CharacterModel? = models.firstOrNull { it.ref == official.ref }
+    fun isOfficial(ref: ModelRef) = officialModels.any { it.ref == ref }
+    fun voiceFor(official: OfficialModel): StudioVoice? = voices.firstOrNull { it.builtIn && it.model == official.ref }
     fun voiceName(voice: StudioVoice, resources: Resources): String =
-        officialModels.firstOrNull { voice.builtIn && it.directory == voice.modelDirectory }
+        officialModels.firstOrNull { voice.builtIn && it.ref == voice.model }
             ?.displayName(resources) ?: voice.name
-    private fun nameExists(name: String, voiceId: String? = null, modelDirectory: String? = null): Boolean {
-        val names = officialModels.filterNot { it.directory == modelDirectory }.map { it.name } +
-            models.filterNot { it.relativeModelDirectory == modelDirectory }.map { it.displayName } +
-            voices.filterNot { it.id == voiceId || (it.builtIn && it.modelDirectory == modelDirectory) }.map { it.name }
+    private fun nameExists(name: String, voiceId: String? = null, modelRef: ModelRef? = null): Boolean {
+        val names = officialModels.filterNot { it.ref == modelRef }.map { it.name } +
+            models.filterNot { it.ref == modelRef }.map { it.displayName } +
+            voices.filterNot { it.id == voiceId || (it.builtIn && it.model == modelRef) }.map { it.name }
         return names.any { it.trim().equals(name.trim(), ignoreCase = true) }
     }
     fun downloadOfficial(official: OfficialModel) {
@@ -317,9 +324,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun beginVoice(voice: StudioVoice? = null) {
         if (busy || fileBusy) return
         editorError = null
-        draft = if (voice == null) VoiceDraft(modelDirectory = selectedVoice?.modelDirectory
-            ?: models.firstOrNull()?.relativeModelDirectory.orEmpty())
-        else VoiceDraft(voice.id, voice.name, voice.modelDirectory,
+        draft = if (voice == null) VoiceDraft(modelRef = selectedVoice?.model ?: models.firstOrNull()?.ref)
+        else VoiceDraft(voice.id, voice.name, voice.model,
             voice.audioPath, voice.audioName, voice.transcript, voice.durationMs, voice.referenceLanguage, voice.avatarPath)
     }
     fun edit(value: VoiceDraft) { draft = value; editorError = null }
@@ -440,7 +446,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val value = draft ?: return
         if (fileBusy || busy) return
         if (value.name.isBlank() || value.transcript.isBlank() || value.audioPath.isBlank() ||
-            models.none { it.relativeModelDirectory == value.modelDirectory }) {
+            value.modelRef == null || models.none { it.ref == value.modelRef }) {
             editorError = UiText(R.string.voice_fields_required)
             return
         }
@@ -463,7 +469,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         try { source.copyTo(target) }
                         catch (error: Exception) { target.delete(); throw error }
                     }
-                    val voice = StudioVoice(value.id, value.name.trim(), value.modelDirectory,
+                    val voice = StudioVoice(value.id, value.name.trim(), value.modelRef,
                         target.absolutePath, value.audioName, value.transcript.trim(), value.durationMs,
                         referenceLanguage = value.referenceLanguage, avatarPath = value.avatarPath)
                     store.save(previous.filterNot { it.id == voice.id } + voice)
@@ -512,9 +518,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val voice = selectedVoice ?: return
         val model = modelFor(voice) ?: return
         val promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript)
-        val languageError = LanguageNormalizer.scriptError(outputLanguage, text)
-            ?: LanguageNormalizer.scriptError(promptLanguage, voice.transcript)
-        if (languageError != null) { generationError = languageError; return }
+        val provider = modelsRepository.provider(model)
+        val languageError = provider.languageError(outputLanguage, text) ?: provider.languageError(promptLanguage, voice.transcript)
+        if (languageError != null) { generationError = UiText(languageError); return }
         if (!File(voice.audioPath).isFile) {
             generationError = UiText(R.string.reference_missing)
             return
@@ -523,8 +529,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         generationError = null
         val request = GenerationRequest(model, outputLanguage,
             promptLanguage = promptLanguage, synthesisText = text.trim(),
-            referenceAudioPath = voice.audioPath, referenceText = voice.transcript, maxDecoderSteps = 1500,
-            synthesisOptions = if (mingSelected) SynthesisOptions.Default else synthesisOptions)
+            referenceAudioPath = voice.audioPath, referenceText = voice.transcript,
+            options = if (hasSynthesisOptions) synthesisOptions.toRequestOptions(1500) else emptyMap())
         pendingRequest = request.context
         pendingVoiceName = voiceName(voice, app.resources)
         pendingText = text.trim()
@@ -549,9 +555,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             service?.setActiveDefaults(null)
             return
         }
-        service?.setActiveDefaults(ActiveDefaults(backend, model.id, outputLanguage, voice.audioPath,
-            voice.transcript, 1500, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
-            synthesisOptions = if (mingSelected) SynthesisOptions.Default else synthesisOptions))
+        service?.setActiveDefaults(ActiveDefaults(backend, model.ref, outputLanguage, voice.audioPath,
+            voice.transcript, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
+            options = if (hasSynthesisOptions) synthesisOptions.toRequestOptions(1500) else emptyMap()))
     }
 
     fun importRuntimePackage(uri: Uri) {
@@ -583,7 +589,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     fun beginEditVoice(voice: StudioVoice) {
         if (busy || fileBusy) return
-        if (voice.builtIn && voice.modelDirectory == MingModel.DIRECTORY) {
+        if (voice.builtIn && voice.model == MingModel.model.ref) {
             beginVoice(voice.copy(id = UUID.randomUUID().toString(), name = ""))
             return
         }
@@ -593,9 +599,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             gptName = model.gptFilename, sovitsName = model.sovitsFilename,
             audioName = voice.audioName, transcript = voice.transcript, durationMs = voice.durationMs,
             referenceLanguage = voice.referenceLanguage, editingCharacterId = model.id,
-            modelVersion = model.relativeModelDirectory.substringBefore('/'), avatarPath = voice.avatarPath)
+            modelVersion = model.ref.variant, avatarPath = voice.avatarPath)
         checkpointError = null
-        checkpointRecognition = modelArchitectureText(model.relativeModelDirectory.substringBefore('/'))
+        checkpointRecognition = modelArchitectureText(model.ref.variant)
         importMessage = null
     }
 
@@ -687,8 +693,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             checkpointError = UiText(R.string.checkpoint_fields_required)
             return
         }
-        val editedDirectory = value.editingCharacterId?.let { "${value.modelVersion}/$it/tts_models" }
-        if (nameExists(value.name, modelDirectory = editedDirectory)) {
+        val editedModel = value.editingCharacterId?.let { ModelRef("gptsovits", value.modelVersion, it) }
+        if (nameExists(value.name, modelRef = editedModel)) {
             checkpointError = UiText(R.string.voice_name_exists)
             return
         }
@@ -711,7 +717,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 deleteDraftFile(value.audioPath)
                 checkpointDraft = null
                 importMessage = null
-                selectedId = "default:${imported.architecture}/${imported.characterId}/tts_models"
+                selectedId = defaultVoiceId(ModelRef("gptsovits", imported.architecture, imported.characterId))
                 store.selectedId = selectedId
                 avatars.save(selectedId, value.avatarPath)
                 refreshResources()
