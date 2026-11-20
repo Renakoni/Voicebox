@@ -33,7 +33,7 @@ internal class V5DiTRuntime(
     private var tailWorkspace: Workspace? = null
     private val qnn = mutableMapOf<Int, QnnSession?>()
     private val preparedBuckets = mutableSetOf<Int>()
-    private val hasHtpGraphs = (SPLIT_GRAPHS + HTP_BODY).all { File(directory, it).isFile }
+    private val hasHtpGraphs = hasHtpGraphs(directory)
     private val qnnModel by lazy(LazyThreadSafetyMode.NONE) {
         QnnSession.Model(requireNotNull(qnnRuntime()), File(directory, HTP_BODY),
             File(directory, "v5_sovits_fp32.bin"), "v5")
@@ -242,6 +242,7 @@ internal class V5DiTRuntime(
         const val HTP_BODY = "v5-dit-htp.onnx"
         const val HEAD = "v5-dit-head.onnx"
         val SPLIT_GRAPHS = listOf(STEM, BODY, HEAD)
+        fun hasHtpGraphs(directory: File) = (SPLIT_GRAPHS + listOf(HTP_BODY, GRAPH, TIME)).all { File(directory, it).isFile }
         private fun direct(count: Int): FloatBuffer = ByteBuffer.allocateDirect(count * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
         private fun copy(source: FloatBuffer) = direct(source.remaining()).apply { put(source); rewind() }
     }

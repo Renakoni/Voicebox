@@ -1,7 +1,7 @@
 # Ming-TTS backend bridge
 
 The Release ZIP contains **backend code only**: the package manifest, adapter/task DEX JAR, Ming JNI libraries and
-their ONNX Runtime dependency. It contains no model weights, ONNX graphs, tokenizer,
+their ONNX Runtime dependency, and a four-value ReLU graph for a strict WebGPU probe. It contains no model weights, speech graphs, tokenizer,
 reference encoders, reference audio or voice caches. Model downloads belong to the
 existing voice/model flow, using official sources or mirrors separately from Releases.
 

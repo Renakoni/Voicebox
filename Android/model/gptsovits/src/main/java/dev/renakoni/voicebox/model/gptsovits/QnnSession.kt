@@ -49,25 +49,28 @@ internal class QnnSession(model: Model, performance: String, frames: Int,
     override fun close() = destroy(handle)
 
     /** Reused across shape buckets and eviction. Import/runtime replacement closes the owner. */
-    class Model(val runtime: File, val graph: File, weights: File, namespace: String) {
+    class Model(val runtime: File, val graph: File, weights: File, namespace: String,
+        platform: String = "${Build.FINGERPRINT}/${System.getProperty("os.arch")}") {
         private val prefix: String
 
         init {
+            val family = ".gptsovits-$namespace-htp-"
             val digest = MessageDigest.getInstance("SHA-256")
-            digest.update("htp-finalization-3".toByteArray())
-            digest.update(Build.FINGERPRINT.toByteArray())
-            digest.update(graph.readBytes())
-            val dependencies = listOf(weights) +
-                runtime.listFiles().orEmpty().filter { it.extension == "so" }.sortedBy { it.name }
-            dependencies.forEach { file ->
-                digest.update("\n${file.name}:${file.length()}:${file.lastModified()}".toByteArray())
-            }
-            File(runtime, "libonnxruntime-qnn.so").inputStream().buffered().use { stream ->
-                val buffer = ByteArray(65536)
-                while (true) { val count = stream.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+            digest.update("htp-finalization-3/$family/$platform".toByteArray())
+            val buffer = ByteArray(256 * 1024)
+            val libraries = runtime.listFiles().orEmpty().filter { it.extension == "so" }.sortedBy { it.name }
+            for (file in listOf(graph, weights) + libraries) {
+                digest.update("\n${file.name}:${file.length()}:".toByteArray())
+                file.inputStream().use { input ->
+                    while (true) {
+                        GenerationContext.current()?.checkCancelled()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
             }
             val key = digest.digest().take(12).joinToString("") { "%02x".format(it) }
-            val family = ".$namespace-htp-"
             prefix = "$family$key-"
             graph.parentFile!!.listFiles()?.filter { it.name.startsWith(family) && !it.name.startsWith(prefix) }
                 ?.forEach { it.delete() }

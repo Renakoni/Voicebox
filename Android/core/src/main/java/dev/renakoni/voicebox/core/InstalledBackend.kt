@@ -40,6 +40,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
     private var report = AccelerationInfo()
+    override fun hasNpuGraphs(model: CharacterModel) = library()?.hasNpuGraphs(model) == true
     override fun accelerationInfo() = report
     override fun executionModes(): Set<ExecutionBackend> {
         if (!archive.installed) return emptySet()

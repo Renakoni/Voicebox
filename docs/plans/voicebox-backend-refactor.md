@@ -310,7 +310,7 @@ docs/
 - [x] PR2 模型边界。Ming 和 V2 的样本限制沿用 P0。
 - [x] PR3 公共桥接装载。MuMu 原生 x86_64 与 ARM64 转译结果分别记载。
 - [x] PR4 GPT 独立包和默认预装。原版 V2 和原生 ARM64 的限制见下表。
-- [ ] PR5 加速职责。
+- [x] PR5 加速职责。硬件执行范围见本节记录。
 - [ ] PR6 模型页面与能力驱动流程。
 - [ ] PR7 综合验收。
 
@@ -380,3 +380,12 @@ PR6 社区 checkpoint 回归验证发现，规范化后的 JSON 与三个变体�
 | 会话与性能 | P0 固定 Roxy 模型、日语参考和中文句，默认 CPU，进程冷启动首请求 24,426 ms，热请求 12,428 ms，RTF 5.87 / 2.99。两次均为 32 kHz、133,120 样本、4.16 s，峰值 8,512；同一 worker PID 20939，VmHWM 1,958,612 KiB；宿主 PID 20866，289,852 KiB。P0 分别为 49,690 / 14,689 ms。缓存与模拟器热状态不能严格复现，两个进程各自峰值不等于同时占用。超时、解码中取消、切换音源、服务销毁及随后的真实生成通过。见 `refactor-{0,1}.txt`、`lifecycle-real-final.log`。 |
 | 跨后端 | 使用同源 x86_64 Ming 本地候选，单个前台服务完成 Roxy → Ming → Roxy。三次输出分别为 32 kHz / 65,280、44.1 kHz / 63,504、32 kHz / 62,720 样本且非静音，见 `switch.log`、`switch-audio.log`。 |
 | 多参考 | 对同一 V2 Pro Plus 模板使用上游多参考导出器构造可选八槽图，验证真实日语主参考和第二段中文参考经宿主请求、IPC、独立 prompt encoder 与 CPU 合成。结果为非静音 32 kHz WAV，见 `multi.log` 与 `switch-probes/MultiProof.kt`。 |
+
+### PR5 设备事实、后端探测与加速缓存
+
+分支 `refactor/voicebox-05-acceleration`，基准 `59ccc44`（[PR4](https://github.com/Renakoni/Voicebox/pull/4)）。核心读取进程 ABI、SoC、硬件和系统指纹。模型包只在私有 worker 中打开运行库。GPT 用禁止 CPU 回退的四值图检查 WebGPU，再依据设备、运行库、模型图和既有 QNN 探针判断混合加速。Ming 使用自己的 ORT 和上游 `gpu_probe.cpp`，检查独立 ReLU 图的实际输出。音源缺少对应的 HTP 图时，Studio 不显示可用的 NPU。
+
+- GPT context 键含后端、V2/V5 图族、设备/ABI 以及图、权重和运行库的内容摘要，文件名区分帧数。计算发生在首次初始化当前 QNN 模型时，支持取消。声学生成仍只打开已经准备的 context，原先 V2/V5 的分桶、执行顺序和回退保留。JVM 用例验证 shape/平台/文件变化，包括同大小且恢复原修改时间的文件替换；共 121 项通过。见 `artifacts/refactor-pr5/{junit.json,integration-build.log}`。
+- MuMu API 32 原生 x86_64，两个包独立探测，结果均为 CPU。Ming 调用 WebGPU 时其 ORT 在私有探测进程内 SIGSEGV，宿主收到断开并回退；随后真实 CPU 合成、主动取消及下一任务通过。尚无可实测 WebGPU 正向或原生高通 QNN 的设备，QNN 实际 context 编译/重载和设备吞吐未验证。见 `final-device.log`、`final-probe-events.log` 和 `final-crash.log`。
+- 同机同模型同参考和文本，Roxy 冷/热 49,454 / 15,107 ms，3.6 s 输出，32 kHz，两次为同一 worker。宿主 VmHWM 299,252 KiB，worker 冷/热为 1,962,568 / 1,975,248 KiB。此轮使用另一个安装目录及其缓存，详见 `cold.txt`、`warm.txt`。
+- Ming ARM64 本地候选为 17,070,989 字节，SHA-256 `b0b2ae31be09a3513ed17ac54bb21518604602aa6dfd880656ecaed4209617df`。两个 ABI 都从同一个上游和适配版本构建，生产目录只固定 ARM64 候选；未发布 Release。
