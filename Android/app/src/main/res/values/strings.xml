@@ -181,9 +181,15 @@
     <string name="update_checking">Checking for a new version…</string>
     <string name="update_current">You have the latest version.</string>
     <string name="update_check_failed">Could not check for updates. Tap to retry.</string>
-    <string name="update_download">Download VoiceBox %1$s</string>
+    <string name="update_available">Update available</string>
+    <string name="update_release_notes">Release notes</string>
+    <string name="update_no_release">There are no published releases for this app yet.</string>
+    <string name="update_no_notes">No release notes were provided.</string>
+    <string name="update_manual">Manual download</string>
+    <string name="update_later">Later</string>
+    <string name="update_close">Close</string>
     <string name="update_progress">Downloading… %1$d%%</string>
-    <string name="update_install">Install VoiceBox %1$s</string>
+    <string name="update_install_action">Install update</string>
     <string name="update_allow_install">Allow VoiceBox to install apps in system settings, then tap Install again.</string>
     <string name="update_install_failed">Could not open the Android package installer.</string>
     <string name="update_package_mismatch">This APK does not match the announced VoiceBox version.</string>

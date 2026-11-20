@@ -5,3 +5,7 @@ Files: fluentui_controls/src/main/java/com/microsoft/fluentui/tokenized/controls
        fluentui_core/src/main/java/com/microsoft/fluentui/theme/token/controlTokens/ButtonTokens.kt
 License: MIT, see fluentui-LICENSE.txt.
 Local changes: Material3 color tokens, neutral primary/secondary/quiet styles, compact layout with Android minimum touch sizing, current ripple API, and regular button accessibility semantics.
+
+AppUpdateDialog.kt adapts NextVol's UpdatesAvailableDialog, version comparison, release notes, download progress and actions. AppUpdate.kt adapts its stable GitHub Release selection. The archive icon comes from the same project.
+Source: https://github.com/Renakoni/nextvol, revision 94565d225921313bb37bc320fd8c9a06c4186159
+License: Apache-2.0, see voicebox-licenses/third-party/NextVol-Apache-2.0.txt.

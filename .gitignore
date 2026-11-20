@@ -107,6 +107,5 @@ tests/parity/.tmp/
 !/tools/verify_backend_boundaries.py
 !/tools/build_ort_webgpu.ps1
 !/tools/package_ort_runtime.py
-!/tools/prepare_app_update.py
 !/tools/ort-build-requirements.txt
 !Android/model/gptsovits/src/main/assets/official-runtime/*.onnx
