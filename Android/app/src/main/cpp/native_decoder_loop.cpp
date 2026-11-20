@@ -50,13 +50,13 @@ struct DecoderCancellation {
 };
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeCreateCancellation(JNIEnv*, jclass) {
+Java_dev_renakoni_voicebox_inference_NativeDecoderLoop_nativeCreateCancellation(JNIEnv*, jclass) {
     const OrtApi* api = getOrtApi();
     return api ? reinterpret_cast<jlong>(new DecoderCancellation(api)) : 0;
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeCancel(JNIEnv*, jclass, jlong handle) {
+Java_dev_renakoni_voicebox_inference_NativeDecoderLoop_nativeCancel(JNIEnv*, jclass, jlong handle) {
     auto* cancellation = reinterpret_cast<DecoderCancellation*>(handle);
     std::lock_guard<std::mutex> lock(cancellation->mutex);
     cancellation->cancelled.store(true);
@@ -67,7 +67,7 @@ Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeCancel(JNIEnv*, jc
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDeleteCancellation(JNIEnv*, jclass, jlong handle) {
+Java_dev_renakoni_voicebox_inference_NativeDecoderLoop_nativeDeleteCancellation(JNIEnv*, jclass, jlong handle) {
     // Kotlin detaches the cancellation hook after native execution has returned.
     delete reinterpret_cast<DecoderCancellation*>(handle);
 }
@@ -139,7 +139,7 @@ static void notifyDecoderProgress(
 }
 
 extern "C" JNIEXPORT jlongArray JNICALL
-Java_dev_rinstel_genie_1tts_inference_NativeDecoderLoop_nativeDecoderLoop(
+Java_dev_renakoni_voicebox_inference_NativeDecoderLoop_nativeDecoderLoop(
     JNIEnv* env, jclass cls,
     jlong sessionPtr,
     jobjectArray inputNamesJ,

@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.22.1)
-project(genie_tts_native LANGUAGES C CXX)
+project(voicebox_native LANGUAGES C CXX)
 
 # C++17 for std::vector etc.
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-option(GENIE_ENABLE_NATIVE_DECODER "Build the native ORT decoder loop" OFF)
+option(VOICEBOX_ENABLE_NATIVE_DECODER "Build the native ORT decoder loop" OFF)
 
 if(ANDROID)
     set(JTALK_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/third_party/open_jtalk)
@@ -17,16 +17,16 @@ if(ANDROID)
         list(APPEND JTALK_SOURCES ${PART_SOURCES})
         list(APPEND JTALK_INCLUDES "${JTALK_ROOT}/${PART}")
     endforeach()
-    add_library(genie_japanese SHARED japanese_frontend.cpp ${JTALK_SOURCES})
-    target_include_directories(genie_japanese PRIVATE ${JTALK_INCLUDES})
-    target_compile_definitions(genie_japanese PRIVATE HAVE_CONFIG_H DIC_VERSION=102
+    add_library(voicebox_japanese SHARED japanese_frontend.cpp ${JTALK_SOURCES})
+    target_include_directories(voicebox_japanese PRIVATE ${JTALK_INCLUDES})
+    target_compile_definitions(voicebox_japanese PRIVATE HAVE_CONFIG_H DIC_VERSION=102
         MECAB_DEFAULT_RC="dummy" PACKAGE="open_jtalk" VERSION="1.11"
         CHARSET_UTF_8 MECAB_UTF8_USE_ONLY)
 
     file(GLOB SILK_SOURCES CONFIGURE_DEPENDS "third_party/silk/src/*.c")
-    add_library(genie_silk SHARED qq_silk.cpp ${SILK_SOURCES})
-    target_include_directories(genie_silk PRIVATE third_party/silk/interface third_party/silk/src)
-    target_compile_definitions(genie_silk PRIVATE NO_ASM)
+    add_library(voicebox_silk SHARED qq_silk.cpp ${SILK_SOURCES})
+    target_include_directories(voicebox_silk PRIVATE third_party/silk/interface third_party/silk/src)
+    target_compile_definitions(voicebox_silk PRIVATE NO_ASM)
 endif()
 
 set(SOXR_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/soxr)
@@ -67,7 +67,7 @@ if(ANDROID)
     target_link_libraries(native_resampler ${log-lib})
 endif()
 
-if(ANDROID AND GENIE_ENABLE_NATIVE_DECODER)
+if(ANDROID AND VOICEBOX_ENABLE_NATIVE_DECODER)
     set(DECODER_NATIVE_SOURCE_DIR
         ${CMAKE_CURRENT_SOURCE_DIR}
     )

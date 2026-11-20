@@ -10,7 +10,7 @@
 #include <jni.h>
 #endif
 
-namespace genie_tts {
+namespace voicebox {
 
 std::vector<float> ResampleReferenceAudio(
     const std::vector<float>& input,
@@ -53,11 +53,11 @@ std::vector<float> ResampleReferenceAudio(
     return output;
 }
 
-}  // namespace genie_tts
+}  // namespace voicebox
 
 #if defined(__ANDROID__)
 extern "C" JNIEXPORT jfloatArray JNICALL
-Java_dev_rinstel_genie_1tts_inference_ReferenceAudioResampler_nativeResample(
+Java_dev_renakoni_voicebox_inference_ReferenceAudioResampler_nativeResample(
     JNIEnv* env,
     jclass,
     jfloatArray input_array,
@@ -73,7 +73,7 @@ Java_dev_rinstel_genie_1tts_inference_ReferenceAudioResampler_nativeResample(
     if (input_data) env->ReleaseFloatArrayElements(input_array, input_data, JNI_ABORT);
 
     try {
-        const std::vector<float> output = genie_tts::ResampleReferenceAudio(
+        const std::vector<float> output = voicebox::ResampleReferenceAudio(
             input, source_rate, target_rate);
         jfloatArray output_array = env->NewFloatArray(static_cast<jsize>(output.size()));
         if (output_array && !output.empty()) {

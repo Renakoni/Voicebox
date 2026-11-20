@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Voicebox</string>
+    <string name="app_name">VoiceBox</string>
     <string name="prototype_idle_status">待命</string>
     <string name="prototype_backend_unavailable">%1$s 后端不可用。</string>
     <string name="prototype_generation_busy">正在生成，请稍候。</string>
     <string name="prototype_generation_error">生成失败：%1$s</string>
-    <string name="prototype_service_notification_title">Voicebox 后台服务</string>
+    <string name="prototype_service_notification_title">VoiceBox 后台服务</string>
     <string name="prototype_service_notification_description">保持推理服务常驻并显示当前状态。</string>
     <string name="prototype_cache_cleared">缓存已清理：删除 %1$d 个生成音频文件和 %2$d 个运行时缓存文件。</string>
     <string name="prototype_cache_clear_failed">缓存清理失败：%1$s</string>
@@ -29,7 +29,7 @@
     <string name="microphone_permission">需要麦克风权限才能录音，也可以直接选择音频。</string>
     <string name="gallery_unavailable">无法打开相册，请检查是否安装了相册应用。</string>
     <string name="camera_unavailable">无法打开相机，请检查是否安装了相机应用。</string>
-    <string name="audio_clip_label">Voicebox 音频</string>
+    <string name="audio_clip_label">VoiceBox 音频</string>
     <string name="share_audio">分享语音</string>
     <string name="share_failed">无法分享这段音频，请先保存到文件。</string>
     <string name="download_service_unavailable">下载服务暂时不可用，请稍后重试。</string>
@@ -128,13 +128,13 @@
     <string name="adb_write_verification_failed">写入校验失败，原草稿尚未替换。</string>
     <string name="qq_existing_draft">QQ 已有未发送的草稿，请先发送或取消，再重新开始。</string>
     <string name="qq_recording_active">QQ 正在录音，请先停止并处理该草稿。</string>
-    <string name="qq_start_from_list">请先回到 QQ 消息列表，再从 Voicebox 开始。</string>
+    <string name="qq_start_from_list">请先回到 QQ 消息列表，再从 VoiceBox 开始。</string>
     <string name="qq_list_unavailable">未能打开 QQ 消息列表，请返回消息列表后重试。</string>
     <string name="qq_choose_recipient">请在 QQ 选择联系人。打开会话后，将自动准备并发送这条语音。</string>
     <string name="qq_selection_cancelled">已退出 QQ 选人，没有发送语音。返回后可重新选择。</string>
     <string name="qq_chat_has_draft">所选会话已有语音草稿，未开始录制。请先处理该草稿。</string>
     <string name="qq_preparing_recipient">正在准备发给 %1$s 的语音，请保持 QQ 前台，暂勿操作。</string>
-    <string name="qq_selection_timeout">选择联系人已超时，没有发送语音。请返回 Voicebox 重试。</string>
+    <string name="qq_selection_timeout">选择联系人已超时，没有发送语音。请返回 VoiceBox 重试。</string>
     <string name="qq_audio_too_long">这段语音过长，暂不支持 QQ 自动发送。</string>
     <string name="qq_recording_blocks_automation">QQ 正在录音，未开始自动操作。请先处理该录音。</string>
     <string name="qq_voice_button_missing">找不到 QQ 语音入口，请先关闭键盘或弹窗。</string>
@@ -177,7 +177,7 @@
     <string name="qq_select_send">选择联系人并发送</string>
     <string name="link_open_failed">无法打开链接，请检查浏览器是否可用。</string>
     <string name="about">关于</string>
-    <string name="app_icon">Voicebox 图标</string>
+    <string name="app_icon">VoiceBox 图标</string>
     <string name="app_version">版本 %1$s</string>
     <string name="app_description">本地语音合成与音色克隆</string>
     <string name="report_issue">问题反馈</string>
@@ -215,7 +215,7 @@
     <string name="record_hold">按住录音</string>
     <string name="record_finish">完成录音</string>
     <string name="record_cancel">取消录音</string>
-    <string name="github_star_action">前往 GitHub，为 Voicebox 点 Star</string>
+    <string name="github_star_action">前往 GitHub，为 VoiceBox 点 Star</string>
     <string name="github_star_hint">如果它帮到了你</string>
     <string name="github_star">点亮一颗 Star</string>
     <string name="tab_create">创作</string>
@@ -329,7 +329,7 @@
     <string name="engine_other_task">引擎正在处理其他任务，请稍后重试。</string>
     <string name="import_resources_progress">正在导入，完成后即可使用。较大的文件可能需要更长时间。</string>
     <string name="import_resources_complete">导入完成，资源已保存在手机上。</string>
-    <string name="import_resources_failed">导入失败，请选择对应的 Voicebox ZIP 资源包，并确认手机剩余空间充足。</string>
+    <string name="import_resources_failed">导入失败，请选择对应的 VoiceBox ZIP 资源包，并确认手机剩余空间充足。</string>
     <string name="import_engine_busy">引擎繁忙，请稍后重新导入。</string>
     <string name="checkpoint_extension">%1$s 权重请选择以 %2$s 结尾的文件。</string>
     <string name="model_identifying">正在识别…</string>

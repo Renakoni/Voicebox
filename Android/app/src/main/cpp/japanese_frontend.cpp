@@ -31,7 +31,7 @@ Frontend frontend;
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
-Java_dev_rinstel_genie_1tts_inference_OpenJtalk_labelsNative(
+Java_dev_renakoni_voicebox_inference_OpenJtalk_labelsNative(
     JNIEnv* env, jobject, jstring dictionary, jbyteArray text) {
     std::lock_guard<std::mutex> lock(frontend.mutex);
     if (!frontend.loaded) {

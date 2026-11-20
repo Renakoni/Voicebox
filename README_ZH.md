@@ -113,7 +113,7 @@ cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-默认构建使用 CPU 推理。WebGPU 加速需构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](patches)），通过 `-PgenieOrtAar=<AAR路径>` 引入。
+默认构建使用 CPU 推理。WebGPU 加速需构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](patches)），通过 `-PvoiceboxOrtAar=<AAR路径>` 引入。
 
 ## 问题反馈
 

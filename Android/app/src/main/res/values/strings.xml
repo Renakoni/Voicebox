@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Voicebox</string>
+    <string name="app_name">VoiceBox</string>
     <string name="prototype_idle_status">Ready</string>
     <string name="prototype_backend_unavailable">%1$s backend is unavailable.</string>
     <string name="prototype_generation_busy">Generation is in progress. Please wait.</string>
     <string name="prototype_generation_error">Generation failed: %1$s</string>
-    <string name="prototype_service_notification_title">Voicebox background service</string>
+    <string name="prototype_service_notification_title">VoiceBox background service</string>
     <string name="prototype_service_notification_description">Keeps speech generation running and shows its status.</string>
     <string name="prototype_cache_cleared">Cache cleared. Removed %1$d audio files and %2$d runtime cache files.</string>
     <string name="prototype_cache_clear_failed">Could not clear the cache: %1$s</string>
@@ -29,7 +29,7 @@
     <string name="microphone_permission">Allow microphone access to record, or select an audio file.</string>
     <string name="gallery_unavailable">Could not open the gallery. Check that a gallery app is installed.</string>
     <string name="camera_unavailable">Could not open the camera. Check that a camera app is installed.</string>
-    <string name="audio_clip_label">Voicebox audio</string>
+    <string name="audio_clip_label">VoiceBox audio</string>
     <string name="share_audio">Share audio</string>
     <string name="share_failed">Could not share this audio. Save it to a file first.</string>
     <string name="download_service_unavailable">The download server is unavailable. Try again later.</string>
@@ -128,13 +128,13 @@
     <string name="adb_write_verification_failed">Write verification failed. The original draft was kept.</string>
     <string name="qq_existing_draft">QQ has an unsent voice draft. Send or discard it before starting again.</string>
     <string name="qq_recording_active">QQ is recording. Stop recording and handle that draft first.</string>
-    <string name="qq_start_from_list">Return to the QQ message list, then start from Voicebox.</string>
+    <string name="qq_start_from_list">Return to the QQ message list, then start from VoiceBox.</string>
     <string name="qq_list_unavailable">Could not open the QQ message list. Return to it and try again.</string>
     <string name="qq_choose_recipient">Select a contact in QQ. Opening the chat will prepare and send this voice message automatically.</string>
     <string name="qq_selection_cancelled">You left QQ while choosing a contact. No voice message was sent. Return to try again.</string>
     <string name="qq_chat_has_draft">This chat already has a voice draft. Send or discard it first.</string>
     <string name="qq_preparing_recipient">Preparing audio for %1$s. Keep QQ open and leave it untouched.</string>
-    <string name="qq_selection_timeout">Contact selection timed out. No voice message was sent. Return to Voicebox and try again.</string>
+    <string name="qq_selection_timeout">Contact selection timed out. No voice message was sent. Return to VoiceBox and try again.</string>
     <string name="qq_audio_too_long">This audio is too long for automatic QQ sending.</string>
     <string name="qq_recording_blocks_automation">QQ is already recording. Finish or discard that recording before trying again.</string>
     <string name="qq_voice_button_missing">Could not find the QQ voice button. Close the keyboard or any open dialog.</string>
@@ -143,12 +143,12 @@
     <string name="qq_preview_missing">QQ has not opened the audio preview. The audio was not replaced. Check QQ.</string>
     <string name="qq_duration_mismatch">The temporary recording has an unexpected duration. Discard the draft in QQ and try again.</string>
     <string name="qq_verifying_recipient">Checking the voice message for %1$s…</string>
-    <string name="qq_draft_changed">The QQ draft changed. Voicebox did not send the message.</string>
-    <string name="qq_send_attempted">Send was tapped. Check the result in QQ. Voicebox will not send it again automatically.</string>
+    <string name="qq_draft_changed">The QQ draft changed. VoiceBox did not send the message.</string>
+    <string name="qq_send_attempted">Send was tapped. Check the result in QQ. VoiceBox will not send it again automatically.</string>
     <string name="qq_draft_expired">Voice preparation timed out. Discard the QQ draft and start again.</string>
     <string name="qq_draft_ambiguous">Could not identify a single new recording. Record one unsent voice draft in the intended chat.</string>
     <string name="qq_previous_busy">The previous voice message is still being processed.</string>
-    <string name="qq_content_changed">The draft content changed. Voicebox did not send the message. Check QQ.</string>
+    <string name="qq_content_changed">The draft content changed. VoiceBox did not send the message. Check QQ.</string>
     <string name="qq_folder_unsupported">The QQ folder layout is not supported.</string>
     <string name="qq_draft_already_handled">This draft has already been handled. Do not replace it again.</string>
     <string name="qq_recording_in_progress">The recording is still being written. Stop recording in QQ before trying again.</string>
@@ -173,11 +173,11 @@
     <string name="qq_pairing_instructions">Keep the system pairing dialog open and enter its six-digit code.</string>
     <string name="qq_pairing_code">Pairing code</string>
     <string name="qq_pair_connect">Pair and connect</string>
-    <string name="qq_automation_instructions">Open the target chat from the QQ message list. Voicebox will record a temporary message, replace its audio, and send it. Leave QQ untouched until this finishes.</string>
+    <string name="qq_automation_instructions">Open the target chat from the QQ message list. VoiceBox will record a temporary message, replace its audio, and send it. Leave QQ untouched until this finishes.</string>
     <string name="qq_select_send">Choose contact and send</string>
     <string name="link_open_failed">Could not open the link. Check that a browser is available.</string>
     <string name="about">About</string>
-    <string name="app_icon">Voicebox icon</string>
+    <string name="app_icon">VoiceBox icon</string>
     <string name="app_version">Version %1$s</string>
     <string name="app_description">On-device speech synthesis and voice cloning</string>
     <string name="report_issue">Report an issue</string>
@@ -215,7 +215,7 @@
     <string name="record_hold">Hold to record</string>
     <string name="record_finish">Finish recording</string>
     <string name="record_cancel">Cancel recording</string>
-    <string name="github_star_action">Star Voicebox on GitHub</string>
+    <string name="github_star_action">Star VoiceBox on GitHub</string>
     <string name="github_star_hint">Finding it useful?</string>
     <string name="github_star">Star on GitHub</string>
     <string name="tab_create">Create</string>
@@ -333,7 +333,7 @@
     <string name="engine_other_task">The engine is working on another task. Try again later.</string>
     <string name="import_resources_progress">Importing resources. Large files may take a while.</string>
     <string name="import_resources_complete">Import complete. Resources are saved on this device.</string>
-    <string name="import_resources_failed">Import failed. Select a compatible Voicebox ZIP resource package and check available storage.</string>
+    <string name="import_resources_failed">Import failed. Select a compatible VoiceBox ZIP resource package and check available storage.</string>
     <string name="import_engine_busy">The engine is busy. Try importing again later.</string>
     <string name="checkpoint_extension">Select a %2$s file for the %1$s weights.</string>
     <string name="model_identifying">Identifying model…</string>
