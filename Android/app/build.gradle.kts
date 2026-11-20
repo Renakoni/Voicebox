@@ -66,7 +66,7 @@ android {
         applicationId = "dev.renakoni.voicebox"
         minSdk = 30
         targetSdk = 36
-        versionCode = 10
+        versionCode = providers.gradleProperty("voiceboxVersionCode").get().toInt()
         versionName = providers.gradleProperty("voiceboxVersionName").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

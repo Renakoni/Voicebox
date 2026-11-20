@@ -177,6 +177,16 @@
     <string name="qq_select_send">选择联系人并发送</string>
     <string name="link_open_failed">无法打开链接，请检查浏览器是否可用。</string>
     <string name="about">关于</string>
+    <string name="update_check">检查更新</string>
+    <string name="update_checking">正在检查新版本…</string>
+    <string name="update_current">已是最新版本。</string>
+    <string name="update_check_failed">检查更新失败，点按重试。</string>
+    <string name="update_download">下载 VoiceBox %1$s</string>
+    <string name="update_progress">正在下载… %1$d%%</string>
+    <string name="update_install">安装 VoiceBox %1$s</string>
+    <string name="update_allow_install">请在系统设置中允许 VoiceBox 安装应用，然后再点「安装」。</string>
+    <string name="update_install_failed">无法打开系统安装界面。</string>
+    <string name="update_package_mismatch">下载的 APK 与公布的 VoiceBox 版本不符。</string>
     <string name="app_icon">VoiceBox 图标</string>
     <string name="app_version">版本 %1$s</string>
     <string name="app_description">本地语音合成与音色克隆</string>

@@ -2,8 +2,16 @@
 
 package dev.renakoni.voicebox.studio
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.renakoni.voicebox.core.i18n.UiText
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalContext
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -53,23 +61,72 @@ internal fun AboutPage(onBack: () -> Unit, onError: (UiText) -> Unit, modifier: 
                     modifier = Modifier.padding(top = 16.dp))
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink("GitHub", "github.com/Renakoni/Voicebox", "https://github.com/Renakoni/Voicebox", openLink)
+            AppUpdateRow(onError)
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink(resources.getString(R.string.report_issue), "GitHub Issues", "https://github.com/Renakoni/Voicebox/issues", openLink)
+            AboutAction("GitHub", "github.com/Renakoni/Voicebox") { openLink("https://github.com/Renakoni/Voicebox") }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            AboutLink(resources.getString(R.string.open_source_license), "AGPL-3.0", "https://github.com/Renakoni/Voicebox/blob/main/LICENSE", openLink)
+            AboutAction(resources.getString(R.string.report_issue), "GitHub Issues") { openLink("https://github.com/Renakoni/Voicebox/issues") }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            AboutAction(resources.getString(R.string.open_source_license), "AGPL-3.0") { openLink("https://github.com/Renakoni/Voicebox/blob/main/LICENSE") }
         }
     }
 }
 
 @Composable
-private fun AboutLink(title: String, detail: String, url: String, openLink: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { openLink(url) }.padding(vertical = 16.dp),
+private fun AppUpdateRow(onError: (UiText) -> Unit) {
+    val vm: AppUpdateViewModel = viewModel()
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val state = vm.state
+    fun install() {
+        val ready = vm.state as? UpdateState.Ready ?: return
+        if (!ready.file.isFile) { vm.check(); return }
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.audio", ready.file)
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+        }.onFailure { onError(UiText(R.string.update_install_failed)) }
+    }
+    val permission = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (context.packageManager.canRequestPackageInstalls()) install()
+        else onError(UiText(R.string.update_allow_install))
+    }
+    val title = when (state) {
+        is UpdateState.Available -> resources.getString(R.string.update_download, state.update.version)
+        is UpdateState.Ready -> resources.getString(R.string.update_install, state.version)
+        else -> resources.getString(R.string.update_check)
+    }
+    val detail = when (state) {
+        UpdateState.Idle -> null
+        UpdateState.Checking -> resources.getString(R.string.update_checking)
+        UpdateState.Current -> resources.getString(R.string.update_current)
+        is UpdateState.Failed -> state.reason.resolve(resources)
+        is UpdateState.Available -> null
+        is UpdateState.Downloading -> resources.getString(R.string.update_progress, state.percent)
+        is UpdateState.Ready -> null
+    }
+    AboutAction(title, detail, enabled = state != UpdateState.Checking && state !is UpdateState.Downloading) {
+        when (state) {
+            is UpdateState.Available -> vm.download()
+            is UpdateState.Ready -> if (context.packageManager.canRequestPackageInstalls()) install() else {
+                runCatching { permission.launch(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.fromParts("package", context.packageName, null))) }
+                    .onFailure { onError(UiText(R.string.update_allow_install)) }
+            }
+            else -> vm.check()
+        }
+    }
+}
+
+@Composable
+private fun AboutAction(title: String, detail: String?, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick).heightIn(min = 56.dp).padding(vertical = 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (detail != null) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (enabled) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

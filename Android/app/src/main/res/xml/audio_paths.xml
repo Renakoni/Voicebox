@@ -2,4 +2,5 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <external-files-path name="generated_audio" path="GeneratedAudio/" />
     <cache-path name="avatar_camera" path="avatar_camera/" />
+    <cache-path name="app_updates" path="app-updates/" />
 </paths>
