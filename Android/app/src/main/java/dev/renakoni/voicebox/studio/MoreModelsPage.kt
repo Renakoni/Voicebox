@@ -16,13 +16,12 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.R
-import dev.renakoni.voicebox.model.ming.MingModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun MoreModelsPage(vm: StudioViewModel, onBack: () -> Unit, modifier: Modifier) {
     val resources = LocalResources.current
-    val download = vm.officialDownload.takeIf { it.modelId == MingModel.ID }
+    val download = vm.officialDownload.takeIf { it.modelId == "ming" }
     Column(modifier.fillMaxHeight().testTag("more_models_page")) {
         TopAppBar(title = { Text(resources.getString(R.string.more_models), style = MaterialTheme.typography.titleLarge) },
             navigationIcon = { IconButton(onClick = onBack) {

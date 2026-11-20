@@ -23,6 +23,22 @@ def sha256(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
+def add_file(archive, path, name):
+    entry = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+    entry.compress_type = archive.compression
+    with path.open('rb') as source, archive.open(entry, 'w') as target:
+        shutil.copyfileobj(source, target)
+
+
+def adapter_source_hash():
+    digest = hashlib.sha256()
+    inputs = [ROOT / name for name in ('bridge.cpp', 'CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts')]
+    for path in sorted(inputs + list((ROOT / 'src/main/java').rglob('*.kt'))):
+        digest.update(path.relative_to(ROOT).as_posix().encode() + b'\0')
+        digest.update(path.read_bytes().replace(b'\r\n', b'\n'))
+    return digest.hexdigest()
+
+
 def adapt_synthesis(source):
     start = source.index('        ProcessBuilder builder=')
     end = source.index('\n    }', start)
@@ -44,7 +60,7 @@ def main():
     parser.add_argument('--pocketfft-include', type=Path, required=True)
     parser.add_argument('--abi', choices=['arm64-v8a', 'x86_64'], default='arm64-v8a')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--release-url', default='https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v1')
+    parser.add_argument('--release-url', default='https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2')
     parser.add_argument('--catalog', type=Path, help='Also write the pinned app asset catalog here')
     args = parser.parse_args()
     source, output = args.source.resolve(), args.output.resolve()
@@ -74,27 +90,33 @@ def main():
     android_jar = sdk / 'platforms/android-36/android.jar'
     run('javac', '--release', '11', '-encoding', 'UTF-8', '-cp', android_jar,
         '-d', build / 'classes', *sorted((build / 'java').glob('*.java')))
-    run(sdk / 'build-tools/36.0.0/d8.bat', '--min-api', '30', '--lib', android_jar,
-        '--output', build / 'dex', *sorted((build / 'classes').rglob('*.class')))
+    android_root = ROOT.parents[1]
+    run(android_root / 'gradlew.bat', '-p', android_root, ':model:ming:bundleReleaseAar')
+    adapter = ROOT / 'build/intermediates/aar_main_jar/release/syncReleaseLibJars/classes.jar'
+    run(sdk / 'build-tools/37.0.0/d8.bat', '--min-api', '30', '--lib', android_jar,
+        '--output', build / 'dex', adapter, *sorted((build / 'classes').rglob('*.class')))
     with zipfile.ZipFile(runtime / 'tasks.jar', 'w') as archive:
-        archive.write(build / 'dex/classes.dex', 'classes.dex')
+        add_file(archive, build / 'dex/classes.dex', 'classes.dex')
     # Explicit code allowlist: never collect model weights, graphs or voice resources.
-    names = ['tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so', 'libming-reference.so']
+    manifest = {'contract': 1, 'id': 'ming', 'entry': 'dev.renakoni.voicebox.model.ming.MingEntry',
+                'code': 'tasks.jar', 'abi': args.abi, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
+                    ['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()}
+    (runtime / 'bridge.json').write_text(json.dumps(manifest), encoding='utf-8')
+    names = ['bridge.json', 'tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so', 'libming-reference.so']
     if args.abi == 'arm64-v8a':
         names += ['libming-mmla-neon.so', 'libming-mmla-bf16.so']
     files = [(runtime / name, name) for name in names]
-    name = f'ming-backend-v1-{args.abi}.zip'
+    name = f'ming-backend-v2-{args.abi}.zip'
     archive_path = output / name
     print(f'Packaging {name}', flush=True)
     with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for path, relative in files:
-            archive.write(path, relative)
+            add_file(archive, path, relative)
     parts = [{'url': args.release_url.rstrip('/') + '/' + name,
               'bytes': archive_path.stat().st_size, 'sha256': sha256(archive_path)}]
-    catalog = {'format': 1, 'id': 'ming-dense-0.5b', 'version': '1', 'abi': args.abi,
+    catalog = {**manifest, 'format': 2, 'version': '2',
                'revision': hashlib.sha256(''.join(p['sha256'] for p in parts).encode()).hexdigest(),
-               'parts': parts, 'files': {name: path.stat().st_size for path, name in files},
-               'sourceCommit': subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()}
+               'parts': parts, 'files': {name: path.stat().st_size for path, name in files}}
     payload = json.dumps(catalog, ensure_ascii=False, indent=2) + '\n'
     (output / 'ming-runtime.json').write_text(payload, encoding='utf-8')
     if args.catalog:

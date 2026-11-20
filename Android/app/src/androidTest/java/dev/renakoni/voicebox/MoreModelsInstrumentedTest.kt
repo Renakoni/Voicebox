@@ -6,7 +6,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dev.renakoni.voicebox.studio.StudioViewModel
 import dev.renakoni.voicebox.bridge.GenerationStage
-import dev.renakoni.voicebox.model.ming.MingModel
 import org.junit.Assert.*
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
@@ -33,7 +32,7 @@ class MoreModelsInstrumentedTest {
         ui.runOnIdle { vm = ViewModelProvider(ui.activity)[StudioViewModel::class.java] }
         ui.waitUntil(30_000) { !vm.loading && vm.connected }
         assumeTrue("Run the runtime installation test first", vm.mingInstalled)
-        ui.runOnIdle { vm.chooseVoice(vm.voices.first { it.builtIn && it.model == MingModel.model.ref }) }
+        ui.runOnIdle { vm.chooseVoice(vm.voices.first { it.builtIn && it.model.backendId == "ming" }) }
         ui.onNodeWithTag("synthesis_text").performScrollTo().performTextReplacement("你好，欢迎使用本地语音。")
         ui.onNodeWithTag("advanced_settings").assertDoesNotExist()
         ui.onNodeWithTag("generate").performScrollTo().performClick()

@@ -198,12 +198,12 @@ docs/
 
 建议分支：`refactor/voicebox-03-bridge-loader`，依赖 PR2。
 
-- [ ] 将 Ming 安装器中的公共能力提取为统一包安装服务，保留现有校验、取消、暂存和只读 DEX 行为。
-- [ ] 定义最小可用包清单与入口；网络包和 APK 内置包通过同一安装路径，复用下载器。
-- [ ] 提取 worker 绑定、请求关联、进度、结果、失败、取消和释放逻辑；模型 task 转换仍留在对应后端。
-- [ ] Ming 迁入公共装载路径，清除 `moremodels` 命名及宿主 Ming 专用生成分支。
-- [ ] 验证共享契约 ClassLoader、native 库解析、消息本地化与 Release R8；不能只在不混淆 Debug 中验证。
-- [ ] 验收：真实 Ming 合成、参考克隆、播放；取消后继续生成；安装中断/错误哈希/非法路径/不匹配 ABI 或契约拒绝加载；资源链接清理不删权重；当前 Ming 包不包含权重。
+- [x] 将 Ming 安装器中的公共能力提取为统一包安装服务，保留现有校验、取消、暂存和只读 DEX 行为。
+- [x] 定义最小可用包清单与入口；网络包和 APK 内置包通过同一安装路径，复用下载器。
+- [x] 提取 worker 绑定、请求关联、进度、结果、失败、取消和释放逻辑；模型 task 转换仍留在对应后端。
+- [x] Ming 迁入公共装载路径，清除 `moremodels` 命名及宿主 Ming 专用生成分支。
+- [x] 验证共享契约 ClassLoader、native 库解析、消息本地化与 Release R8；不能只在不混淆 Debug 中验证。
+- [x] 验收：真实 Ming 合成、参考克隆、播放；取消后继续生成；安装中断/错误哈希/非法路径/不匹配 ABI 或契约拒绝加载；资源链接清理不删权重；当前 Ming 包不包含权重。
 
 ### PR4：GPT 全系列成为独立桥接并默认预装
 
@@ -308,7 +308,7 @@ docs/
 - [x] P0 基线准备。V2、Ming、GPU/NPU 的未验证项见下表。
 - [x] PR1 命名。MuMu 的 ABI 限制见下表。
 - [x] PR2 模型边界。Ming 和 V2 的样本限制沿用 P0。
-- [ ] PR3 公共桥接装载。
+- [x] PR3 公共桥接装载。MuMu 原生 x86_64 与 ARM64 转译结果分别记载。
 - [ ] PR4 GPT 独立包和默认预装。
 - [ ] PR5 加速职责。
 - [ ] PR6 模型页面与能力驱动流程。
@@ -347,8 +347,20 @@ PR1 的混淆 APK 含 12 个以新包名导出的 JNI 方法。MuMu 的 8 个 na
 
 ### PR2 模块与设备
 
-分支 `refactor/voicebox-02-model-boundaries`，基准 `223a7e5`。五个 Gradle 模块构建通过。两种 provider 暂由 app 静态注册，PR4 移除；core 与 bridge-api 的源码均无模型实现或 ORT 引用。官方资源、Torch、模型前端、推理和专有 JNI 随各后端迁移。调度、下载、音频、重采样和输出存储归 core。
+分支 `refactor/voicebox-02-model-boundaries`，基准 `223a7e5`，head `071110d`（[PR #2](https://github.com/Renakoni/Voicebox/pull/2)）。五个 Gradle 模块构建通过。两种 provider 暂由 app 静态注册，PR4 移除；core 与 bridge-api 的源码均无模型实现或 ORT 引用。官方资源、Torch、模型前端、推理和专有 JNI 随各后端迁移。调度、下载、音频、重采样和输出存储归 core。
 
 - 本地运行 `assembleDebug assembleDebugAndroidTest testDebugUnitTest -PvoiceboxAbi=x86_64`。五个模块的 JUnit XML 共 120 项，失败、错误及跳过均为 0。HTTP 用例覆盖同名模型、默认音源、选项隔离及取消。证据在 `artifacts/refactor-pr2/final-debug.log` 和各模块的测试报告。
 - 在 MuMu API 32 分别运行 core 重采样、GPT 日英语言前端及宿主集成用例。Roxy 3.0（V2 Pro Plus）Studio 音源重建、CPU 生成、播放及导出通过，两个 SILK 用例通过。Ming 的两个用例因 ARM64 前置条件跳过。见 `resampler.log`、`languages.log`、`integration.log`。基线工作树也用修正后的 Studio 探针复验通过，见 `artifacts/refactor-p0/studio-playback-export.log`。
 - 通过应用 UID 暂存相同的真实 checkpoint 及参考音频。V2 Pro 导入、图加载及 CPU 合成通过，32 kHz 单声道 147,200 样本，PCM16 峰值 8,524。V5 Turbo 同项通过，48 kHz 单声道 178,560 样本，峰值 12,280。报告、哈希与 WAV 在 `artifacts/refactor-pr2/{v2pro,v5turbo}.{json,wav}`。V2 原版仍缺完整样本，Ming、WebGPU 和 QNN 的设备限制同 P0。
+
+### PR3 装载与进程
+
+分支 `refactor/voicebox-03-bridge-loader`，基准 `071110d`。APK 目录登记入口、契约、ABI、上游提交、适配层源码摘要和文件清单。APK asset 与 HTTPS 来源复用流式大小和 SHA-256 校验，再写私有暂存目录。跨线程及进程加锁，完成标记和只读 DEX 随目录一起原子提交。修复损坏的安装会写入新目录。前台服务仍拥有请求，私有 worker 在自己的 DEX/native 环境执行；宿主死亡或取消可释放进程，清理不会沿符号链接进入音源。
+
+| 本地验证 | 结果 |
+| --- | --- |
+| 构建与包边界 | Debug、混淆 Release、120 项 JVM 测试通过。Release 类定义审计确认宿主无 Ming 实现，候选包无共享契约。ARM64 ZIP 为 16,966,599 B，SHA-256 `01f838f241d61dd023645cd80cc2f9969a0e481ed571a82b1e2e352967f697ec`，含清单、一个 DEX JAR 和五个运行库。见 `artifacts/refactor-pr3/{production-debug.log,release-verified-build.log,dex-audit.json}`。 |
+| 安装、错误及清理 | 六项安装器单测覆盖错误哈希、ABI、契约、路径、大小、重复项、取消、重试、保留已存在快照及重启复用；已有下载测试覆盖实际回环 HTTP 及坏镜像回退。MuMu 上的链接清理用例通过，见 `worker-files.log`。 |
+| 混淆宿主 | 使用相同 R8 规则、定制 ORT 及独立包名后缀 `.pr3verify`。在 MuMu 安装 ARM64 候选 ZIP，加载独立 DEX，调用共享能力和私有 worker；缺模型错误正常跨进程返回。见 `release-worker-final.log` 及同目录的探针源码、Gradle 初始化脚本。 |
+| Ming 实际运行 | 为 MuMu 单独从相同源码构建 x86_64 候选包，使用上游标准 ONNX V1 的 CPU FP32 模型、原参考编码器和真实参考 WAV。独立进程完成固定音色、重新编码参考音频的克隆、播放进度推进、取消及其后的请求。两次语音分别为 44.1 kHz 单声道 123,480 和 91,728 样本。测试包使用单独 applicationId。见 `ming-x86-verified.log`、`audio.json`、`ming-{default,clone}.wav` 和 `x86-assets/bridges/ming.json`。 |
+| 设备与分发限制 | 对 MuMu 强制使用 ARM64 转译后，包安装、共享契约和缺模型错误可测；真实 ARM64 模型进入 ORT 后发生 SIGSEGV，原生 ARM 设备仍待复验。GPT 的旧 WebGPU 探测在转译环境出现原生 `No supported adapters` 中止。见 `{ming-arm,arm}-crash.log`。公开 `ming-runtime-v2` URL 尚无 Release；本次设备从本地暂存的候选 ZIP 安装，未上传构建物。 |

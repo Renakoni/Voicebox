@@ -1,0 +1,28 @@
+{
+  "contract": 1,
+  "id": "ming",
+  "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
+  "code": "tasks.jar",
+  "abi": "arm64-v8a",
+  "adapterSourceSha256": "0ec8c9f53d7f4be353a4f450d57a6ac66f176f35edec8fe16d2d4a4a64bf9063",
+  "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
+  "format": 2,
+  "version": "2",
+  "revision": "8c602ca335559ae939f9e4e989cee2181588434b898669b7a4f19a4dd80bad06",
+  "parts": [
+    {
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2/ming-backend-v2-arm64-v8a.zip",
+      "bytes": 16966599,
+      "sha256": "01f838f241d61dd023645cd80cc2f9969a0e481ed571a82b1e2e352967f697ec"
+    }
+  ],
+  "files": {
+    "bridge.json": 276,
+    "tasks.jar": 49124,
+    "libonnxruntime.so": 29166016,
+    "libming-synthesize.so": 11662712,
+    "libming-reference.so": 10026080,
+    "libming-mmla-neon.so": 1990384,
+    "libming-mmla-bf16.so": 3308720
+  }
+}
