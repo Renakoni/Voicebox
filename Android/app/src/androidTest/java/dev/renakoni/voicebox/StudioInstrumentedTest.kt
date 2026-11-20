@@ -17,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.DataInputStream
 import java.io.File
+import java.util.UUID
 
 /** Exercises the installed resources and real engine; this is not a performance benchmark. */
 @RunWith(AndroidJUnit4::class)
@@ -34,11 +35,12 @@ class StudioInstrumentedTest {
         val base = vm.voices.first { it.builtIn }
         var testId: String? = null
         try {
+            ui.runOnIdle { vm.select(base) }
             ui.onNodeWithTag("tab_1").performClick()
             ui.onNodeWithTag("new_voice").performClick()
             ui.onNodeWithTag("save_voice").performClick()
             ui.onNodeWithText(ui.activity.getString(R.string.voice_fields_required)).assertExists()
-            ui.onNodeWithTag("voice_name").performScrollTo().performTextReplacement("界面验证音色")
+            ui.onNodeWithTag("voice_name").performScrollTo().performTextReplacement("界面验证音色-${UUID.randomUUID()}")
             ui.runOnIdle { vm.pickReference(Uri.fromFile(File(base.audioPath))) }
             ui.waitUntil(15_000) { !vm.fileBusy }
             ui.runOnIdle { assertNull(vm.editorError); assertTrue(vm.draft!!.durationMs > 0) }
@@ -54,6 +56,7 @@ class StudioInstrumentedTest {
             ui.runOnIdle { vm = model(); assertEquals(saved.id, vm.selectedId) }
             ui.onNodeWithTag("synthesis_text").performScrollTo()
                 .performTextReplacement("今晚风很轻，我们沿着河边慢慢往前走。")
+            ui.waitUntil(30_000) { vm.canGenerate }
             ui.onNodeWithTag("generate").performScrollTo().performClick()
             ui.waitUntil(180_000) { !vm.busy && vm.output?.voiceName == saved.name }
             ui.runOnIdle {
