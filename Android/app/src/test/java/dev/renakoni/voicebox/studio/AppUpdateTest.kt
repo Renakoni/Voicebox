@@ -9,7 +9,7 @@ class AppUpdateTest {
     private fun release(tag: String) = JSONObject().put("tag_name", tag).put("draft", false).put("prerelease", false)
 
     @Test fun selectsNewestStableAppTagNumerically() {
-        val releases = listOf(release("v1.1.3"), release("ming-runtime-v2"), release("v3.0.0").put("draft", true),
+        val releases = listOf(release("v1.1.3"), release("ming-runtime-v1"), release("v3.0.0").put("draft", true),
             release("v4.0.0").put("prerelease", true), release("v2.10.0"), release("v2.9.9"))
         assertEquals("v2.10.0", AppUpdate.latest(releases)?.getString("tag_name"))
         assertNull(AppUpdate.latest(releases.take(4)))

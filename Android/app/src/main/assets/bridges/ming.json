@@ -4,17 +4,17 @@
   "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "bd918485d457933834d20fa981ff1e18b913e0da79b9f70f9a08fe37d23afce8",
+  "adapterSourceSha256": "f55809e0d49d4e541fdb7b8b328d1dbbc41380b07d587161ed34cfea3c83a774",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
-  "version": "2",
-  "revision": "73f4924c8e50210ca2451fe44764b3b66483f55b437a1f2f146fd44147fd775e",
+  "version": "1",
+  "revision": "5c9035a88801525bb078b91a1900993f8ce796eb3ab46a43c04e956c6672c2cb",
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2/ming-backend-v2-arm64-v8a.zip",
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v1/ming-backend-v1-arm64-v8a.zip",
       "bytes": 17070908,
-      "sha256": "73f4924c8e50210ca2451fe44764b3b66483f55b437a1f2f146fd44147fd775e"
+      "sha256": "5c9035a88801525bb078b91a1900993f8ce796eb3ab46a43c04e956c6672c2cb"
     }
   ],
   "files": {

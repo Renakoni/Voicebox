@@ -13,6 +13,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
+VERSION = '1'
 
 
 def run(*command):
@@ -62,7 +63,7 @@ def main():
     parser.add_argument('--pocketfft-include', type=Path, required=True)
     parser.add_argument('--abi', choices=['arm64-v8a', 'x86_64'], default='arm64-v8a')
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--release-url', default='https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2')
+    parser.add_argument('--release-url', default=f'https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v{VERSION}')
     parser.add_argument('--catalog', type=Path, help='Also write the pinned app asset catalog here')
     args = parser.parse_args()
     source, output = args.source.resolve(), args.output.resolve()
@@ -113,7 +114,7 @@ def main():
     if args.abi == 'arm64-v8a':
         names += ['libming-mmla-neon.so', 'libming-mmla-bf16.so']
     files = [(runtime / name, name) for name in names]
-    name = f'ming-backend-v2-{args.abi}.zip'
+    name = f'ming-backend-v{VERSION}-{args.abi}.zip'
     archive_path = output / name
     print(f'Packaging {name}', flush=True)
     with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -121,7 +122,7 @@ def main():
             add_file(archive, path, relative)
     parts = [{'url': args.release_url.rstrip('/') + '/' + name,
               'bytes': archive_path.stat().st_size, 'sha256': sha256(archive_path)}]
-    catalog = {**manifest, 'format': 2, 'displayName': 'Ming-TTS 0.5B', 'version': '2',
+    catalog = {**manifest, 'format': 2, 'displayName': 'Ming-TTS 0.5B', 'version': VERSION,
                'revision': parts[0]['sha256'],
                'parts': parts, 'files': {name: path.stat().st_size for path, name in files}}
     payload = json.dumps(catalog, ensure_ascii=False, indent=2) + '\n'
