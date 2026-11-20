@@ -1,7 +1,6 @@
 package dev.renakoni.voicebox.core
 
 import android.content.Context
-import android.os.Build
 import dev.renakoni.voicebox.bridge.BackendEntry
 import org.json.JSONObject
 import java.io.File
@@ -64,12 +63,7 @@ class BridgePackageSpec(json: JSONObject) {
 }
 
 class BridgePackages(private val context: Context) {
-    // A translated device may run an ARM-only APK while advertising x86_64 first.
-    private val processAbi = when (File(context.applicationInfo.nativeLibraryDir).name) {
-        "arm64" -> "arm64-v8a"
-        "x86_64" -> "x86_64"
-        else -> Build.SUPPORTED_ABIS.first()
-    }
+    private val processAbi = DeviceFacts.read(context).abi
     val packages = context.assets.list("bridges").orEmpty().filter { it.endsWith(".json") }.map { name ->
         val spec = context.assets.open("bridges/$name").bufferedReader().use { BridgePackageSpec(JSONObject(it.readText())) }
         require(name == "${spec.id}.json")

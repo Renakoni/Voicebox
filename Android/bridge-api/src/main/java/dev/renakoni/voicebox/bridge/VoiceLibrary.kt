@@ -20,6 +20,7 @@ interface VoiceLibrary {
     fun resourcesReady(variant: String): Boolean
     val controls: List<OptionControl>
     fun studioOptions(values: Map<String, String>): Map<String, String>
+    fun hasNpuGraphs(model: CharacterModel): Boolean
     fun accelerationInfo(): AccelerationInfo
     fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext,
         progress: (String, Int?) -> Unit): Bundle

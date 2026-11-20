@@ -133,7 +133,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val gpuAvailable get() = ExecutionBackend.WEBGPU in availableBackends
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     private var accelerationByBackend by mutableStateOf(emptyMap<String, AccelerationInfo>())
-    val acceleration get() = accelerationByBackend[selectedVoice?.model?.backendId] ?: AccelerationInfo(detail = "npu_unavailable")
+    private var modelsWithNpuGraphs by mutableStateOf(emptySet<ModelRef>())
+    val acceleration: AccelerationInfo get() {
+        val ref = selectedVoice?.model
+        val report = accelerationByBackend[ref?.backendId] ?: return AccelerationInfo(detail = "npu_unavailable")
+        return if (report.available && ref !in modelsWithNpuGraphs) report.copy(available = false, detail = "npu_unavailable") else report
+    }
     var deviceAccelerationEnabled by mutableStateOf(settings.deviceAccelerationEnabled); private set
     var theme by mutableStateOf(settings.themeMode); private set
     var apiEnabled by mutableStateOf(settings.apiEnabled); private set
@@ -224,6 +229,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }.onFailure { notify(UiText(R.string.service_start_failed)) }
     }
 
+    private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val npuGraphs: Set<ModelRef>, val installed: Set<String>)
+
     private fun refreshResources() {
         resourceUpdates?.cancel()
         resourceUpdates = viewModelScope.launch {
@@ -246,13 +254,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (voice.durationMs > 0) voice else voice.copy(
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
-                    Triple(available, voices, Triple(ready, catalog, mingPackage.installed))
+                    val npu = available.filter { (modelsRepository.provider(it) as VoiceLibrary).hasNpuGraphs(it) }.map { it.ref }.toSet()
+                    ResourcesSnapshot(available, voices, ready, catalog, npu, packages.packages.filter { it.installed }.map { it.spec.id }.toSet())
                 }
-                models = data.first
-                voices = data.second.map { it.copy(avatarPath = avatars.path(it.id)) }
-                readyResources = data.third.first
-                officialModels = data.third.second
-                mingBackendInstalled = data.third.third
+                models = data.models
+                voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
+                readyResources = data.ready
+                officialModels = data.catalog
+                modelsWithNpuGraphs = data.npuGraphs
+                mingBackendInstalled = mingPackage.spec.id in data.installed
                 if (voices.none { it.id == selectedId }) {
                     selectedId = voices.firstOrNull()?.id.orEmpty()
                     store.selectedId = selectedId

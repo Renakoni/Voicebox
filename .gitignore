@@ -72,6 +72,7 @@ tests/parity/.tmp/
 !Android/model/gptsovits/src/main/assets/english-g2p/encoder.onnx
 !Android/model/gptsovits/src/main/assets/english-g2p/decoder.onnx
 !Android/model/gptsovits/src/main/assets/device-acceleration/probe.onnx
+!Android/model/ming/webgpu-probe.onnx
 *.bin
 *.ckpt
 *.pth

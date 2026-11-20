@@ -51,3 +51,21 @@ extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
     std::cerr.rdbuf(err);
     return code;
 }
+
+#ifdef VOICEBOX_GPU_PROBE
+#include <algorithm>
+#include <onnxruntime_cxx_api.h>
+
+int ming_gpu_probe_main(int argc, char** argv);
+
+extern "C" JNIEXPORT jint JNICALL Java_dev_renakoni_voicebox_model_ming_MingWebGpu_probe(
+    JNIEnv* env, jclass, jstring graph, jstring input, jstring output) {
+    try {
+        const auto providers = Ort::GetAvailableProviders();
+        if (std::find(providers.begin(), providers.end(), "WebGpuExecutionProvider") == providers.end()) return 2;
+    } catch (const Ort::Exception&) { return 1; }
+    std::string files[]{"ming-gpu-probe", utf8(env, graph), utf8(env, input), utf8(env, output)};
+    char* argv[]{files[0].data(), files[1].data(), files[2].data(), files[3].data(), nullptr};
+    return ming_gpu_probe_main(4, argv);
+}
+#endif

@@ -138,7 +138,7 @@ class OrtCpuBackend(
             }
         } else if (backend == ExecutionBackend.WEBGPU) {
             SplitVocoderAssets.validate(modelDirectory).forEach { resolvedFiles[it] = File(modelDirectory, it) }
-            if (V2HtpVocoder.GRAPHS.all { File(modelDirectory, it).isFile }) {
+            if (V2HtpVocoder.hasGraphs(modelDirectory)) {
                 for (name in listOf(V2HtpVocoder.STEM, V2HtpVocoder.HEAD)) resolvedFiles[name] = File(modelDirectory, name)
                 v2Htp = V2HtpVocoder(environment, ::session, modelDirectory, qnnRuntimeDirectory,
                     qnnPerformance, traceLogger, onNpuUnavailable)

@@ -10,6 +10,8 @@ import dev.renakoni.voicebox.bridge.VoiceImport
 import android.content.Context
 import android.util.Log
 import ai.onnxruntime.OrtEnvironment
+import dev.renakoni.voicebox.core.openBackendAsset
+import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtProvider
 import ai.onnxruntime.OrtSession
@@ -51,9 +53,20 @@ class GptProvider(
     }
 
     private fun canInitializeWebGpu(): Boolean = try {
-        OrtEnvironment.getEnvironment() // Register ORT's logger before initializing the provider.
-        OrtSession.SessionOptions().use { it.addWebGPU(emptyMap()) }
-        true
+        val environment = OrtEnvironment.getEnvironment()
+        OrtSession.SessionOptions().use { options ->
+            options.addWebGPU(emptyMap())
+            options.addConfigEntry("session.disable_cpu_ep_fallback", "1")
+            val graph = context.openBackendAsset("device-acceleration/probe.onnx").use { it.readBytes() }
+            environment.createSession(graph, options).use { session ->
+                OnnxTensor.createTensor(environment, arrayOf(floatArrayOf(1f, 2f, 3f, 4f))).use { input ->
+                    session.run(mapOf("x" to input)).use { result ->
+                        val output = (result[0] as OnnxTensor).floatBuffer
+                        (0 until 4).all { kotlin.math.abs(output[it] - ((it + 1) * .5f + .25f)) < .01f }
+                    }
+                }
+            }
+        }
     } catch (error: OrtException) {
         Log.i("VoiceBoxTiming", "WebGPU initialization failed: ${error.message}")
         false

@@ -119,6 +119,7 @@ internal class V2HtpVocoder(
         const val BODY = "v2-htp-body.onnx"
         const val HEAD = "v2-htp-head.onnx"
         val GRAPHS = listOf(STEM, BODY, HEAD)
+        fun hasGraphs(directory: File) = GRAPHS.all { File(directory, it).isFile }
         private const val SCALE = 640
     }
 }

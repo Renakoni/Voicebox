@@ -19,7 +19,8 @@ internal class MingProvider(private val context: Context, private val directory:
     override fun inspect(model: CharacterModel) = ModelInspectionResult(if (resources.available) emptyList() else listOf("ming-model"))
     override fun findReferenceExample(model: CharacterModel) = resources.reference()
     override fun supportsAuxiliaryReferences(model: CharacterModel) = false
-    override fun executionModes() = ExecutionBackend.entries.toSet()
+    override fun executionModes() = if (MingWebGpu.available(directory, work)) ExecutionBackend.entries.toSet()
+        else setOf(ExecutionBackend.CPU)
     override fun createRuntime(execution: ExecutionBackend) = MingBackendRuntime(context, execution, directory, work)
     override fun validateOptions(options: Map<String, String>): Map<String, String> {
         require(options.isEmpty()) { "Ming does not accept synthesis parameters." }

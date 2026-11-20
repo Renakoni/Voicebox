@@ -32,10 +32,11 @@ def add_file(archive, path, name):
 
 def adapter_source_hash():
     digest = hashlib.sha256()
-    inputs = [ROOT / name for name in ('bridge.cpp', 'CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts')]
+    inputs = [ROOT / name for name in ('bridge.cpp', 'CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts', 'webgpu-probe.onnx')]
     for path in sorted(inputs + list((ROOT / 'src/main/java').rglob('*.kt'))):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b'\0')
-        digest.update(path.read_bytes().replace(b'\r\n', b'\n'))
+        data = path.read_bytes()
+        digest.update(data if path.suffix == '.onnx' else data.replace(b'\r\n', b'\n'))
     return digest.hexdigest()
 
 
@@ -102,7 +103,8 @@ def main():
                 'code': 'tasks.jar', 'abi': args.abi, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
                     ['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()}
     (runtime / 'bridge.json').write_text(json.dumps(manifest), encoding='utf-8')
-    names = ['bridge.json', 'tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so', 'libming-reference.so']
+    shutil.copyfile(ROOT / 'webgpu-probe.onnx', runtime / 'webgpu-probe.onnx')
+    names = ['webgpu-probe.onnx', 'bridge.json', 'tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so', 'libming-reference.so']
     if args.abi == 'arm64-v8a':
         names += ['libming-mmla-neon.so', 'libming-mmla-bf16.so']
     files = [(runtime / name, name) for name in names]

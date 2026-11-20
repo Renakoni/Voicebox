@@ -5,7 +5,7 @@ import dev.renakoni.voicebox.core.openBackendAsset
 import dev.renakoni.voicebox.core.i18n.UiText
 
 import android.content.Context
-import android.os.Build
+import dev.renakoni.voicebox.core.DeviceFacts
 import android.util.Log
 import java.io.File
 
@@ -20,23 +20,22 @@ data class DeviceAccelerationStatus(
 class DeviceAcceleration(private val context: Context) {
     @Volatile var status = DeviceAccelerationStatus()
         private set
-    private val capabilityCache = File(context.noBackupFilesDir, "npu-capability")
+    private val capabilityCache = File(context.noBackupFilesDir, "gptsovits-npu-capability")
     @Volatile var runtimeDirectory: File? = null
         private set
 
     fun detect(webGpu: Boolean) {
-        val manufacturer = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MANUFACTURER else Build.HARDWARE
-        val soc = if (Build.VERSION.SDK_INT >= 31) Build.SOC_MODEL else Build.BOARD
-        val qualcomm = isQualcomm(manufacturer, Build.HARDWARE)
-        val device = listOf(if (qualcomm) "Qualcomm" else manufacturer, soc)
-            .filter { it.isNotBlank() && it != Build.UNKNOWN }.joinToString(" · ")
-            .ifBlank { Build.MODEL }
+        val facts = DeviceFacts.read(context)
+        val qualcomm = isQualcomm(facts.manufacturer, facts.hardware)
+        val device = listOf(if (qualcomm) "Qualcomm" else facts.manufacturer, facts.soc)
+            .filter { it.isNotBlank() && it != android.os.Build.UNKNOWN }.joinToString(" · ")
+            .ifBlank { facts.model }
         fun unavailable(reason: String) {
             Log.i("VoiceBoxAcceleration", reason)
             runtimeDirectory = null
             status = DeviceAccelerationStatus(device, detail = UiText("npu_unavailable"), checking = false)
         }
-        if (!qualcomm || "arm64-v8a" !in Build.SUPPORTED_ABIS) {
+        if (!qualcomm || facts.abi != "arm64-v8a") {
             unavailable("未检测到兼容的高通 NPU")
             return
         }
@@ -45,7 +44,7 @@ class DeviceAcceleration(private val context: Context) {
         if (!hasRuntimeFiles(runtime)) { unavailable("未安装 NPU 加速组件"); return }
         status = DeviceAccelerationStatus(device)
         val updatedAt = context.packageManager.getPackageInfo(context.packageName, 0).lastUpdateTime
-        val key = capabilityCacheKey(Build.FINGERPRINT, updatedAt, runtime)
+        val key = capabilityCacheKey(facts.fingerprint + ":" + facts.abi, updatedAt, runtime)
         val available = cachedCapability(capabilityCache, key) {
             val probe = File(context.cacheDir, "qnn-capability.onnx")
             try {

@@ -32,6 +32,11 @@ internal class GptLibrary(private val context: Context, private val device: Devi
         OptionControl("repetitionPenalty", "repetition_penalty", "1.35", 1f, 2f, 100),
     )
     override fun studioOptions(values: Map<String, String>) = SynthesisOptions.parse(values).toRequestOptions(1500)
+    override fun hasNpuGraphs(model: CharacterModel): Boolean {
+        val directory = File(root, "CharacterModels/${model.relativeModelDirectory}")
+        return if (model.ref.variant == "v5turbo") V5DiTRuntime.hasHtpGraphs(directory)
+        else V2HtpVocoder.hasGraphs(directory)
+    }
     override fun accelerationInfo() = device.status.let { AccelerationInfo(it.device, it.available, requireNotNull(it.detail.key)) }
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext, progress: (String, Int?) -> Unit): Bundle {
