@@ -3,13 +3,8 @@ package dev.renakoni.voicebox.api
 import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.CharacterModel
-import dev.renakoni.voicebox.model.gptsovits.CharacterModelCatalog
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.GenerationRequest
-import dev.renakoni.voicebox.model.gptsovits.toRequestOptions
-import dev.renakoni.voicebox.model.gptsovits.synthesisOptions
-import dev.renakoni.voicebox.model.gptsovits.maxDecoderSteps
-import dev.renakoni.voicebox.model.gptsovits.SynthesisOptions
 import java.io.File
 import java.net.ServerSocket
 import java.net.Socket
@@ -18,14 +13,17 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private val testModel = CharacterModel(ModelRef("gptsovits", "v2ProPlus", "mansui"), "Test voice",
+    "v2ProPlus/mansui/tts_models", maxAuxiliaryReferences = 8)
+
 class LocalHttpApiServerTest {
     @Test
     fun sameModelIdRoutesByBackendAndDoesNotInheritAnotherBackendsOptions() {
-        val gpt = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")).single()
+        val gpt = testModel
         val ming = CharacterModel(ModelRef("ming", "dense-0.5b", gpt.id), "Ming", "ming/models")
         val capture = FakeBridge(models = listOf(gpt, ming),
-            defaults = ActiveDefaults(ExecutionBackend.CPU, gpt.ref, "zh", FakeBridge.primaryReferencePath,
-                "sample", mapOf("speed" to "1.5")))
+            defaults = ActiveDefaults(ExecutionBackend.WEBGPU, gpt.ref, "zh", FakeBridge.primaryReferencePath,
+                "sample", mapOf("speed" to "1.5"), auxiliaryReferenceAudioPaths = listOf("other-model-reference.wav")))
         val server = LocalHttpApiServer(object : LocalHttpApiServer.Bridge by capture {
             override fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String> {
                 require(model.ref == ming.ref && options.isEmpty())
@@ -37,18 +35,21 @@ class LocalHttpApiServerTest {
         val routed = request + ("backendId" to "ming")
         assertEquals(200, server.handleRequestForTest("GET", "/infer", queryParams = routed).statusCode)
         assertEquals(ming.ref, capture.capturedRequest?.characterModel?.ref)
+        assertEquals(emptyList<String>(), capture.capturedRequest?.auxiliaryReferenceAudioPaths)
+        assertEquals(ExecutionBackend.CPU, capture.capturedBackend)
         assertEquals(400, server.handleRequestForTest("GET", "/infer", queryParams = routed + ("speed" to "2")).statusCode)
     }
 
     @Test
     fun synthesisControlsUseActiveDefaultsAndRejectInvalidOverrides() {
         val defaults = ActiveDefaults(ExecutionBackend.CPU, ModelRef("gptsovits", "v2ProPlus", "mansui"), "zh", FakeBridge.primaryReferencePath,
-            "sample", SynthesisOptions(speed = 0.6, temperature = .7f, topK = 30, topP = .9f).toRequestOptions(500))
+            "sample", mapOf("speed" to "0.6", "temperature" to "0.7", "topK" to "30", "topP" to "0.9",
+                "repetitionPenalty" to "1.35", "maxDecoderSteps" to "500"))
         val bridge = FakeBridge(defaults = defaults)
         val server = LocalHttpApiServer(bridge)
         val response = server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "test", "topK" to "1"))
         assertEquals(200, response.statusCode)
-        assertEquals(SynthesisOptions.parse(defaults.options).copy(topK = 1), bridge.capturedRequest?.synthesisOptions)
+        assertEquals(defaults.options + ("topK" to "1"), bridge.capturedRequest?.options)
         val body = """{"modelId":"mansui","language":"zh","text":"test",
             "referenceAudioPath":"${FakeBridge.primaryReferenceJsonPath}","referenceText":"sample",
             "speed":1.65,"temperature":0,"topP":0,"repetitionPenalty":2}"""
@@ -62,9 +63,10 @@ class LocalHttpApiServerTest {
             assertEquals(captured, bridge.capturedRequest)
         }
         assertEquals(200, server.handleRequestForTest("POST", "/infer", body).statusCode)
-        assertEquals(SynthesisOptions(1.65, 0f, 30, 0f, 2f), bridge.capturedRequest?.synthesisOptions)
+        assertEquals(defaults.options + mapOf("speed" to "1.65", "temperature" to "0", "topP" to "0", "repetitionPenalty" to "2"),
+            bridge.capturedRequest?.options)
         assertEquals(200, server.handleRequestForTest("GET", "/infer", queryParams = mapOf("text" to "next")).statusCode)
-        assertEquals(SynthesisOptions.parse(defaults.options), bridge.capturedRequest?.synthesisOptions)
+        assertEquals(defaults.options, bridge.capturedRequest?.options)
     }
 
     @Test
@@ -142,7 +144,7 @@ class LocalHttpApiServerTest {
         assertTrue(response.binaryBody?.isNotEmpty() == true)
         assertEquals(ExecutionBackend.CPU, bridge.capturedBackend)
         assertEquals("hello", bridge.capturedRequest?.synthesisText)
-        assertEquals(321, bridge.capturedRequest?.maxDecoderSteps)
+        assertEquals("321", bridge.capturedRequest?.options?.get("maxDecoderSteps"))
     }
 
     @Test
@@ -255,8 +257,11 @@ class LocalHttpApiServerTest {
     }
 
     @Test
-    fun inferRejectsNonPositiveDecoderStepsBeforeBackendCall() {
-        val bridge = FakeBridge()
+    fun inferReturnsBackendValidationErrorBeforeGeneration() {
+        val bridge = FakeBridge(validate = { options ->
+            assertEquals("0", options["maxDecoderSteps"])
+            throw IllegalArgumentException("Rejected by model")
+        })
         val server = LocalHttpApiServer(bridge)
 
         val response = server.handleRequestForTest(
@@ -276,14 +281,14 @@ class LocalHttpApiServerTest {
         )
 
         assertEquals(400, response.statusCode)
-        assertTrue(response.body.contains("maxDecoderSteps must be positive"))
+        assertTrue(response.body.contains("Rejected by model"))
         assertEquals(null, bridge.capturedRequest)
     }
 
     @Test
     fun inferRejectsAuxiliaryReferencesForLegacyModelBeforeBackendCall() {
         val bridge = FakeBridge(
-            models = CharacterModelCatalog.v2FromCharacterIds(listOf("legacy")),
+            models = listOf(CharacterModel(ModelRef("gptsovits", "v2", "legacy"), "Legacy", "v2/legacy/tts_models")),
         )
         val server = LocalHttpApiServer(bridge)
         val auxiliary = File.createTempFile("aux-legacy", ".wav")
@@ -463,8 +468,9 @@ class LocalHttpApiServerTest {
     }
 
     private class FakeBridge(
+        private val validate: (Map<String, String>) -> Map<String, String> = { it },
         private val enabledBackends: Set<ExecutionBackend> = setOf(ExecutionBackend.CPU),
-        private val models: List<CharacterModel> = CharacterModelCatalog.v2ProPlusFromCharacterIds(listOf("mansui")),
+        private val models: List<CharacterModel> = listOf(testModel),
         private val defaults: ActiveDefaults = ActiveDefaults(
             backend = ExecutionBackend.CPU,
             model = ModelRef("gptsovits", "v2ProPlus", "mansui"),
@@ -488,7 +494,7 @@ class LocalHttpApiServerTest {
         override fun currentState(): BackendServiceState = BackendServiceState(message = "Idle")
 
         override fun validateOptions(model: CharacterModel, options: Map<String, String>) =
-            SynthesisOptions.validateRequestOptions(options)
+            validate(options)
 
         override fun availableModels(): List<CharacterModel> = models
 

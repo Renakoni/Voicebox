@@ -186,11 +186,16 @@ class LocalHttpApiServer(
 
     private fun inferGet(params: Map<String, String>): HttpResponse {
         val defaults = bridge.activeDefaults()
+        val modelDefaults = defaults?.takeIf {
+            (params["backendId"] ?: it.model.backendId) == it.model.backendId &&
+                (params["variant"] ?: it.model.variant) == it.model.variant &&
+                (params["modelId"] ?: it.model.modelId) == it.model.modelId
+        }
         val payload = InferPayload(
             options = requestOptions(params),
             backendId = params["backendId"] ?: defaults?.model?.backendId?.takeIf { "modelId" !in params },
             variant = params["variant"] ?: defaults?.model?.variant?.takeIf { "modelId" !in params },
-            backendName = params["backend"] ?: defaults?.backend?.name ?: "",
+            backendName = params["backend"] ?: modelDefaults?.backend?.name ?: "",
             modelId = params["modelId"] ?: defaults?.model?.modelId ?: "",
             language = params["language"] ?: defaults?.language ?: "",
             promptLanguage = params["promptLanguage"] ?: params["language"] ?: defaults?.promptLanguage ?: "",
@@ -201,7 +206,7 @@ class LocalHttpApiServer(
                 ?.split('|')
                 ?.map(String::trim)
                 ?.filter(String::isNotBlank)
-                ?: defaults?.auxiliaryReferenceAudioPaths.orEmpty(),
+                ?: modelDefaults?.auxiliaryReferenceAudioPaths.orEmpty(),
         )
         return inferWithPayload(payload)
     }

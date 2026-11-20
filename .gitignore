@@ -69,8 +69,6 @@ tests/parity/.tmp/
 !Android/model/gptsovits/src/main/assets/checkpoint-v2proplus/*.onnx
 !Android/model/gptsovits/src/main/assets/checkpoint-v2pro/*.onnx
 !Android/model/gptsovits/src/main/assets/checkpoint-v5turbo/*.onnx
-!Android/model/gptsovits/src/main/assets/english-g2p/encoder.onnx
-!Android/model/gptsovits/src/main/assets/english-g2p/decoder.onnx
 !Android/model/gptsovits/src/main/assets/device-acceleration/probe.onnx
 !Android/model/ming/webgpu-probe.onnx
 *.bin
@@ -106,17 +104,8 @@ tests/parity/.tmp/
 
 # Only build tools needed by the Android distribution are published.
 /tools/*
-!/tools/prepare_language_assets.py
-!/tools/generate_runtime_asset_manifest.py
+!/tools/verify_backend_boundaries.py
 !/tools/build_ort_webgpu.ps1
 !/tools/package_ort_runtime.py
 !/tools/ort-build-requirements.txt
-!/tools/build_v2pro_templates.py
-!/tools/build_v5turbo_templates.py
-!/tools/add_generation_controls.py
-!/tools/test_generation_controls.py
-!/tools/split_v5_dit.py
-!/tools/split_vits_acoustic.py
-!/tools/split_v2_htp.py
-!/tools/subpixel_hifigan.py
 !Android/model/gptsovits/src/main/assets/official-runtime/*.onnx

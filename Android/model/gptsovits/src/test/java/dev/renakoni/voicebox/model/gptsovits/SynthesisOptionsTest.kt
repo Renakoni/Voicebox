@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SynthesisOptionsTest {
+    @Test fun validatesDecoderLimitAndUnknownRequestOptions() {
+        for (options in listOf(mapOf("maxDecoderSteps" to "0"), mapOf("maxDecoderSteps" to "-1"), mapOf("unknown" to "1"))) {
+            assertThrows(IllegalArgumentException::class.java) { SynthesisOptions.validateRequestOptions(options) }
+        }
+        assertEquals("321", SynthesisOptions.validateRequestOptions(mapOf("maxDecoderSteps" to "321"))["maxDecoderSteps"])
+    }
+
     @Test fun validatesBoundariesAndRejectsInvalidNumbers() {
         SynthesisOptions(0.6, 0f, 1, 0f, 1f)
         SynthesisOptions(1.65, 1f, 100, 1f, 2f)

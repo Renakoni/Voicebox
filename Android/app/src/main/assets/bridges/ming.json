@@ -4,17 +4,17 @@
   "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "fb63258478704b656e1db08b8144966a16367c3b71d7bb8eb00e4ba931ad4798",
+  "adapterSourceSha256": "f8fa9fedbdc29ec211a8e95cc31ffd2621ae413d96cabbdd250026d0aad8ee93",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
   "version": "2",
-  "revision": "edbd174320de0bc90fa91c915de16af891a7ff74b14916dbc2d8fccaf93ac8e0",
+  "revision": "66e5b478d4f0c7990cbf1693449ad301aadcefc26895efcdb3354d130e370b89",
   "parts": [
     {
       "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2/ming-backend-v2-arm64-v8a.zip",
-      "bytes": 17070889,
-      "sha256": "f55f3c7766538dd2f67d9a9fd1254538d2345a2c66b03b63a0b748a261d4382b"
+      "bytes": 17070911,
+      "sha256": "e4911a5c74d870b0ef19c75297f38992ed9001cde101e979a20672d2d9abbd16"
     }
   ],
   "files": {
@@ -22,9 +22,9 @@
     "bridge.json": 276,
     "tasks.jar": 51636,
     "libonnxruntime.so": 29166016,
-    "libming-synthesize.so": 11979520,
-    "libming-reference.so": 10026072,
-    "libming-mmla-neon.so": 1990384,
-    "libming-mmla-bf16.so": 3308720
+    "libming-synthesize.so": 11978848,
+    "libming-reference.so": 10025888,
+    "libming-mmla-neon.so": 1990168,
+    "libming-mmla-bf16.so": 3308488
   }
 }

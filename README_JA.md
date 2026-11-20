@@ -5,7 +5,7 @@
 <h1 align="center">Voicebox</h1>
 
 <p align="center">
-  <strong>GPT-SoVITS をポケットに。</strong><br>
+  <strong>Android で音声合成と声のクローン</strong><br>
   クラウドも外部GPUも不要、Android 端末だけで高品質な音声クローンを実現。
 </p>
 
@@ -104,13 +104,13 @@ JDK 21、Android SDK 37（NDK と CMake を含む）、Python 3.12 以降が必�
 ```powershell
 git clone https://github.com/Renakoni/Voicebox.git
 cd Voicebox
-python -m pip install numpy onnx
-python tools/prepare_language_assets.py
 cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-標準のビルドでは CPU で推論します。WebGPU を使うには、専用の ONNX Runtime をビルドし、`-PvoiceboxOrtAar=<AAR のパス>` を Gradle に渡してください。[ビルドスクリプト](tools/build_ort_webgpu.ps1) · [パッチ](patches)
+アプリは GPT-SoVITS ブリッジをソースからビルドします。「設定 → モデル」でインストール状況を確認でき、重みは音声ライブラリで管理します。Ming ブリッジと Android 向けの音声データを導入すると、同じ生成・音声 API を利用できます。[ブリッジのビルドと検証](Android/model/gptsovits/README.md) · [Ming パッケージ](Android/model/ming/README.md)
+
+標準のビルドでは CPU で推論します。WebGPU を使うには、専用の ONNX Runtime をビルドし、`-PvoiceboxOrtAar=<AAR のパス>` を Gradle に渡してください。[ビルドスクリプト](tools/build_ort_webgpu.ps1) · [パッチ](Android/model/gptsovits/patches)
 
 ## 不具合報告と貢献
 
@@ -124,4 +124,4 @@ Voicebox は [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)、[Genie-TTS](
 
 Voicebox 独自のコードと変更部分は [GNU AGPL-3.0](LICENSE) で公開しています。
 
-第三者のコンポーネントには、それぞれの著作権とライセンスが適用されます。[licenses](licenses)、[ネイティブ依存ライブラリ](Android/app/src/main/cpp/third_party)、アプリの assets 内の `*-licenses` を参照してください。該当する依存ライブラリの対応ソースはリリースに添付しています。
+第三者のコンポーネントには、それぞれの著作権とライセンスが適用されます。[licenses](licenses)、[アプリ](Android/app/src/main/cpp/third_party)・[共通音声処理](Android/core/src/main/cpp/third_party)・[GPT-SoVITS](Android/model/gptsovits/src/main/cpp/third_party) のネイティブ依存ライブラリ、アプリとブリッジ内の `*-licenses` を参照してください。該当する依存ライブラリの対応ソースはリリースに添付しています。

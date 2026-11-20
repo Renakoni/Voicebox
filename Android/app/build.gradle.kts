@@ -156,7 +156,6 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.core:core-ktx:1.19.0")
-    testImplementation(project(":model:gptsovits"))
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
     // Align Compose's transitive Espresso version with AndroidX Test 1.3.

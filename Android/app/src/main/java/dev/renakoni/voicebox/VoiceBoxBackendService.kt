@@ -994,7 +994,7 @@ class VoiceBoxBackendService : Service() {
                     @Suppress("DEPRECATION")
                     val value = this@toGenerationRequest.get(key)
                     require(value is Number || value is String) { "$key must be a scalar." }
-                    put(if (key == BackendApiContract.KEY_MAX_DECODER_STEPS) "maxDecoderSteps" else key, value.toString())
+                    put(key, value.toString())
                 }
             }),
             language = getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),

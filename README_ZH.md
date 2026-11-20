@@ -5,7 +5,7 @@
 <h1 align="center">Voicebox</h1>
 
 <p align="center">
-  <strong>把 GPT-SoVITS 装进口袋。</strong><br>
+  <strong>Android 语音合成与音色克隆</strong><br>
   无需云端与显卡，在 Android 本地实现高质量语音克隆
 </p>
 
@@ -107,13 +107,13 @@ https://github.com/user-attachments/assets/aca3f5e3-c458-4756-a44f-0a513cffe7f9
 ```powershell
 git clone https://github.com/Renakoni/Voicebox.git
 cd Voicebox
-python -m pip install numpy onnx
-python tools/prepare_language_assets.py
 cd Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-默认构建使用 CPU 推理。WebGPU 加速需构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](patches)），通过 `-PvoiceboxOrtAar=<AAR路径>` 引入。
+应用从源码构建预装 GPT-SoVITS 桥接。「设置 → 模型」显示桥接安装状态，权重在音源页管理。安装 Ming 桥接并提供其 Android 导出音源后，可使用相同的生成与音频接口。[桥接构建与验收](Android/model/gptsovits/README.md) · [Ming 打包](Android/model/ming/README.md)
+
+默认构建使用 CPU 推理。WebGPU 加速需构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](Android/model/gptsovits/patches)），通过 `-PvoiceboxOrtAar=<AAR路径>` 引入。
 
 ## 问题反馈
 
@@ -127,4 +127,4 @@ Voicebox 基于 [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)、[Genie-TT
 
 Voicebox 的原创代码与修改采用 [GNU AGPL-3.0](LICENSE) 许可。
 
-第三方组件保留各自的版权与许可证，见 [licenses](licenses)、[原生依赖目录](Android/app/src/main/cpp/third_party) 和应用 assets 中的 `*-licenses` 目录。Release 附带相关依赖的对应源码。
+第三方组件保留各自的版权与许可证，见 [licenses](licenses)、[应用](Android/app/src/main/cpp/third_party)、[公共音频](Android/core/src/main/cpp/third_party)、[GPT-SoVITS](Android/model/gptsovits/src/main/cpp/third_party) 的原生依赖目录，以及应用和桥接中的 `*-licenses` 资产。Release 附带相关依赖的对应源码。
