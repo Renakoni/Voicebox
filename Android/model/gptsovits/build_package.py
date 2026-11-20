@@ -65,6 +65,11 @@ def main():
                         data = data.replace(b'\r\n', b'\n')
                     if hashlib.sha256(data).hexdigest() != expected:
                         raise ValueError('Review changed bridge asset before packaging: ' + path)
+                    if name.startswith('checkpoint-') and name.endswith('/manifest.json'):
+                        for filename, checksum in json.loads(data)['files'].items():
+                            template = name.rsplit('/', 1)[0] + '/' + filename
+                            if audit.get(template) != checksum:
+                                raise ValueError('Checkpoint manifest differs from packaged template: ' + template)
                     archive.writestr(zipfile.ZipInfo(path), data, compress_type=zipfile.ZIP_DEFLATED)
                 for name, source in [('libc++_shared.so', model), ('libvoicebox_japanese.so', model), ('libnative_decoder_loop.so', model),
                                      ('libonnxruntime.so', ort), ('libonnxruntime4j_jni.so', ort)]:

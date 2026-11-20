@@ -12,8 +12,8 @@
     "mobile-decoder-shared.onnx": "c48065be59fe4ea32c556927ffdd63a3552af8fa1673ea5f70e58f60665c8276",
     "split-encoder.onnx": "1c074dade2f8802e3d8ac66a0a6f3622b742e849d0b08142408a43d6bc12ab8b",
     "split-hifigan.onnx": "165cccd2dc86f5808ff5bae82952ce22caf795974252a7d5cbc6f3e1b2438eda",
-    "mobile-decoder.json": "b3de4c971a9ba7e06f9360eedd73de85dac981a13ce3ddb8d5046061f3c54516",
-    "split-vits.json": "95ee0ac8256589bb8cb73112ba8e4ad1550a6ec200444c336e8cfc7a96d3aa3d"
+    "mobile-decoder.json": "a9933d15f5c0ae41b3cdacf29ecc1aeb7147dd914c5abbdc975709f35b96b757",
+    "split-vits.json": "1e06ccbbfb0ed10b03e668e32318c79e99a6b6b893981591415f3aa54a72ada1"
   },
   "groups": [
     {
