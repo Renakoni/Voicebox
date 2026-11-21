@@ -147,9 +147,9 @@ class VoiceBoxBackendService : Service() {
             modelRepository.providers.forEach { provider ->
                 runCatching { provider.recoverInstallations() }.onFailure { Log.e("VoiceBoxWorker", "Cannot recover ${provider.id}", it) }
             }
+            modelRepository.providers.forEach { if (!destroyed) refreshBackendModes(it) }
             catalogReady.complete(Unit)
             mainHandler.post { if (!destroyed) syncLocalHttpApiServer() }
-            modelRepository.providers.forEach { if (!destroyed) refreshBackendModes(it) }
         }
         createNotificationChannel()
         startForegroundCompat(NOTIFICATION_ID, buildNotification(state))
@@ -458,6 +458,8 @@ class VoiceBoxBackendService : Service() {
             }
             val completedAtMs = System.currentTimeMillis()
             val durationMs = SystemClock.elapsedRealtime() - startedAtMs
+            val inferenceRtf = result.inferenceSeconds?.let { it * result.sampleRate / result.audioSamples }
+            val outputDuration = formatAudioDuration(result.audioSamples, result.sampleRate)
 
             val delivered = generationGate.deliver(context) {
                 // Inference and its cleanup have returned. Ready state and the
@@ -475,11 +477,10 @@ class VoiceBoxBackendService : Service() {
                     progressPercent = 100,
                     progressLabel = null,
                     generationDurationMs = durationMs,
+                    inferenceRtf = inferenceRtf,
                     lastCompletedAtMs = completedAtMs,
-                    message = getString(
-                        R.string.prototype_service_completed,
-                        formatAudioDuration(result.audioSamples, result.sampleRate),
-                    ),
+                    message = if (inferenceRtf == null) getString(R.string.prototype_service_completed, outputDuration)
+                        else getString(R.string.prototype_service_completed_rtf, outputDuration, inferenceRtf),
                 )
                 onComplete?.invoke(InferResult.Success(result.file))
             }
@@ -647,6 +648,7 @@ class VoiceBoxBackendService : Service() {
         progressPercent: Int? = null,
         progressLabel: String? = null,
         generationDurationMs: Long? = state.generationDurationMs,
+        inferenceRtf: Double? = null,
         lastCompletedAtMs: Long? = state.lastCompletedAtMs,
         context: GenerationContext? = null,
         requestId: String? = context?.requestId,
@@ -669,6 +671,7 @@ class VoiceBoxBackendService : Service() {
             progressPercent = progressPercent,
             progressLabel = progressLabel,
             generationDurationMs = generationDurationMs,
+            inferenceRtf = inferenceRtf,
             lastCompletedAtMs = lastCompletedAtMs,
         )
         state = snapshot
@@ -900,6 +903,7 @@ class VoiceBoxBackendService : Service() {
         private const val KEY_PROGRESS_PERCENT = "progress_percent"
         private const val KEY_PROGRESS_LABEL = "progress_label"
         private const val KEY_GENERATION_DURATION_MS = "generation_duration_ms"
+        private const val KEY_INFERENCE_RTF = "inference_rtf"
         private const val KEY_LAST_COMPLETED_AT_MS = "last_completed_at_ms"
         private const val ACTION_RELOAD_RESOURCES = "dev.renakoni.voicebox.action.RELOAD_RESOURCES"
         internal const val ACTION_RELOAD_INFERENCE_SETTINGS =
@@ -1027,6 +1031,7 @@ class VoiceBoxBackendService : Service() {
             progressPercent?.let { putInt(KEY_PROGRESS_PERCENT, it) }
             putString(KEY_PROGRESS_LABEL, progressLabel)
             generationDurationMs?.let { putLong(KEY_GENERATION_DURATION_MS, it) }
+            inferenceRtf?.let { putDouble(KEY_INFERENCE_RTF, it) }
             lastCompletedAtMs?.let { putLong(KEY_LAST_COMPLETED_AT_MS, it) }
         }
 }

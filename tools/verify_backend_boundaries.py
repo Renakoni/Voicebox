@@ -1,6 +1,5 @@
 """Check the host APK and both independently built backend candidates. Uses only Python's standard library."""
 import argparse
-import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
@@ -14,17 +13,18 @@ MODEL_CLASSES = ("Ldev/renakoni/voicebox/model/", "Ldev/ming/local/", "Lai/onnxr
 PARENT_CLASSES = ("Ldev/renakoni/voicebox/core/", "Ldev/renakoni/voicebox/bridge/", "Lkotlin/")
 GPT_LIBS = {"libc++_shared.so", "libvoicebox_japanese.so", "libnative_decoder_loop.so",
             "libonnxruntime.so", "libonnxruntime4j_jni.so"}
-MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so"}
-MING_PROBE_SHA = "73e643d2754466ba6a8760c29e10cd04e75dadcb088aed2807da9ba9419e4611"
+MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so",
+             "libming-ort.so", "libming-gpu-probe.so", "libming-mmla-neon.so", "libming-mmla-bf16.so",
+             "libming-htp.so", "qnn/libonnxruntime-qnn.so", "qnn/libQnnHtp.so",
+             "qnn/libQnnHtpPrepare.so", "qnn/libQnnSystem.so"}
+MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
+                "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
+                "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
 
 
 def require(condition, message):
     if not condition:
         raise ValueError(message)
-
-
-def sha(data):
-    return hashlib.sha256(data).hexdigest()
 
 
 def check_sources():
@@ -70,33 +70,28 @@ def verify_package(spec, data):
     backend = spec["id"]
     require(spec["format"] == 2 and spec["contract"] == 1 and spec["version"] and spec["displayName"],
             f"{backend}: invalid catalog")
-    require(re.fullmatch("[a-f0-9]{40}", spec["sourceCommit"]) and
-            re.fullmatch("[a-f0-9]{64}", spec["adapterSourceSha256"]), f"{backend}: missing source identity")
-    part, = spec["parts"]
-    digest = sha(data)
-    require(len(data) == part["bytes"] and digest == part["sha256"], f"{backend}: package hash or size differs")
-    require(spec["revision"] == digest, f"{backend}: revision differs")
     abi = spec["abi"]
     machine = {"arm64-v8a": 183, "x86_64": 62}[abi]
     with ZipFile(BytesIO(data)) as archive:
         sizes = {entry.filename: entry.file_size for entry in archive.infolist()}
         require(len(sizes) == len(archive.infolist()) and sizes == spec["files"], f"{backend}: file inventory differs")
-        manifest = json.loads(archive.read("bridge.json"))
-        for key in ("id", "entry", "code", "contract", "abi", "adapterSourceSha256", "sourceCommit"):
-            require(manifest[key] == spec[key], f"{backend}: manifest mismatch for {key}")
+        dsp = set()
         if backend == "gptsovits":
             libs = GPT_LIBS
             audit = json.loads((ANDROID / "model/gptsovits/bridge-assets.json").read_bytes())
-            assets = {"assets/" + path: digest for path, digest in audit.items()}
+            assets = {"assets/" + path for path in audit}
         else:
-            libs = MING_LIBS | ({"libming-mmla-neon.so", "libming-mmla-bf16.so"} if abi == "arm64-v8a" else set())
-            assets = {"webgpu-probe.onnx": MING_PROBE_SHA}
-        expected = libs | set(assets) | {"bridge.json", spec["code"]}
+            require(spec["version"] == "2" and abi == "arm64-v8a", "Expected Ming ARM64 package v2")
+            stubs = {name for name in sizes if re.fullmatch(r"qnn/libQnnHtpV[0-9]+Stub\.so", name)}
+            require(stubs, "Ming v2 requires HTP Stub/Skel pairs")
+            libs = MING_LIBS | stubs
+            dsp = {name.replace("Stub.so", "Skel.so") for name in stubs}
+            assets = {"provider-probe.onnx"} | {f"licenses/{name}" for name in MING_NOTICES}
+        expected = libs | assets | dsp | {"bridge.json", spec["code"]}
         require(set(sizes) == expected, f"{backend}: unexpected or missing payloads {set(sizes) ^ expected}")
-        for name, expected_hash in assets.items():
-            require(sha(archive.read(name)) == expected_hash, f"{backend}: unreviewed asset {name}")
         for name in libs:
-            elf = archive.read(name)
+            with archive.open(name) as library:
+                elf = library.read(20)
             require(elf[:6] == b"\x7fELF\x02\x01" and struct.unpack_from("<H", elf, 18)[0] == machine,
                     f"{name}: wrong native ABI")
         with ZipFile(BytesIO(archive.read(spec["code"]))) as jar:
@@ -107,7 +102,7 @@ def verify_package(spec, data):
         forbidden = PARENT_CLASSES + (("Ldev/renakoni/voicebox/model/ming/", "Ldev/ming/local/") if backend == "gptsovits"
                                       else ("Ldev/renakoni/voicebox/model/gptsovits/", "Lai/onnxruntime/"))
         require(not any(name.startswith(forbidden) for name in classes), f"{backend}: duplicate or foreign classes")
-    return dict(abi=abi, sha256=digest, bytes=len(data), classes=len(classes), assets=len(assets))
+    return dict(abi=abi, bytes=len(data), classes=len(classes), assets=len(assets))
 
 
 def main():

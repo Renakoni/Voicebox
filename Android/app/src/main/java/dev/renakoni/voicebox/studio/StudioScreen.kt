@@ -319,6 +319,10 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                     }
                 }
                 OutputPlayer(output, vm, save, share, sendQq)
+                vm.state.inferenceRtf?.takeIf { vm.state.latestOutputFilePath == output.path }?.let { rtf ->
+                    Text(resources.getString(R.string.inference_rtf, rtf), modifier = Modifier.padding(top = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             } else {
                 Text(resources.getString(R.string.latest_audio), style = MaterialTheme.typography.titleMedium)
                 Text(resources.getString(R.string.no_generated_audio), modifier = Modifier.padding(top = 12.dp),

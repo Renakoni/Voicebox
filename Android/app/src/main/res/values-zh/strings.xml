@@ -17,6 +17,8 @@
     <string name="prototype_stage_running_inference">正在推理。</string>
     <string name="prototype_stage_writing_output">正在写入结果。</string>
     <string name="prototype_service_completed">生成完成，音频长度 %1$s。</string>
+    <string name="prototype_service_completed_rtf">音频 %1$s · 推理 RTF %2$.3f</string>
+    <string name="inference_rtf">推理 RTF %1$.3f</string>
     <string name="prototype_service_api_invalid_request">API 请求参数不完整或角色不存在。</string>
     <string name="download_preparing">准备下载</string>
     <string name="download_complete">已下载</string>

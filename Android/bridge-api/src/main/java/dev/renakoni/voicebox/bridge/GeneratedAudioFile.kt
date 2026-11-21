@@ -6,4 +6,5 @@ data class GeneratedAudioFile(
     val file: File,
     val audioSamples: Int,
     val sampleRate: Int,
+    val inferenceSeconds: Double? = null,
 )

@@ -17,7 +17,8 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
 
     override fun generate(request: GenerationRequest, callbacks: BackendRuntimeCallbacks): GeneratedAudioFile {
         val result = call(WorkerProtocol.GENERATE, request, callbacks)
-        return GeneratedAudioFile(File(requireNotNull(result.getString("path"))), result.getInt("samples"), result.getInt("rate"))
+        return GeneratedAudioFile(File(requireNotNull(result.getString("path"))), result.getInt("samples"),
+            result.getInt("rate"), result.getDouble("inferenceSeconds").takeIf { it.isFinite() && it > 0 })
     }
 
     override fun warmup(request: GenerationRequest) { call(WorkerProtocol.WARMUP, request, null) }

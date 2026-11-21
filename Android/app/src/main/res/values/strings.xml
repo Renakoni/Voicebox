@@ -17,6 +17,8 @@
     <string name="prototype_stage_running_inference">Running inference.</string>
     <string name="prototype_stage_writing_output">Writing output.</string>
     <string name="prototype_service_completed">Generation complete. Audio duration: %1$s.</string>
+    <string name="prototype_service_completed_rtf">Audio %1$s · Inference RTF %2$.3f</string>
+    <string name="inference_rtf">Inference RTF %1$.3f</string>
     <string name="prototype_service_api_invalid_request">The API request is incomplete or the voice does not exist.</string>
     <string name="download_preparing">Preparing download</string>
     <string name="download_complete">Downloaded</string>

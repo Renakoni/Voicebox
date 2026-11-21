@@ -124,6 +124,7 @@ class BackendWorkerService : Service() {
                     result.putString("path", audio.file.absolutePath)
                     result.putInt("samples", audio.audioSamples)
                     result.putInt("rate", audio.sampleRate)
+                    audio.inferenceSeconds?.let { result.putDouble("inferenceSeconds", it) }
                 }
                 else -> error("Unknown worker operation")
             }

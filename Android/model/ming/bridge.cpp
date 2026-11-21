@@ -5,15 +5,16 @@
 #include <string>
 #include <vector>
 
-int ming_cli_main(int argc, char** argv);
-extern char** environ;
-
-static std::string utf8(JNIEnv* env, jstring value) {
+std::string ming_utf8(JNIEnv* env, jstring value) {
     const char* bytes = env->GetStringUTFChars(value, nullptr);
     std::string result(bytes);
     env->ReleaseStringUTFChars(value, bytes);
     return result;
 }
+
+#ifdef BRIDGE_METHOD
+int ming_cli_main(int argc, char** argv);
+extern char** environ;
 
 // Runs only in VoiceBox's private backend worker, never in the UI/ORT process.
 extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
@@ -26,7 +27,7 @@ extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
     for (const auto& key : keys) unsetenv(key.c_str());
     for (jsize i = 0; i < env->GetArrayLength(variables); ++i) {
         auto value = static_cast<jstring>(env->GetObjectArrayElement(variables, i));
-        auto variable = utf8(env, value);
+        auto variable = ming_utf8(env, value);
         env->DeleteLocalRef(value);
         auto equal = variable.find('=');
         if (equal != std::string::npos) setenv(variable.substr(0, equal).c_str(), variable.substr(equal + 1).c_str(), 1);
@@ -34,13 +35,13 @@ extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
     std::vector<std::string> values;
     for (jsize i = 0; i < env->GetArrayLength(arguments); ++i) {
         auto value = static_cast<jstring>(env->GetObjectArrayElement(arguments, i));
-        values.push_back(utf8(env, value));
+        values.push_back(ming_utf8(env, value));
         env->DeleteLocalRef(value);
     }
     std::vector<char*> argv;
     for (auto& value : values) argv.push_back(value.data());
     argv.push_back(nullptr);
-    std::ofstream log(utf8(env, log_path));
+    std::ofstream log(ming_utf8(env, log_path));
     if (!log) return -1;
     auto* out = std::cout.rdbuf(log.rdbuf());
     auto* err = std::cerr.rdbuf(log.rdbuf());
@@ -51,21 +52,23 @@ extern "C" JNIEXPORT jint JNICALL BRIDGE_METHOD(
     std::cerr.rdbuf(err);
     return code;
 }
+#endif
 
 #ifdef VOICEBOX_GPU_PROBE
-#include <algorithm>
-#include <onnxruntime_cxx_api.h>
+#include <android/log.h>
+#include "provider_probe.h"
 
-int ming_gpu_probe_main(int argc, char** argv);
-
-extern "C" JNIEXPORT jint JNICALL Java_dev_renakoni_voicebox_model_ming_MingWebGpu_probe(
-    JNIEnv* env, jclass, jstring graph, jstring input, jstring output) {
+extern "C" JNIEXPORT jboolean JNICALL Java_dev_renakoni_voicebox_model_ming_MingWebGpu_probe(
+    JNIEnv* env, jclass, jstring graph) {
     try {
-        const auto providers = Ort::GetAvailableProviders();
-        if (std::find(providers.begin(), providers.end(), "WebGpuExecutionProvider") == providers.end()) return 2;
-    } catch (const Ort::Exception&) { return 1; }
-    std::string files[]{"ming-gpu-probe", utf8(env, graph), utf8(env, input), utf8(env, output)};
-    char* argv[]{files[0].data(), files[1].data(), files[2].data(), files[3].data(), nullptr};
-    return ming_gpu_probe_main(4, argv);
+        Ort::Env environment(ORT_LOGGING_LEVEL_WARNING, "ming-webgpu-probe");
+        Ort::SessionOptions options;
+        options.AppendExecutionProvider("WebGPU", {});
+        options.AddConfigEntry("session.disable_cpu_ep_fallback", "1");
+        return run_provider_probe(environment, ming_utf8(env, graph), options);
+    } catch (const std::exception& error) {
+        __android_log_print(ANDROID_LOG_WARN, "MingWorker", "WebGPU probe: %s", error.what());
+        return JNI_FALSE;
+    }
 }
 #endif

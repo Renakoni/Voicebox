@@ -18,5 +18,6 @@ data class BackendServiceState(
     val progressPercent: Int? = null,
     val progressLabel: String? = null,
     val generationDurationMs: Long? = null,
+    val inferenceRtf: Double? = null,
     val lastCompletedAtMs: Long? = null,
 )

@@ -70,6 +70,7 @@ internal fun BackendServiceState.toJsonString(): String =
         "progressPercent" to progressPercent,
         "progressLabel" to progressLabel,
         "generationDurationMs" to generationDurationMs,
+        "inferenceRtf" to inferenceRtf,
         "lastCompletedAtMs" to lastCompletedAtMs,
     )
 

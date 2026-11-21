@@ -7,13 +7,18 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '1'
+VERSION = '2'
+ABI = 'arm64-v8a'
+PROBE = ROOT.parent / 'gptsovits/src/main/assets/device-acceleration/probe.onnx'
+QNN_LIBRARIES = ('libQnnHtp.so', 'libQnnHtpPrepare.so', 'libQnnSystem.so')
+JNI = f'jni/{ABI}/'
 
 
 def run(*command):
@@ -34,11 +39,13 @@ def add_file(archive, path, name):
 
 def adapter_source_hash():
     digest = hashlib.sha256()
-    inputs = [ROOT / name for name in ('bridge.cpp', 'CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts', 'webgpu-probe.onnx')]
+    inputs = list(ROOT.glob('*.cpp')) + list(ROOT.glob('*.h')) + [ROOT / name for name in
+        ('CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts')]
     for path in sorted(inputs + list((ROOT / 'src/main/java').rglob('*.kt'))):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b'\0')
         data = path.read_bytes()
-        digest.update(data if path.suffix == '.onnx' else data.replace(b'\r\n', b'\n'))
+        digest.update(data.replace(b'\r\n', b'\n'))
+    digest.update(b'provider-probe.onnx\0' + PROBE.read_bytes())
     return digest.hexdigest()
 
 
@@ -51,34 +58,68 @@ def adapt_synthesis(source):
     source = source.replace(old, 'public static void run(String[] args) throws Exception {')
     old = '        } catch(Throwable error) {error.printStackTrace();System.exit(1);}\n'
     assert source.count(old) == 1
-    return source.replace(old, '')
+    source = source.replace(old, '').replace('"auto","cpu","webgpu"', '"auto","cpu","webgpu","htp"')
+    anchor = '        process(Arrays.asList(bundle.resolve("ming-run")'
+    assert source.count(anchor) == 1
+    return source.replace(anchor, '        Native.configure(bundle, mode, env);\n' + anchor)
+
+
+def stage_qnn(runtime, qnn_archive, ort_archive):
+    (runtime / 'qnn').mkdir(exist_ok=True)
+    (runtime / 'licenses').mkdir(exist_ok=True)
+    files = ['qnn/libonnxruntime-qnn.so', 'licenses/Qualcomm-LICENSE.pdf', 'licenses/Qualcomm-NOTICE.txt']
+    with zipfile.ZipFile(ort_archive) as ort:
+        (runtime / files[0]).write_bytes(ort.read(JNI + 'libonnxruntime.so'))
+    with zipfile.ZipFile(qnn_archive) as qnn:
+        (runtime / files[1]).write_bytes(qnn.read('LICENSE.pdf'))
+        (runtime / files[2]).write_bytes(qnn.read('NOTICE.txt'))
+        stubs = sorted(name.removeprefix(JNI) for name in qnn.namelist()
+                       if re.fullmatch(JNI + r'libQnnHtpV[0-9]+Stub\.so', name))
+        if not stubs:
+            raise ValueError('Qualcomm runtime has no ARM64 HTP stubs')
+        for name in (*QNN_LIBRARIES, *stubs, *(stub.replace('Stub.so', 'Skel.so') for stub in stubs)):
+            relative = f'qnn/{name}'
+            (runtime / relative).write_bytes(qnn.read(JNI + name))
+            files.append(relative)
+    return files
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', type=Path, required=True, help='ming-android checkout')
     parser.add_argument('--ort-library', type=Path, required=True, help='Matching Android ONNX Runtime shared library')
+    parser.add_argument('--qnn-archive', type=Path, required=True, help='Official Qualcomm qnn-runtime AAR')
+    parser.add_argument('--qnn-ort-archive', type=Path, required=True, help='Official onnxruntime-android-qnn AAR')
     parser.add_argument('--sdk', type=Path, default=os.environ.get('ANDROID_HOME'))
-    parser.add_argument('--ort-include', type=Path, required=True)
+    parser.add_argument('--ort-source', type=Path, required=True, help='ONNX Runtime checkout with headers and notices')
     parser.add_argument('--pocketfft-include', type=Path, required=True)
-    parser.add_argument('--abi', choices=['arm64-v8a', 'x86_64'], default='arm64-v8a')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--release-url', default=f'https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v{VERSION}')
     parser.add_argument('--catalog', type=Path, help='Also write the pinned app asset catalog here')
     args = parser.parse_args()
     source, output = args.source.resolve(), args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    build, runtime = output / 'build' / args.abi, output / 'runtime'
+    build, runtime = output / 'build' / ABI, output / 'runtime'
     build.mkdir(parents=True, exist_ok=True)
     runtime.mkdir(exist_ok=True)
     shutil.copyfile(args.ort_library, runtime / 'libonnxruntime.so')
+    native = build / 'sources'
+    native.mkdir(exist_ok=True)
+    shutil.copyfile(source / 'native/main.cpp', native / 'main.cpp')
+    options = (source / 'native/htp_options.h').read_text(encoding='utf-8')
+    backend = '{"backend_path","libQnnHtp.so"}'
+    assert options.count(backend) == 1
+    (native / 'htp_options.h').write_text(options.replace(backend,
+        '{"backend_path",std::getenv("MING_QNN_BACKEND") ? std::getenv("MING_QNN_BACKEND") : "libQnnHtp.so"}'),
+        encoding='utf-8')
     sdk = args.sdk.resolve()
     cmake = sdk / 'cmake/3.22.1/bin/cmake.exe'
     run(cmake, '-S', ROOT, '-B', build / 'native', '-G', 'Ninja',
         f'-DCMAKE_MAKE_PROGRAM={sdk}/cmake/3.22.1/bin/ninja.exe',
         f'-DCMAKE_TOOLCHAIN_FILE={sdk}/ndk/28.2.13676358/build/cmake/android.toolchain.cmake',
-        f'-DANDROID_ABI={args.abi}', '-DANDROID_PLATFORM=android-30', '-DANDROID_STL=c++_static',
-        f'-DMING_SOURCE={source}', f'-DORT_INCLUDE={args.ort_include.resolve()}',
+        f'-DANDROID_ABI={ABI}', '-DANDROID_PLATFORM=android-30', '-DANDROID_STL=c++_static',
+        f'-DMING_SOURCE={source}', f'-DMING_NATIVE={native}',
+        f'-DORT_INCLUDE={args.ort_source.resolve()}/include/onnxruntime/core/session',
         f'-DORT_LIBRARY={runtime}/libonnxruntime.so', f'-DPOCKETFFT_INCLUDE={args.pocketfft_include.resolve()}',
         '-DCMAKE_BUILD_TYPE=Release')
     run(cmake, '--build', build / 'native', '--parallel', '2')
@@ -104,17 +145,30 @@ def main():
             '--output', dex, adapter, *sorted(classes.rglob('*.class')))
         with zipfile.ZipFile(runtime / 'tasks.jar', 'w') as archive:
             add_file(archive, dex / 'classes.dex', 'classes.dex')
-    # Explicit code allowlist: never collect model weights, graphs or voice resources.
+    # The package carries runtime code, a provider probe and third-party notices.
     manifest = {'contract': 1, 'id': 'ming', 'entry': 'dev.renakoni.voicebox.model.ming.MingEntry',
-                'code': 'tasks.jar', 'abi': args.abi, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
+                'code': 'tasks.jar', 'abi': ABI, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
                     ['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()}
     (runtime / 'bridge.json').write_text(json.dumps(manifest), encoding='utf-8')
-    shutil.copyfile(ROOT / 'webgpu-probe.onnx', runtime / 'webgpu-probe.onnx')
-    names = ['webgpu-probe.onnx', 'bridge.json', 'tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so', 'libming-reference.so']
-    if args.abi == 'arm64-v8a':
-        names += ['libming-mmla-neon.so', 'libming-mmla-bf16.so']
+    shutil.copyfile(PROBE, runtime / 'provider-probe.onnx')
+    names = ['provider-probe.onnx', 'bridge.json', 'tasks.jar', 'libonnxruntime.so', 'libming-synthesize.so',
+             'libming-reference.so', 'libming-ort.so', 'libming-gpu-probe.so', 'libming-mmla-neon.so',
+             'libming-mmla-bf16.so', 'libming-htp.so']
+    names += stage_qnn(runtime, args.qnn_archive, args.qnn_ort_archive)
+    notices = {
+        'ONNXRuntime-LICENSE.txt': args.ort_source / 'LICENSE',
+        'ONNXRuntime-NOTICE.txt': args.ort_source / 'ThirdPartyNotices.txt',
+        'Khronos-OpenCL-LICENSE.txt': source / 'native/third_party/CL/LICENSE',
+        'Ming-THIRD-PARTY.txt': source / 'THIRD_PARTY.md',
+        'Voicebox-LICENSE.txt': ROOT.parents[2] / 'LICENSE',
+    }
+    for name, path in notices.items():
+        shutil.copyfile(path, runtime / 'licenses' / name)
+    pocketfft = (args.pocketfft_include / 'pocketfft_hdronly.h').read_text(encoding='utf-8').split('*/', 1)[0]
+    (runtime / 'licenses/pocketfft-LICENSE.txt').write_text(pocketfft.removeprefix('/*').strip() + '\n', encoding='utf-8')
+    names += [f'licenses/{name}' for name in (*notices, 'pocketfft-LICENSE.txt')]
     files = [(runtime / name, name) for name in names]
-    name = f'ming-backend-v{VERSION}-{args.abi}.zip'
+    name = f'ming-backend-v{VERSION}-{ABI}.zip'
     archive_path = output / name
     print(f'Packaging {name}', flush=True)
     with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
