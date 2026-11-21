@@ -62,6 +62,7 @@ internal class GptLibrary(private val context: Context) : VoiceLibrary {
         when (action) {
             LibraryAction.PREVIEW_PAIR -> result.putString("variant", CheckpointPreview.read(app, Uri.parse(value("uri"))))
             LibraryAction.INSTALL_RESOURCES -> shared.install(arguments.getString("pack"), context::checkCancelled, ::reportDownload)
+            LibraryAction.REMOVE_RESOURCES -> shared.remove(value("pack"))
             LibraryAction.DOWNLOAD_VOICE -> OfficialModelInstaller(root, catalog, shared, app::openBackendAsset)
                 .install(catalog.models.single { it.id == value("model") && it.architecture == value("variant") },
                     context::checkCancelled, ::reportDownload)

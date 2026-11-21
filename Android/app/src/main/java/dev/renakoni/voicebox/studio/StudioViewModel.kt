@@ -366,6 +366,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         if (service?.installModelParts(id, part) != true) notify(UiText(R.string.engine_busy))
     }
+    fun removeModelPart(id: String, part: String) {
+        if (loading || busy || fileBusy) return
+        if (service?.removeModelPart(id, part) { result ->
+            result.onFailure {
+                Log.e("VoiceStudio", "Model component removal failed", it)
+                notify(it.userText() ?: UiText(R.string.model_remove_failed))
+            }
+            refreshResources()
+        } != true) notify(UiText(R.string.engine_busy))
+    }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
     }

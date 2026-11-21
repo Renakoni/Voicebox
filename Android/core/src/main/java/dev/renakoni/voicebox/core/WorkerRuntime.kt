@@ -5,6 +5,7 @@ import android.os.*
 import dev.renakoni.voicebox.bridge.*
 import java.io.File
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.util.UUID
 import java.util.concurrent.*
 
@@ -149,7 +150,7 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
         context.unbindService(connection)
         if (messenger == null || stopped.await(10, TimeUnit.SECONDS)) {
             val work = File(context.cacheDir, "bridge-workers/$id")
-            deleteWorkerFiles(work)
+            deleteFileTree(work)
         } else error("Backend worker did not exit")
     }
 
@@ -158,9 +159,8 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
     }
 }
 
-/** No FOLLOW_LINKS: some packages link read-only model data into their scratch directory. */
-internal fun deleteWorkerFiles(work: File) {
-    if (work.exists()) Files.walk(work.toPath()).use { paths ->
-        paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
-    }
+/** Delete the tree without following symbolic links to files outside it. */
+fun deleteFileTree(root: File) {
+    val tree = try { Files.walk(root.toPath()) } catch (_: NoSuchFileException) { return }
+    tree.use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
 }

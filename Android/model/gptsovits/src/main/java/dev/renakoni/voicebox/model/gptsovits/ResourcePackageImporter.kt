@@ -3,6 +3,7 @@ package dev.renakoni.voicebox.model.gptsovits
 import android.util.JsonReader
 import dev.renakoni.voicebox.core.FilePin
 import dev.renakoni.voicebox.core.PinnedModelFiles
+import dev.renakoni.voicebox.core.deleteFileTree
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.requireUi
 
@@ -10,7 +11,11 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
+import java.nio.file.NoSuchFileException
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
+import java.nio.file.attribute.BasicFileAttributes
 import java.security.MessageDigest
 import java.util.zip.ZipInputStream
 import org.json.JSONObject
@@ -134,7 +139,7 @@ internal class ResourcePackageImporter(private val filesRoot: File, private val 
                 entries.keys().asSequence().associateWith { name ->
                     entries.getJSONObject(name).let { FilePin(it.getLong("bytes"), it.getString("sha256")) }
                 }
-            } catch (_: java.nio.file.NoSuchFileException) {
+            } catch (_: NoSuchFileException) {
                 emptyMap()
             } catch (error: org.json.JSONException) {
                 android.util.Log.w("GptResources", "Unreadable local resource inventory", error)
@@ -142,20 +147,49 @@ internal class ResourcePackageImporter(private val filesRoot: File, private val 
             }
         }
 
+        internal fun removePins(runtime: File, removed: Set<String>) {
+            val pins = readPins(runtime)
+            val remaining = pins - removed
+            if (remaining.size == pins.size) return
+            val file = File(runtime, LOCAL_LOCK)
+            if (remaining.isEmpty()) {
+                Files.deleteIfExists(file.toPath())
+                return
+            }
+            val temporary = File.createTempFile("runtime-pins-", ".tmp", runtime)
+            try {
+                val entries = JSONObject()
+                remaining.forEach { (name, pin) -> entries.put(name, pin.toJson()) }
+                temporary.writeText(entries.toString())
+                Files.move(temporary.toPath(), file.toPath(), ATOMIC_MOVE, REPLACE_EXISTING)
+            } finally { temporary.delete() }
+        }
+
         internal fun recover(root: File) {
             val stage = File(root, IMPORT_STAGE)
-            if (!stage.exists()) return
+            check(!Files.isSymbolicLink(stage.parentFile!!.toPath())) { "Resource work directory is a symbolic link" }
+            val attrs = try { Files.readAttributes(stage.toPath(), BasicFileAttributes::class.java, NOFOLLOW_LINKS) }
+                catch (_: NoSuchFileException) { return }
+            if (!attrs.isDirectory) {
+                Files.delete(stage.toPath())
+                return
+            }
             val previous = File(stage, ".previous")
             val target = File(root, "RuntimeAssets")
-            if (previous.isDirectory && !target.exists()) {
-                Files.move(previous.toPath(), target.toPath(), ATOMIC_MOVE)
-            } else if (previous.isDirectory) {
-                // A common-only ZIP reuses the installed vocoder in place on the same volume.
-                val vocoder = File(target, "v5-vocoder")
-                val saved = File(previous, "v5-vocoder")
-                if (!vocoder.exists() && saved.isDirectory) Files.move(saved.toPath(), vocoder.toPath(), ATOMIC_MOVE)
+            if (Files.isDirectory(previous.toPath(), NOFOLLOW_LINKS)) {
+                if (!Files.exists(target.toPath(), NOFOLLOW_LINKS)) {
+                    Files.move(previous.toPath(), target.toPath(), ATOMIC_MOVE)
+                } else {
+                    check(Files.isDirectory(target.toPath(), NOFOLLOW_LINKS)) { "Invalid resource directory" }
+                    // A common-only ZIP reuses the installed vocoder in place on the same volume.
+                    val vocoder = File(target, "v5-vocoder")
+                    val saved = File(previous, "v5-vocoder")
+                    if (!Files.exists(vocoder.toPath(), NOFOLLOW_LINKS) && Files.isDirectory(saved.toPath(), NOFOLLOW_LINKS)) {
+                        Files.move(saved.toPath(), vocoder.toPath(), ATOMIC_MOVE)
+                    }
+                }
             }
-            check(stage.deleteRecursively())
+            deleteFileTree(stage)
         }
     }
 }

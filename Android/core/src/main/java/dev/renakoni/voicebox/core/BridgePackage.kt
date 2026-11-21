@@ -86,7 +86,7 @@ class BridgePackages(private val context: Context) {
         }
     }
     fun installBundled() {
-        packages.filter { it.spec.bundled && it.installable && !it.installed }.forEach { it.install({}, {}) }
+        packages.filter { it.spec.bundled && it.installable }.forEach { it.install({}, automatic = true) {} }
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }
@@ -99,9 +99,13 @@ class BridgePackage(
 ) {
     val supported get() = spec.abi == abi
     val installable get() = compatible(spec)
+    private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
-    val active: InstalledBridge? get() {
-        if (!receipt.isFile) return null
+    private val uninstalled = File(root, ".uninstalled")
+    val active get() = if (uninstalled.isFile) null else readActive()
+    val installed get() = active != null
+
+    private fun readActive(): InstalledBridge? {
         return runCatching {
             val json = JSONObject(receipt.readText())
             val candidate = BridgePackageSpec(json)
@@ -111,62 +115,80 @@ class BridgePackage(
             InstalledBridge(candidate, directory).takeIf { File(directory, candidate.code).isFile }
         }.getOrNull()
     }
-    val installed get() = active != null
 
     private fun compatible(candidate: BridgePackageSpec) =
         candidate.id == spec.id && candidate.abi == abi && candidate.minAppVersionCode <= appVersion
 
-    fun install(checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
+    fun install(checkCancelled: () -> Unit, automatic: Boolean = false, progress: (Int) -> Unit): Boolean {
         require(installable) { "Bridge package is incompatible with this app" }
         checkCancelled()
-        synchronized(installLock) {
-            root.mkdirs()
-            FileChannel.open(File(root, ".lock").toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
-                channel.lock().use {
-                    checkCancelled()
-                    root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
-                        ?.forEach { it.deleteRecursively() }
-                    val previous = active
-                    if (previous != null && previous.spec.version >= spec.version) return false
-                    val revisions = File(root, spec.revision)
-                    // A fully extracted directory can be left behind if activation was interrupted.
-                    revisions.listFiles()?.firstOrNull { File(it, spec.code).isFile }?.let { ready ->
-                        activate(ready)
-                        progress(100)
-                        return true
-                    }
-                    require(root.usableSpace > spec.files.values.sum() + spec.parts.maxOf { it.bytes })
-                    val id = UUID.randomUUID().toString()
-                    val staging = File(root, ".stage-$id").also { check(it.mkdir()) }
-                    val archive = File(root, ".download")
-                    val seen = mutableSetOf<String>()
-                    var received = 0L
-                    try {
-                        spec.parts.forEach { part ->
-                            download(part, archive, checkCancelled) { percent ->
-                                progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
-                            }
-                            extract(archive, staging, seen, checkCancelled)
-                            received += part.bytes
-                            archive.delete()
-                        }
-                        require(seen == spec.files.keys) { "Incomplete bridge package" }
-                        require(File(staging, "bridge.json").length() <= 16_384)
-                        spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
-                        check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
-                        revisions.mkdirs()
-                        checkCancelled()
-                        val active = File(revisions, id)
-                        Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                        activate(active)
-                        progress(100)
-                        return true
-                    } finally {
-                        archive.delete()
-                        staging.deleteRecursively()
-                    }
-                }
+        return withInstallLock {
+            checkCancelled()
+            if (uninstalled.isFile) {
+                clearUninstalledFiles()
+                if (automatic) return@withInstallLock false
+            } else {
+                val previous = readActive()
+                if (previous != null && (automatic || previous.spec.version >= spec.version)) return@withInstallLock false
+                root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
+                    ?.forEach(::deleteFileTree)
             }
+            val revisions = File(root, spec.revision)
+            // A fully extracted directory can be left behind if activation was interrupted.
+            revisions.listFiles()?.firstOrNull { File(it, spec.code).isFile }?.let { ready ->
+                activate(ready)
+                progress(100)
+                return@withInstallLock true
+            }
+            require(root.usableSpace > spec.files.values.sum() + spec.parts.maxOf { it.bytes })
+            val id = UUID.randomUUID().toString()
+            val staging = File(root, ".stage-$id").also { check(it.mkdir()) }
+            val archive = File(root, ".download")
+            val seen = mutableSetOf<String>()
+            var received = 0L
+            try {
+                spec.parts.forEach { part ->
+                    download(part, archive, checkCancelled) { percent ->
+                        progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
+                    }
+                    extract(archive, staging, seen, checkCancelled)
+                    received += part.bytes
+                    archive.delete()
+                }
+                require(seen == spec.files.keys) { "Incomplete bridge package" }
+                require(File(staging, "bridge.json").length() <= 16_384)
+                spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
+                check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
+                revisions.mkdirs()
+                checkCancelled()
+                val active = File(revisions, id)
+                Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                activate(active)
+                progress(100)
+                true
+            } finally {
+                archive.delete()
+                staging.deleteRecursively()
+            }
+        }
+    }
+
+    fun uninstall() {
+        withInstallLock {
+            // Deactivate before deleting files and remember the choice for bundled bridges.
+            Files.write(uninstalled.toPath(), byteArrayOf())
+            clearUninstalledFiles()
+        }
+    }
+
+    private fun clearUninstalledFiles() {
+        requireNotNull(root.listFiles()).filter { it != lockFile && it != uninstalled }.forEach(::deleteFileTree)
+    }
+
+    private inline fun <T> withInstallLock(action: () -> T): T = synchronized(installLock) {
+        root.mkdirs()
+        FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+            channel.lock().use { action() }
         }
     }
 
@@ -175,6 +197,7 @@ class BridgePackage(
         try {
             pending.writeText(JSONObject(spec.catalog).put("directory", directory.name).toString())
             Files.move(pending.toPath(), receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            Files.deleteIfExists(uninstalled.toPath())
         } finally {
             pending.delete()
         }

@@ -12,7 +12,7 @@ data class OptionControl(val name: String, val label: String, val defaultValue: 
 data class ResourcePack(val id: String, val titleKey: String,
     val downloadBytes: Long, val remainingBytes: Long, val installed: Boolean, val variants: Set<String>)
 
-enum class LibraryAction { DOWNLOAD_VOICE, IMPORT_ARCHIVE, IMPORT_PAIR, EDIT_REFERENCE, CLEAR_CACHE, PREVIEW_PAIR, INSTALL_RESOURCES }
+enum class LibraryAction { DOWNLOAD_VOICE, IMPORT_ARCHIVE, IMPORT_PAIR, EDIT_REFERENCE, CLEAR_CACHE, PREVIEW_PAIR, INSTALL_RESOURCES, REMOVE_RESOURCES }
 
 /** Optional operations implemented by packages which supply downloadable or editable voices. */
 interface VoiceLibrary {

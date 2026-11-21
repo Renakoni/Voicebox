@@ -18,7 +18,7 @@ fun BasicFileAttributes.fileStamp() = "${size()} ${lastModifiedTime()} ${fileKey
 
 /** Receipts live outside importable runtime directories. Only the installer writes them. */
 class PinnedModelFiles(private val root: File, private val receipts: File) {
-    private fun receipt(file: File) = File(receipts, file.relativeTo(root).path + ".lock")
+    fun receipt(file: File) = File(receipts, file.relativeTo(root).path + ".lock")
 
     fun matches(file: File, pin: FilePin, cancel: () -> Unit) = matches(file, listOf(pin), cancel)
 

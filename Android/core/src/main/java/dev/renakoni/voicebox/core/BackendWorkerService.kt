@@ -49,7 +49,7 @@ class BackendWorkerService : Service() {
         // force-stopped host belong to the previous process, before any new request.
         executor.execute {
             File(cacheDir, "bridge-workers").listFiles().orEmpty().forEach { directory ->
-                runCatching { deleteWorkerFiles(directory) }.onFailure { Log.w("VoiceBoxWorker", "Cannot clear previous request", it) }
+                runCatching { deleteFileTree(directory) }.onFailure { Log.w("VoiceBoxWorker", "Cannot clear previous request", it) }
             }
         }
     }

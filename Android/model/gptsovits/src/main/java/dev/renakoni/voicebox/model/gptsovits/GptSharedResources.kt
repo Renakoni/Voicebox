@@ -4,6 +4,7 @@ import dev.renakoni.voicebox.bridge.ResourcePack
 import dev.renakoni.voicebox.core.FilePin
 import dev.renakoni.voicebox.core.ModelDownloadFile
 import dev.renakoni.voicebox.core.PinnedModelFiles
+import dev.renakoni.voicebox.core.deleteFileTree
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.pin
 import dev.renakoni.voicebox.model.gptsovits.checkpoint.DownloadedVocoder
@@ -34,6 +35,7 @@ internal class GptSharedResources(private val root: File, private val catalog: O
         catalog.languageFiles.filter { it.first.startsWith("pos-") }.map { (name, source) ->
             ModelDownloadFile(source, File(runtime, "$language/english/$name"))
         }
+    private val managed = outputs.keys + raw.map { it.target.relativeTo(runtime).invariantSeparatorsPath }
     private fun archive(name: String) = ModelDownloadFile(languageSources.getValue(name), File(cache, "languages/$name"))
     private val english = archive("checkpoint20.npz")
     private val japanese = archive("open_jtalk_dic_utf_8-1.11.tar.gz")
@@ -42,11 +44,10 @@ internal class GptSharedResources(private val root: File, private val catalog: O
     private val japaneseDir = "$language/japanese"
     private val englishOutputs = outputs.keys.filter { it.startsWith("$englishExternal/") }
     private val japaneseOutputs = outputs.keys.filter { it.startsWith("$japaneseDir/") }
-    private val vocoderOutputs = outputs.keys.filter { it.startsWith("v5-vocoder/") }
+    private val vocoderOutputs = outputs.keys.filter { it.startsWith("$VOCODER/") }
 
     fun importRuntime(input: InputStream, cancel: () -> Unit) {
         recoverRuntime()
-        val managed = outputs.keys + raw.map { it.target.relativeTo(runtime).invariantSeparatorsPath }
         ResourcePackageImporter(root, managed, files).importRuntime(input, cancel)
     }
 
@@ -78,7 +79,8 @@ internal class GptSharedResources(private val root: File, private val catalog: O
             listOf("$language/english/encoder.onnx", "$language/english/decoder.onnx")
         val buildEnglish = !graphs.all { matchesRuntime(it, local, cancel) }
         val buildJapanese = !japaneseOutputs.all { name ->
-            (local.isNotEmpty() && name == "$japaneseDir/COPYING" && name !in local) || matchesRuntime(name, local, cancel)
+            (name == "$japaneseDir/COPYING" && name !in local && local.keys.any { it.startsWith("$japaneseDir/") }) ||
+                matchesRuntime(name, local, cancel)
         }
         val sources = buildList {
             addAll(raw.filterNot { file ->
@@ -130,6 +132,30 @@ internal class GptSharedResources(private val root: File, private val catalog: O
         val local = ResourcePackageImporter.readPins(runtime)
         if (id != VOCODER) installCommon(local, cancel, progress)
         if (id != COMMON) installVocoder(local, cancel, progress)
+    }
+
+    fun remove(id: String) {
+        require(id == COMMON || id == VOCODER)
+        val common = id == COMMON
+        val names = managed.filterTo(mutableSetOf()) { it.startsWith("$VOCODER/") != common }
+        val downloads = if (common) raw.map { it.target } + listOf(english.target, japanese.target) else listOf(vocoder.target)
+        val managedFiles = names.mapTo(mutableSetOf()) { File(runtime, it) } + downloads
+        val expandedWeights = File(runtime, RuntimeAssetRepository.HUBERT_FP32)
+        val targets = managedFiles.flatMap { listOf(it, files.receipt(it)) } +
+            downloads.map { File(it.parentFile, ".${it.name}.download") } +
+            if (common) listOf(expandedWeights, File(expandedWeights.parentFile, ".${expandedWeights.name}.tmp")) else emptyList()
+        val trees = if (common) listOf(File(cache, "prepare"), File(cache, "derived"),
+            RuntimeAssetRepository(root).referenceAudioCacheDirectory()) else listOf(File(cache, "vocoder"))
+
+        // Resolve an interrupted archive import before deleting any files it could restore.
+        ResourcePackageImporter.recover(root)
+        val parents = (targets + trees).asSequence().flatMap { target ->
+            generateSequence(target.parentFile) { it.parentFile }.takeWhile { it != root }
+        }.toSet()
+        check(parents.none { Files.isSymbolicLink(it.toPath()) }) { "Resource directory is a symbolic link" }
+        targets.forEach { Files.deleteIfExists(it.toPath()) }
+        trees.forEach(::deleteFileTree)
+        ResourcePackageImporter.removePins(runtime, names)
     }
 
     private fun installCommon(local: Map<String, FilePin>, cancel: () -> Unit, progress: (UiText, Int?) -> Unit) {

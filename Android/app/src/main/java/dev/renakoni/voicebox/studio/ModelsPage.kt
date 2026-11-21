@@ -14,9 +14,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,12 +38,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.core.BridgePackage
 import dev.renakoni.voicebox.core.i18n.UiText
 
 private val Tabular = "tnum"
+private val PartMarkSize = 28.dp
+private val PartActionWidth = 40.dp
 
 @Composable
 internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
@@ -160,13 +165,16 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 HorizontalDivider(color = colors.outlineVariant.copy(alpha = .6f))
                 Column(Modifier.padding(vertical = 4.dp)) {
                     ModelPart(stringResource(R.string.model_bridge),
-                        if (bridgeReady || spec.bundled) 0L else spec.downloadBytes, bridgeReady, enabled && archive.installable) {
-                        vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART)
-                    }
+                        if (bridgeReady || spec.bundled) 0L else spec.downloadBytes, bridgeReady,
+                        enabled && (bridgeReady || archive.installable),
+                        remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
+                        install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
                     packs.forEach { pack ->
-                        ModelPart(UiText(pack.titleKey).resolve(resources),
-                            if (pack.installed) pack.downloadBytes else pack.remainingBytes, pack.installed, enabled) {
-                            vm.installModelParts(spec.id, pack.id)
+                        key(pack.id) {
+                            ModelPart(UiText(pack.titleKey).resolve(resources),
+                                if (pack.installed) pack.downloadBytes else pack.remainingBytes, pack.installed, enabled,
+                                remove = if (update) null else ({ vm.removeModelPart(spec.id, pack.id) }),
+                                install = { vm.installModelParts(spec.id, pack.id) })
                         }
                     }
                 }
@@ -193,8 +201,11 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
 }
 
 @Composable
-private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: Boolean, install: () -> Unit) {
+private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: Boolean,
+    remove: (() -> Unit)?, install: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
+    var confirmRemove by remember { mutableStateOf(false) }
     val size = when {
         bytes > 0 -> Formatter.formatShortFileSize(LocalContext.current, bytes)
         !installed -> stringResource(R.string.model_prepare)
@@ -204,7 +215,9 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
         Modifier.clickable(enabled = enabled, role = Role.Button,
             onClickLabel = stringResource(R.string.model_install_part, title), onClick = install)
     val muted = !installed && !enabled
-    Row(Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+    val endPadding = 16.dp - (PartActionWidth - PartMarkSize) / 2
+    Row(Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp)
+        .padding(start = 16.dp, end = endPadding, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(title, style = MaterialTheme.typography.bodyMedium,
@@ -214,7 +227,53 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
                     color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurfaceVariant)
             }
         }
-        PartMark(installed, enabled)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (installed && remove != null) {
+                PartMark(installed, enabled)
+                IconButton(onClick = { confirmRemove = true }, enabled = enabled, modifier = Modifier.size(PartActionWidth)) {
+                    val tint = if (enabled) colors.error else colors.error.copy(alpha = .38f)
+                    Box(Modifier.size(PartMarkSize).clip(CircleShape).background(tint.copy(alpha = .14f)),
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Close, stringResource(R.string.model_remove_part, title),
+                            Modifier.size(15.dp), tint = tint)
+                    }
+                }
+                if (confirmRemove) RemoveModelPartDialog(title, enabled, onDismiss = { confirmRemove = false },
+                    onConfirm = {
+                        confirmRemove = false
+                        remove()
+                    })
+            } else {
+                Box(Modifier.width(PartActionWidth), contentAlignment = Alignment.Center) {
+                    PartMark(installed, enabled)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoveModelPartDialog(title: String, enabled: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Dialog(onDismissRequest = onDismiss) {
+        StudioCard(Modifier.width(256.dp), shape = RoundedCornerShape(14.dp)) {
+            Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(R.string.model_remove_confirmation, title),
+                    Modifier.weight(1f, fill = false).fillMaxWidth()
+                        .verticalScroll(rememberScrollState()).semantics { heading() },
+                    style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    StudioButton(onDismiss, style = StudioButtonStyle.Quiet) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    StudioButton(onConfirm, enabled = enabled, style = StudioButtonStyle.Secondary) {
+                        Text(stringResource(R.string.model_remove_action),
+                            color = if (enabled) colors.error else LocalContentColor.current)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -224,12 +283,12 @@ private fun PartMark(installed: Boolean, enabled: Boolean) {
     val colors = MaterialTheme.colorScheme
     val shape = CircleShape
     if (installed) {
-        Box(Modifier.size(28.dp).clip(shape).background(colors.primary.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(PartMarkSize).clip(shape).background(colors.primary.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
             Icon(Icons.Default.Check, stringResource(R.string.backend_installed), Modifier.size(15.dp), tint = colors.primary)
         }
     } else {
         val tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .38f)
-        Box(Modifier.size(28.dp).clip(shape).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), shape),
+        Box(Modifier.size(PartMarkSize).clip(shape).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), shape),
             contentAlignment = Alignment.Center) {
             Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(14.dp), tint = tint)
         }

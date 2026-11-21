@@ -328,6 +328,24 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
+    fun removeModelPart(id: String, part: String, onComplete: (Result<Unit>) -> Unit): Boolean {
+        val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
+        return importOnWorker(onComplete, message = R.string.model_removing) { context, _ ->
+            val provider = modelRepository.provider(id)
+            if (part == BRIDGE_PART) {
+                try {
+                    archive.uninstall()
+                } finally {
+                    provider.invalidateMetadata()
+                    refreshBackendModes(provider)
+                }
+            } else {
+                provider.perform(LibraryAction.REMOVE_RESOURCES, Bundle().apply { putString("pack", part) },
+                    context) { _, _ -> }
+            }
+        }
+    }
+
     private fun downloadOnWorker(target: OfficialDownloadState, transfer: (GenerationContext) -> Unit): Boolean {
         return importOnWorker<Unit>(onComplete = { result ->
             officialDownloadState.value = result.fold(
@@ -391,6 +409,7 @@ class VoiceBoxBackendService : Service() {
     private fun <T> importOnWorker(
         onComplete: (Result<T>) -> Unit,
         onProgress: (UiText) -> Unit = {},
+        message: Int = R.string.resources_importing,
         operation: (GenerationContext, (UiText) -> Unit) -> T,
     ): Boolean {
         val context = GenerationContext()
@@ -398,7 +417,7 @@ class VoiceBoxBackendService : Service() {
         activeDefaults = null
         warmupContext?.cancel("RESOURCES_CHANGED")
         publishState(GenerationStage.INSTALLING_MODEL, true, state.requestedBackend,
-            state.resolvedBackend, state.runtimeLabel, getString(R.string.resources_importing), context = context)
+            state.resolvedBackend, state.runtimeLabel, getString(message), context = context)
         worker.execute {
             val result = runCatching {
                 context.checkCancelled()

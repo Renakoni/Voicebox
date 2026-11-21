@@ -40,6 +40,8 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation("net.lingala.zip4j:zip4j:2.11.5")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     val runtime = providers.gradleProperty("voiceboxOrtAar").orNull
     if (runtime == null) {
         implementation("com.microsoft.onnxruntime:onnxruntime-android:1.27.0")
