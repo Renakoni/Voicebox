@@ -46,7 +46,7 @@ internal fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openProjec
                         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(16.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    StarInvitation(openProject, Modifier.weight(1.5f))
+                    StarInvitation(openProject, Modifier.widthIn(max = 176.dp))
                 }
             }
             SettingsGroup(stringResource(R.string.settings_acceleration)) {
@@ -90,12 +90,9 @@ private val ThemeMode.label get() = when (this) {
 
 @Composable
 private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(title, Modifier.padding(start = 16.dp).semantics { heading() },
-            style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-            Column(Modifier.fillMaxWidth(), content = content)
-        }
+    Column {
+        SectionLabel(title)
+        StudioCard(Modifier.fillMaxWidth(), content = content)
     }
 }
 

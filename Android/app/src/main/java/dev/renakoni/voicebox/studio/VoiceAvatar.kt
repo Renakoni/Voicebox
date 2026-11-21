@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.ContentScale
@@ -38,13 +39,27 @@ internal fun VoiceAvatar(name: String, path: String = "", modifier: Modifier = M
             BitmapFactory.decodeFile(path)?.asImageBitmap()
         }
     }
-    Box(modifier.clip(CircleShape).background(MaterialTheme.colorScheme.secondaryContainer), contentAlignment = Alignment.Center) {
+    // Each voice gets its own quiet earth tone and waveform, derived from its name, so a list
+    // of placeholders reads as distinct people rather than one repeated stamp.
+    val dark = MaterialTheme.colorScheme.background.luminance() < .5f
+    val seed = name.trim().hashCode()
+    val hue = 20.0 + Math.floorMod(seed, 97) * 1.1
+    val (fill, ink) = remember(hue, dark) {
+        if (dark) oklch(.31, .028, hue) to oklch(.84, .055, hue)
+        else oklch(.91, .03, hue) to oklch(.46, .07, hue)
+    }
+    val bars = remember(seed) {
+        val shapes = listOf(listOf(.3f, .6f, .9f, .6f, .3f), listOf(.45f, .85f, .55f, .75f, .35f),
+            listOf(.35f, .7f, .5f, .9f, .4f), listOf(.5f, .4f, .9f, .45f, .6f))
+        shapes[Math.floorMod(seed / 97, shapes.size)]
+    }
+    Box(modifier.clip(CircleShape).background(fill), contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!, if (name.isBlank()) resources.getString(R.string.voice_avatar) else resources.getString(R.string.named_voice_avatar, name),
             Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else {
-            val color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = .75f)
+            val color = ink
             Canvas(Modifier.fillMaxSize(.5f)) {
-                listOf(.3f, .6f, .9f, .6f, .3f).forEachIndexed { index, height ->
+                bars.forEachIndexed { index, height ->
                     val x = size.width * (index + 1) / 6
                     drawLine(color, Offset(x, size.height * (1 - height) / 2),
                         Offset(x, size.height * (1 + height) / 2),
@@ -65,9 +80,10 @@ internal fun VoiceAvatarEditor(name: String, path: String, enabled: Boolean, pic
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = ripple(bounded = false, radius = 52.dp),
                 enabled = enabled, role = Role.Button, onClickLabel = resources.getString(R.string.change_avatar)) { choosing = true }) {
             VoiceAvatar(name, path, Modifier.fillMaxSize())
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(28.dp).align(Alignment.BottomEnd)) {
-                Icon(Icons.Default.Edit, null, Modifier.padding(6.dp), tint = MaterialTheme.colorScheme.onPrimary)
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.onSurface,
+                border = androidx.compose.foundation.BorderStroke(3.dp, MaterialTheme.colorScheme.background),
+                modifier = Modifier.size(32.dp).align(Alignment.BottomEnd)) {
+                Icon(Icons.Default.Edit, null, Modifier.padding(8.dp), tint = MaterialTheme.colorScheme.surface)
             }
         }
     }

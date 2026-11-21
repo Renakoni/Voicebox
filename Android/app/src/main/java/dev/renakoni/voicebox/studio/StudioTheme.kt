@@ -21,7 +21,7 @@ import kotlin.math.pow
 import kotlin.math.sin
 
 // Paper and clay in daylight; the same hue relationships soften for evening use.
-private fun oklch(lightness: Double, chroma: Double, hue: Double): Color {
+internal fun oklch(lightness: Double, chroma: Double, hue: Double): Color {
     val a = chroma * cos(Math.toRadians(hue))
     val b = chroma * sin(Math.toRadians(hue))
     val l = (lightness + 0.3963377774 * a + 0.2158037573 * b).pow(3)

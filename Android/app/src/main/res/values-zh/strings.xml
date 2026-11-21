@@ -180,11 +180,14 @@
     <string name="update_check">检查更新</string>
     <string name="update_checking">正在检查新版本…</string>
     <string name="update_current">已是最新版本。</string>
-    <string name="update_check_failed">检查更新失败，点按重试。</string>
+    <string name="update_check_failed">检查更新失败。</string>
+    <string name="update_retry">重试</string>
+    <string name="update_github">前往 GitHub</string>
     <string name="update_available">发现新版本</string>
     <string name="update_release_notes">更新日志</string>
-    <string name="update_no_release">当前应用尚无已发布的正式版。</string>
+    <string name="update_no_release">暂无可用的新版本。</string>
     <string name="update_no_notes">此版本未提供更新日志。</string>
+    <string name="update_notes_on_github">可前往 GitHub 查看完整更新日志。</string>
     <string name="update_manual">手动下载</string>
     <string name="update_later">稍后再说</string>
     <string name="update_close">关闭</string>
@@ -274,6 +277,8 @@
     <string name="share">分享</string>
     <string name="send_qq">去 QQ 发送</string>
     <string name="my_voices">我的音色</string>
+    <string name="voices_official">官方音色</string>
+    <string name="voices_custom">自建音色</string>
     <string name="clone_voice">克隆音色</string>
     <string name="import_voice">导入音色</string>
     <string name="model_unavailable">模型不可用</string>

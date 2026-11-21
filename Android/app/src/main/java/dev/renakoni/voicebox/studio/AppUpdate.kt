@@ -1,6 +1,8 @@
 package dev.renakoni.voicebox.studio
 
 import android.app.Application
+import android.util.Log
+import android.util.Xml
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,8 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
+import org.xmlpull.v1.XmlPullParser
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -27,65 +28,94 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Properties
 
-private const val RELEASES = "https://github.com/Renakoni/Voicebox/releases"
+internal const val APP_RELEASES_URL = "$PROJECT_URL/releases"
 
-internal data class AppUpdate(val version: String, val code: Int, val notes: String, val apk: ModelDownload) {
-    val releaseUrl get() = "$RELEASES/tag/v$version"
+internal data class AppUpdate(val version: String, val code: Int, val notesHtml: String?, val apk: ModelDownload) {
+    val releaseUrl get() = "$APP_RELEASES_URL/tag/v$version"
 
     companion object {
         fun fetch(): AppUpdate? {
-            val releases = mutableListOf<JSONObject>()
-            var page = 1
-            do {
-                val batch = JSONArray(get("https://api.github.com/repos/Renakoni/Voicebox/releases?per_page=100&page=$page"))
-                for (i in 0 until batch.length()) releases += batch.getJSONObject(i)
-                page++
-            } while (batch.length() == 100)
-            val release = latest(releases) ?: return null
-            val tag = release.getString("tag_name")
+            val tag = request("$APP_RELEASES_URL/latest", method = "HEAD", followRedirects = false) { connection ->
+                val status = connection.responseCode
+                if (status == HttpURLConnection.HTTP_NOT_FOUND) return@request null
+                check(status in 300..399) { "HTTP $status from ${connection.url.host}" }
+                val location = checkNotNull(connection.getHeaderField("Location"))
+                val releaseUrl = URL(connection.url, location).toExternalForm()
+                if (releaseUrl == APP_RELEASES_URL) null else {
+                    val prefix = "$APP_RELEASES_URL/tag/"
+                    check(releaseUrl.startsWith(prefix)) { "Unexpected latest release URL" }
+                    releaseUrl.removePrefix(prefix)
+                }
+            } ?: return null
+            val match = Regex("v([0-9]+)\\.([0-9]+)\\.([0-9]+)").matchEntire(tag) ?: return null
+            val major = match.groupValues[1].toIntOrNull() ?: return null
+            val minor = match.groupValues[2].toIntOrNull() ?: return null
+            if (major == 0 || (major == 1 && minor < 2)) return null
+
             val versions = get("https://raw.githubusercontent.com/Renakoni/Voicebox/refs/tags/$tag/Android/gradle.properties")
-            return parse(release, versions)
+            val properties = Properties().apply { versions.reader().use(::load) }
+            val code = properties.getProperty("voiceboxVersionCode").toInt()
+            val version = properties.getProperty("voiceboxVersionName")
+            require(code > 0 && tag == "v$version")
+
+            val name = "Voicebox-$version-arm64.apk"
+            val assetBase = "$APP_RELEASES_URL/download/$tag"
+            val url = "$assetBase/$name"
+            val checksums = get("$assetBase/SHA256SUMS.txt")
+            val checksum = Regex("([0-9a-fA-F]{64})[ \\t]+\\*?${Regex.escape(name)}")
+            val digest = checksums.lineSequence().mapNotNull { checksum.matchEntire(it.trim()) }
+                .single().groupValues[1].lowercase()
+            val bytes = request(url, method = "HEAD") {
+                checkResponse(it)
+                it.contentLengthLong.also { length -> check(length > 0) { "Missing APK size" } }
+            }
+            val notes = try {
+                releaseNotes(tag)
+            } catch (e: Exception) {
+                Log.w("VoiceBoxUpdate", "Could not load release notes", e)
+                null
+            }
+            return AppUpdate(version, code, notes, ModelDownload(url, bytes, digest))
         }
 
-        private fun get(url: String): String {
+        private fun <T> request(url: String, method: String = "GET", followRedirects: Boolean = true,
+            read: (HttpURLConnection) -> T): T {
             val connection = URL(url).openConnection() as HttpURLConnection
             try {
                 connection.connectTimeout = 10_000
                 connection.readTimeout = 10_000
                 connection.useCaches = false
+                connection.requestMethod = method
+                connection.instanceFollowRedirects = followRedirects
                 connection.setRequestProperty("User-Agent", "VoiceBox/${BuildConfig.VERSION_NAME}")
-                check(connection.responseCode == HttpURLConnection.HTTP_OK)
-                return connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                return read(connection)
             } finally {
                 connection.disconnect()
             }
         }
 
-        fun latest(releases: List<JSONObject>): JSONObject? {
-            val tag = Regex("v([0-9]+)\\.([0-9]+)\\.([0-9]+)")
-            return releases.mapNotNull { item ->
-                if (item.getBoolean("draft") || item.getBoolean("prerelease")) return@mapNotNull null
-                val match = tag.matchEntire(item.getString("tag_name")) ?: return@mapNotNull null
-                val parts = match.groupValues.drop(1).map { it.toIntOrNull() ?: return@mapNotNull null }
-                val (major, minor) = parts
-                if (major == 0 || (major == 1 && minor < 2)) null else item to parts
-            }.maxWithOrNull(compareBy({ it.second[0] }, { it.second[1] }, { it.second[2] }))?.first
+        private fun get(url: String): String = request(url) {
+            checkResponse(it)
+            it.inputStream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
         }
 
-        fun parse(release: JSONObject, versions: String): AppUpdate {
-            val properties = Properties().apply { versions.reader().use(::load) }
-            val code = properties.getProperty("voiceboxVersionCode").toInt()
-            val version = properties.getProperty("voiceboxVersionName")
-            val tag = release.getString("tag_name")
-            require(code > 0 && tag == "v$version")
-            val assets = release.getJSONArray("assets")
-            val name = "Voicebox-$version-arm64.apk"
-            val asset = (0 until assets.length()).map(assets::getJSONObject).single { it.getString("name") == name }
-            val url = "$RELEASES/download/$tag/$name"
-            val digest = asset.getString("digest")
-            val bytes = asset.getLong("size")
-            require(asset.getString("browser_download_url") == url && bytes > 0 && digest.matches(Regex("sha256:[0-9a-f]{64}")))
-            return AppUpdate(version, code, release.optString("body").trim(), ModelDownload(url, bytes, digest.substringAfter(':')))
+        private fun checkResponse(connection: HttpURLConnection) {
+            val status = connection.responseCode
+            check(status == HttpURLConnection.HTTP_OK) { "HTTP $status from ${connection.url.host}" }
+        }
+
+        private fun releaseNotes(tag: String): String? {
+            val parser = Xml.newPullParser().apply { setInput(get("$APP_RELEASES_URL.atom").reader()) }
+            var matchingEntry = false
+            while (parser.next() != XmlPullParser.END_DOCUMENT) {
+                if (parser.eventType != XmlPullParser.START_TAG) continue
+                when (parser.name) {
+                    "entry" -> matchingEntry = false
+                    "id" -> matchingEntry = parser.nextText().substringAfterLast('/') == tag
+                    "content" -> if (matchingEntry) return parser.nextText().trim()
+                }
+            }
+            return null
         }
     }
 }
@@ -117,8 +147,9 @@ internal class AppUpdateViewModel(private val app: Application) : AndroidViewMod
                 if (update == null || update.code <= BuildConfig.VERSION_CODE) UpdateState.Current else UpdateState.Available
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
-                UpdateState.Failed(UiText(R.string.update_check_failed))
+            } catch (e: Exception) {
+                Log.w("VoiceBoxUpdate", "Update check failed", e)
+                UpdateState.Failed(e.userText() ?: UiText(R.string.update_check_failed))
             }
         }
     }

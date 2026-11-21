@@ -122,8 +122,8 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
                 enter = expandVertically(tween(220), expandFrom = Alignment.Bottom) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(220), shrinkTowards = Alignment.Bottom) + fadeOut(tween(140))) {
                 Column {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .6f))
+                    NavigationBar(containerColor = MaterialTheme.colorScheme.background, tonalElevation = 0.dp) {
                         StudioTab.entries.forEach { tab ->
                             NavigationBarItem(selected = vm.tab == tab,
                                 onClick = { focus.clearFocus(); vm.tab = tab },
@@ -136,9 +136,12 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
                                         StudioTab.SETTINGS -> Icon(Icons.Outlined.Settings, null, size)
                                     }
                                 }, label = { Text(resources.getString(tab.label)) },
-                                colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent,
+                                colors = NavigationBarItemDefaults.colors(
+                                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = .12f),
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary))
+                                    selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant))
                         }
                     }
                 }
@@ -173,9 +176,12 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
 
 @Composable
 internal fun PageHeader(title: String) {
-    TopAppBar(title = { Text(title, style = MaterialTheme.typography.titleLarge,
-        modifier = Modifier.semantics { heading() }) }, windowInsets = WindowInsets(0, 0, 0, 0),
-        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
+    // A plain editorial title rather than an app bar: same 64dp footprint, more presence.
+    Box(Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 24.dp).padding(top = 18.dp, bottom = 10.dp),
+        contentAlignment = Alignment.BottomStart) {
+        Text(title, Modifier.semantics { heading() },
+            style = MaterialTheme.typography.headlineSmall.copy(letterSpacing = (-0.3).sp))
+    }
 }
 
 @Composable
@@ -447,144 +453,37 @@ private fun OutputPlayer(output: StudioOutput, vm: StudioViewModel, save: (Studi
 }
 
 @Composable
-private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
-    val resources = LocalResources.current
-    Column(modifier.fillMaxHeight()) {
-        PageHeader(resources.getString(R.string.my_voices))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 16.dp).height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            StudioButton(onClick = { vm.beginVoice() }, enabled = !vm.loading && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                Text(resources.getString(R.string.clone_voice))
-            }
-            if (vm.canImportCheckpoints) StudioButton(onClick = vm::beginCheckpointImport, enabled = vm.connected && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight()) {
-                Text(resources.getString(R.string.import_voice))
-            }
-        }
-        HorizontalDivider(Modifier.padding(horizontal = 24.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-            vm.officialModels.forEach { official ->
-                item(key = "official:" + official.ref) { OfficialVoiceRow(vm, official) }
-            }
-            val otherVoices = vm.voices.filterNot { voice -> voice.builtIn && vm.isOfficial(voice.model) }
-            itemsIndexed(otherVoices, key = { _, voice -> voice.id }) { index, voice ->
-                val available = vm.modelFor(voice) != null
-                Column {
-                    Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = !vm.busy && available) { vm.select(voice); vm.tab = StudioTab.CREATE }
-                            .padding(vertical = 8.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            VoiceAvatar(voice.name, voice.avatarPath)
-                            Column(Modifier.weight(1f)) {
-                                Text(voice.name, style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                Text(vm.variantLabel(voice.model).resolve(resources),
-                                    style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                if (!available) Text(resources.getString(R.string.model_unavailable),
-                                    style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (vm.selectedId == voice.id) Icon(Icons.Default.Check, resources.getString(R.string.selected),
-                                modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                        }
-                        IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy) {
-                            Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, voice.name), modifier = Modifier.size(20.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                    }
-                    if (index < otherVoices.lastIndex) HorizontalDivider(Modifier.padding(start = 68.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant)
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
-    val resources = LocalResources.current
-    val installed = vm.modelFor(model) != null
-    val ready = vm.resourcesReady(model.ref)
-    val voice = vm.voiceFor(model)
-    val status = vm.officialDownload.takeIf { it.voice == model.ref }
-    val error = status?.error
-    val downloading = status?.running == true
-    Column {
-        Row(Modifier.fillMaxWidth().alpha(if (installed) 1f else .55f).padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = installed && !vm.busy && !vm.fileBusy) {
-                    if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE } else vm.editOfficial(model)
-                }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                VoiceAvatar(model.displayName(resources), voice?.avatarPath.orEmpty(), Modifier.size(48.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(model.displayName(resources), style = MaterialTheme.typography.bodyMedium, maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface)
-                    val detail = when {
-                        downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
-                        !ready && error != null -> error.resolve(resources)
-                        !installed -> resources.getString(R.string.not_downloaded)
-                        !ready -> resources.getString(R.string.shared_resources_missing)
-                        else -> null
-                    }
-                    detail?.let { Text(it, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                }
-                if (voice != null && voice.id == vm.selectedId) Icon(Icons.Default.Check, resources.getString(R.string.selected),
-                    Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-            }
-            IconButton(onClick = {
-                when { downloading -> vm.cancelOfficialDownload(); ready -> vm.editOfficial(model)
-                    else -> vm.downloadOfficial(model) }
-            }, enabled = downloading || (vm.connected && !vm.loading && !vm.busy && !vm.fileBusy)) {
-                when {
-                    downloading -> Icon(Icons.Default.Close, resources.getString(R.string.cancel_download), Modifier.size(20.dp))
-                    ready -> Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, model.displayName(resources)), Modifier.size(20.dp))
-                    else -> Icon(painterResource(R.drawable.ic_download), resources.getString(R.string.download_named_model, model.displayName(resources)), Modifier.size(22.dp),
-                        tint = MaterialTheme.colorScheme.onSurface)
-                }
-            }
-        }
-        HorizontalDivider(Modifier.padding(start = 68.dp), color = MaterialTheme.colorScheme.outlineVariant)
-    }
-}
-
-@Composable
 private fun VoicePickerPage(vm: StudioViewModel, modifier: Modifier) {
     val resources = LocalResources.current
-    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             IconButton(onClick = vm::closeVoicePicker) { Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_create)) }
-            Text(resources.getString(R.string.select_voice), style = MaterialTheme.typography.titleLarge)
+            Text(resources.getString(R.string.select_voice), style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() })
         }
-        vm.voices.forEach { voice ->
+        val voices = vm.voices
+        voices.forEachIndexed { index, voice ->
             val available = vm.modelFor(voice) != null
-            VoiceChoiceRow(vm.voiceName(voice, resources), voice.avatarPath, if (available) "" else resources.getString(R.string.model_unavailable),
-                voice.id == vm.selectedId, available && !vm.busy) { vm.chooseVoice(voice) }
-        }
-    }
-}
-
-@Composable
-private fun VoiceChoiceRow(name: String, avatarPath: String, status: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val resources = LocalResources.current
-    Column {
-        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 16.dp, horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            VoiceAvatar(name, avatarPath)
-            Column(Modifier.weight(1f)) {
-                Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                if (status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val name = vm.voiceName(voice, resources)
+            val selected = voice.id == vm.selectedId
+            VoiceTile(groupedShape(index, voices.size), selected, enabled = available && !vm.busy,
+                onClick = { vm.chooseVoice(voice) },
+                avatar = { RingedAvatar(name, voice.avatarPath, selected, dim = !available) },
+                trailing = {
+                    Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                        if (selected) Icon(Icons.Default.Check, resources.getString(R.string.selected), Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary)
+                        else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }) {
+                Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    color = if (available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!available) Text(resources.getString(R.string.model_unavailable), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (selected) Icon(Icons.Default.Check, resources.getString(R.string.selected), tint = MaterialTheme.colorScheme.primary)
-            else Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 

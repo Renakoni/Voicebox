@@ -180,11 +180,14 @@
     <string name="update_check">Check for updates</string>
     <string name="update_checking">Checking for a new version…</string>
     <string name="update_current">You have the latest version.</string>
-    <string name="update_check_failed">Could not check for updates. Tap to retry.</string>
+    <string name="update_check_failed">Could not check for updates.</string>
+    <string name="update_retry">Try again</string>
+    <string name="update_github">View on GitHub</string>
     <string name="update_available">Update available</string>
     <string name="update_release_notes">Release notes</string>
-    <string name="update_no_release">There are no published releases for this app yet.</string>
+    <string name="update_no_release">There is no newer release available.</string>
     <string name="update_no_notes">No release notes were provided.</string>
+    <string name="update_notes_on_github">See the full release notes on GitHub.</string>
     <string name="update_manual">Manual download</string>
     <string name="update_later">Later</string>
     <string name="update_close">Close</string>
@@ -278,6 +281,8 @@
     <string name="share">Share</string>
     <string name="send_qq">Send to QQ</string>
     <string name="my_voices">My voices</string>
+    <string name="voices_official">Official</string>
+    <string name="voices_custom">Your voices</string>
     <string name="clone_voice">Clone voice</string>
     <string name="import_voice">Import voice</string>
     <string name="model_unavailable">Model unavailable</string>
