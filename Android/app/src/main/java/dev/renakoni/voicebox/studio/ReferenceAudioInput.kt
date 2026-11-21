@@ -22,7 +22,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -31,7 +30,7 @@ import java.util.Locale
 
 @Composable
 internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String, durationMs: Long,
-    pickAudio: () -> Unit, startRecording: () -> Unit, pickerTag: String, title: @Composable () -> Unit) {
+    pickAudio: () -> Unit, startRecording: () -> Unit, title: @Composable () -> Unit) {
     val resources = LocalResources.current
     val recording = vm.recordingMs != null
     val enabled = !vm.busy && !vm.fileBusy
@@ -43,7 +42,7 @@ internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String
             Surface(onClick = pickAudio, enabled = enabled, shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 contentColor = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else .38f),
-                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 80.dp).testTag(pickerTag)) {
+                modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 80.dp)) {
                 Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                     Icon(Icons.Default.Add, null, Modifier.size(20.dp))
@@ -73,11 +72,9 @@ internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: 
             Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
             // Round remaining seconds up so 0:00 is never shown while audio is still finishing.
             Text(if (duration > 0) recordingTime(((remaining + 999) / 1000) * 1000) else "—:—",
-                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.testTag("reference_remaining"))
+                style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        StudioButton(onClick = onToggle, enabled = enabled && !preview.preparing, style = StudioButtonStyle.Quiet,
-            modifier = Modifier.testTag("play_reference")) {
+        StudioButton(onClick = onToggle, enabled = enabled && !preview.preparing, style = StudioButtonStyle.Quiet) {
             Text(if (preview.preparing) resources.getString(R.string.loading) else if (preview.playing) resources.getString(R.string.pause) else resources.getString(R.string.preview_audio))
         }
     }
@@ -108,7 +105,7 @@ internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Uni
         contentColor = when { recording && cancelOnRelease -> colors.onErrorContainer
             recording -> colors.onPrimaryContainer; !enabled -> colors.onSurface.copy(alpha = .38f)
             else -> colors.onSurface },
-        modifier = modifier.heightIn(min = 80.dp).testTag("record_reference")
+        modifier = modifier.heightIn(min = 80.dp)
             // Keep the gesture alive when recording makes the rest of the form busy.
             .pointerInput(cancelDistance) {
                 var startY = 0f
@@ -137,8 +134,7 @@ internal fun HoldToRecord(enabled: Boolean, elapsedMs: Long?, onStart: () -> Uni
             }) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center) {
-            if (recording) Text(recordingTime(elapsedMs), style = MaterialTheme.typography.labelLarge,
-                modifier = Modifier.testTag("recording_time"))
+            if (recording) Text(recordingTime(elapsedMs), style = MaterialTheme.typography.labelLarge)
             else MicrophoneIcon()
             Spacer(Modifier.height(4.dp))
             Text(label, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.Center)

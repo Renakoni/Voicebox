@@ -17,21 +17,17 @@ object OptimizedDecoderAssets {
         require(data.getInt("schema_version") == 1 && data.getString("format") == "genie_t2s_head_cache_fp32_v1") {
             "Unsupported optimized decoder format."
         }
-        val resolved = graphs.mapValues { (source, derived) ->
+        val shared = if (sharedCacheAllowed) data.optJSONObject("shared_cache") else null
+        if (shared != null) require(shared.getString("format") == "genie_t2s_shared_cache_fp32_v1") {
+            "Unsupported shared decoder format."
+        }
+        return graphs.mapValues { (source, derived) ->
             SplitVocoderAssets.verify(File(directory, source), data.getJSONObject("sources").getString(source))
-            File(directory, derived).also {
-                SplitVocoderAssets.verify(it, data.getJSONObject("graphs").getString(derived))
+            if (derived == "mobile-decoder.onnx" && shared != null) {
+                File(directory, "mobile-decoder-shared.onnx").also { SplitVocoderAssets.verify(it, shared.getString("sha256")) }
+            } else {
+                File(directory, derived).also { SplitVocoderAssets.verify(it, data.getJSONObject("graphs").getString(derived)) }
             }
         }
-        if (sharedCacheAllowed && data.has("shared_cache")) {
-            val shared = data.getJSONObject("shared_cache")
-            require(shared.getString("format") == "genie_t2s_shared_cache_fp32_v1") {
-                "Unsupported shared decoder format."
-            }
-            val file = File(directory, "mobile-decoder-shared.onnx")
-            SplitVocoderAssets.verify(file, shared.getString("sha256"))
-            return resolved + ("t2s_stage_decoder_fp32.onnx" to file)
-        }
-        return resolved
     }
 }

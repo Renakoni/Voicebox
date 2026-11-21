@@ -3,6 +3,7 @@ package dev.renakoni.voicebox.model.gptsovits
 import dev.renakoni.voicebox.bridge.ModelInspectionResult
 
 import dev.renakoni.voicebox.core.OutputStorage
+import dev.renakoni.voicebox.core.regularFileAttributes
 import android.content.Context
 import java.io.File
 
@@ -21,22 +22,13 @@ class RuntimeAssetRepository(private val filesRoot: File) {
     fun inspect(): ModelInspectionResult {
         val root = runtimeRoot()
         return ModelInspectionResult(
-            missingFiles = requiredFiles.filterNot { File(root, it).isFile },
+            missingFiles = requiredFiles.filter { (File(root, it).regularFileAttributes()?.size() ?: 0L) == 0L },
         )
     }
 
     @Synchronized
     fun prepareRuntimeWeights(progress: (Long, Long) -> Unit = { _, _ -> }) {
-        val source = hubertFp16WeightsFile()
-        val target = hubertFp32WeightsFile()
-        require(source.isFile) { "Missing FP16 HuBERT weights: ${source.absolutePath}" }
-
-        // ORT can load the model's regular FP32 external data directly from
-        // disk. Materialize it with bounded memory instead of retaining large
-        // Kotlin FloatArrays and OnnxTensors on the 256 MiB app heap.
-        if (target.isFile && target.length() == source.length() * 2L) return
-
-        HalfPrecisionFileConverter.convertFp16FileToFp32File(source, target, progress)
+        HalfPrecisionFileConverter.prepare(filesRoot, hubertFp16WeightsFile(), hubertFp32WeightsFile(), progress)
     }
 
     fun clearDerivedFiles() = (listOf(hubertFp32WeightsFile()) +
@@ -50,18 +42,21 @@ class RuntimeAssetRepository(private val filesRoot: File) {
         File(runtimeRoot(), "speaker_encoder.onnx")
 
     private fun hubertFp16WeightsFile(): File =
-        File(File(runtimeRoot(), "chinese-hubert-base"), "chinese-hubert-base_weights_fp16.bin")
+        File(runtimeRoot(), HUBERT_FP16)
 
     private fun hubertFp32WeightsFile(): File =
-        File(File(runtimeRoot(), "chinese-hubert-base"), "chinese-hubert-base_weights.bin")
+        File(runtimeRoot(), HUBERT_FP32)
 
     companion object {
         const val RUNTIME_ASSET_DIRECTORY = "RuntimeAssets"
 
-        private val requiredFiles = listOf(
+        internal const val HUBERT_FP16 = "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin"
+        internal const val HUBERT_FP32 = "chinese-hubert-base/chinese-hubert-base_weights.bin"
+        internal const val HUBERT_MANIFEST = "chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json"
+        internal val requiredFiles = listOf(
             "chinese-hubert-base/chinese-hubert-base.onnx",
-            "chinese-hubert-base/chinese-hubert-base_weights_fp16.bin",
-            "chinese-hubert-base/chinese-hubert-base_weights_fp16_manifest.json",
+            HUBERT_FP16,
+            HUBERT_MANIFEST,
             "speaker_encoder.onnx",
             "roberta-wwm-ext-large-onnx/model.onnx",
             "roberta-wwm-ext-large-onnx/roberta_tokenizer/tokenizer.json",

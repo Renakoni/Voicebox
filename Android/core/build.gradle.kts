@@ -14,7 +14,6 @@ android {
     }
     defaultConfig {
         externalNativeBuild.cmake.arguments += "-DANDROID_STL=c++_shared"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         debug { ndk.abiFilters += providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") }
@@ -32,10 +31,7 @@ android {
 }
 
 dependencies {
-    androidTestImplementation("androidx.test:runner:1.7.0")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    testImplementation("junit:junit:4.13.2")
     api(project(":bridge-api"))
     implementation("androidx.annotation:annotation:1.10.0")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
 }

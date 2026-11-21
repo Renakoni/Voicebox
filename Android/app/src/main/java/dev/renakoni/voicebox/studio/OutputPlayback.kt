@@ -14,7 +14,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -29,7 +28,7 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
             shape = StudioControlShape,
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
                 contentColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.size(48.dp).padding(4.dp).testTag("play_output")) {
+            modifier = Modifier.size(48.dp).padding(4.dp)) {
             if (preview.preparing) CircularProgressIndicator(Modifier.size(24.dp), color = LocalContentColor.current, strokeWidth = 2.dp)
             else if (preview.playing) PauseIcon()
             else Icon(Icons.Default.PlayArrow, resources.getString(R.string.play_generated))
@@ -57,10 +56,9 @@ private fun PlaybackTimeline(preview: PreviewState, durationMs: Long, modifier: 
             },
             valueRange = 0f..duration.toFloat(), interactionSource = interactions,
             enabled = seekEnabled,
-            modifier = Modifier.testTag("playback_seek").semantics { contentDescription = resources.getString(R.string.playback_position) })
+            modifier = Modifier.semantics { contentDescription = resources.getString(R.string.playback_position) })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(playbackTime(position.toLong()), style = MaterialTheme.typography.labelMedium,
-                modifier = Modifier.testTag("playback_position"))
+            Text(playbackTime(position.toLong()), style = MaterialTheme.typography.labelMedium)
             Text(playbackTime(duration), style = MaterialTheme.typography.labelMedium)
         }
     }

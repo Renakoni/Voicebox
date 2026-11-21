@@ -10,6 +10,7 @@ import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
 import net.lingala.zip4j.ZipFile
+import net.lingala.zip4j.model.FileHeader
 
 internal data class TorchStorage(val type: String, val key: String, val count: Long) {
     val bytesPerElement: Int get() = when (type) {
@@ -180,17 +181,20 @@ internal class TorchPickle(private val bytes: ByteArray) {
 
 internal class TorchCheckpoint(file: File, weightsKey: String? = "weight") : Closeable {
     private val zip = ZipFile(file)
+    private val headers: Map<String, FileHeader>
     private val prefix: String
     val root: Map<*, *>
     val weights: Map<*, *>
     init {
         try {
             val entries = zip.fileHeaders
-            requireUi(entries.size <= 20_000 && entries.map { it.fileName }.distinct().size == entries.size) { UiText("checkpoint_zip_invalid") }
+            requireUi(entries.size <= 20_000) { UiText("checkpoint_zip_invalid") }
+            headers = entries.associateBy { it.fileName }
+            requireUi(headers.size == entries.size) { UiText("checkpoint_zip_invalid") }
             val metadata = entries.singleOrNull { it.fileName.endsWith("/data.pkl") } ?: errorUi(UiText("pytorch_zip_required"))
             requireUi(metadata.uncompressedSize in 1..16 * 1024 * 1024) { UiText("metadata_too_large") }
             prefix = metadata.fileName.removeSuffix("data.pkl")
-            zip.getFileHeader(prefix + "byteorder")?.let { entry ->
+            headers[prefix + "byteorder"]?.let { entry ->
                 requireUi(entry.uncompressedSize in 1..16 && zip.getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) } == "little") { UiText("checkpoint_big_endian") }
             }
             root = TorchPickle(zip.getInputStream(metadata).use { input ->
@@ -204,12 +208,12 @@ internal class TorchCheckpoint(file: File, weightsKey: String? = "weight") : Clo
     fun tensor(key: String): TorchTensor = (weights[key] as? TorchTensor
         ?: errorUi(UiText("checkpoint_key_missing", key))).also { tensor ->
         tensor.validate()
-        val entry = zip.getFileHeader(prefix + "data/" + tensor.storage.key) ?: errorUi(UiText("weight_data_missing", key))
+        val entry = headers[prefix + "data/" + tensor.storage.key] ?: errorUi(UiText("weight_data_missing", key))
         requireUi(entry.uncompressedSize == Math.multiplyExact(tensor.storage.count, tensor.storage.bytesPerElement.toLong())) { UiText("weight_length_mismatch", key) }
     }
 
     fun open(tensor: TorchTensor): InputStream {
-        val stream = zip.getInputStream(zip.getFileHeader(prefix + "data/" + tensor.storage.key))
+        val stream = zip.getInputStream(headers.getValue(prefix + "data/" + tensor.storage.key))
         try {
             var remaining = Math.multiplyExact(tensor.offset, tensor.storage.bytesPerElement.toLong())
             while (remaining > 0) {

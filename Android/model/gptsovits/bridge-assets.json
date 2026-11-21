@@ -72,6 +72,7 @@
   "language-licenses/SOURCES.txt": "c8e830b5c2f4e2cc261b167281ccc57a1156a36f35238772f616850087cb8759",
   "official-models.json": "d61921cc5cd0b258e72a9fb1ac1a327979594e2d978de681fd9d976f72334d4c",
   "official-runtime/hubert-manifest.json": "636b089b151d1cf49237c72e56247257cd4c46d66839b03a0383f64a73a945d1",
+  "official-runtime/resources.lock.json": "d7e8ad0d2b138f49e02494720141d671db8cf9b07d8aaac831524dfb8205b71a",
   "official-runtime/v5-vocoder-subpixel.onnx": "a5bc4379a5e4a50eb87c0993b4c35feae4e68108b6ffc4698f1556d30eb153f4",
   "official-runtime/v5-vocoder.json": "72c1c95cc3980ba247d6a6e2397dc8c8b86dddd00c2d14ed4a3b247285b11722"
 }

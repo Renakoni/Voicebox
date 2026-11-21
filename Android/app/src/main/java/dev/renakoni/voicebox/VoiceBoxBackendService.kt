@@ -58,6 +58,8 @@ import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+internal data class BackendProbeResult(val modes: Set<ExecutionBackend>, val acceleration: AccelerationInfo?)
+
 class VoiceBoxBackendService : Service() {
     override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
 
@@ -91,13 +93,12 @@ class VoiceBoxBackendService : Service() {
     private val app get() = application as VoiceBoxApplication
     private val modelRepository get() = app.backends
     private lateinit var localHttpApiServer: LocalHttpApiServer
-    val acceleration = MutableStateFlow<Map<String, AccelerationInfo>>(emptyMap())
 
     // Mutated only on the serial inference worker.
     private var workerRuntime: BackendRuntime? = null
     private var runtimeOwner: String? = null
-    private val enabledBackends = MutableStateFlow<Map<String, Set<ExecutionBackend>>>(emptyMap())
-    val backendCapabilities = enabledBackends.asStateFlow()
+    private val enabledBackends = MutableStateFlow<Map<String, BackendProbeResult>>(emptyMap())
+    internal val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
     private var resourceReloadPending = false
@@ -143,6 +144,9 @@ class VoiceBoxBackendService : Service() {
         )
         worker.execute {
             runCatching { app.bridgePackages.installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
+            modelRepository.providers.forEach { provider ->
+                runCatching { provider.recoverInstallations() }.onFailure { Log.e("VoiceBoxWorker", "Cannot recover ${provider.id}", it) }
+            }
             catalogReady.complete(Unit)
             mainHandler.post { if (!destroyed) syncLocalHttpApiServer() }
             modelRepository.providers.forEach { if (!destroyed) refreshBackendModes(it) }
@@ -229,10 +233,10 @@ class VoiceBoxBackendService : Service() {
     fun currentState(): BackendServiceState = state
 
     private fun supportedBackends(model: CharacterModel) =
-        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
+        model.executionModes intersect (enabledBackends.value[model.ref.backendId]?.modes ?: setOf(ExecutionBackend.CPU))
 
     fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
-        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
+        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId]?.modes.orEmpty() }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
@@ -291,8 +295,8 @@ class VoiceBoxBackendService : Service() {
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
     private fun refreshBackendModes(provider: InstalledBackend) {
-        enabledBackends.value += provider.id to provider.executionModes()
-        acceleration.value += provider.id to provider.accelerationInfo()
+        val modes = provider.executionModes()
+        enabledBackends.value += provider.id to BackendProbeResult(modes, provider.accelerationInfo())
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->
@@ -302,20 +306,27 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
-    fun installBridge(id: String): Boolean {
+    /** A null part installs the complete family. The bridge can also be installed independently. */
+    fun installModelParts(id: String, part: String?): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        return downloadOnWorker(OfficialDownloadState(packageId = id)) { context ->
-            archive.install(context::checkCancelled) { percent ->
-                officialDownloadState.value = OfficialDownloadState(packageId = id, label = UiText(R.string.download_preparing), percent = percent, running = true)
+        if (!archive.supported) return false
+        val target = OfficialDownloadState(packageId = id)
+        return downloadOnWorker(target) { context ->
+            val provider = modelRepository.provider(id)
+            val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
+                officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
             }
-            refreshBackendModes(modelRepository.provider(id))
+            if (bridgeInstalled) refreshBackendModes(provider)
+            if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
+                provider.perform(LibraryAction.INSTALL_RESOURCES, Bundle().apply { putString("pack", part) }, context) { label, percent ->
+                    officialDownloadState.value = target.copy(label = UiText.literal(label), percent = percent, running = true)
+                }
+            }
         }
     }
 
     private fun downloadOnWorker(target: OfficialDownloadState, transfer: (GenerationContext) -> Unit): Boolean {
-        val previous = officialDownloadState.value
-        officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
-        val accepted = importOnWorker<Unit>(onComplete = { result ->
+        return importOnWorker<Unit>(onComplete = { result ->
             officialDownloadState.value = result.fold(
                 { target.copy(label = UiText(R.string.download_complete), completed = true) },
                 { error ->
@@ -324,9 +335,10 @@ class VoiceBoxBackendService : Service() {
                         UiText(R.string.download_cancelled) else error.userText()
                         ?: UiText(R.string.download_failed))
                 })
-        }) { context, _ -> transfer(context) }
-        if (!accepted) officialDownloadState.value = previous
-        return accepted
+        }) { context, _ ->
+            officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
+            transfer(context)
+        }
     }
 
     /** Import on the session owner thread; a replacement must never race inference or warmup. */
@@ -874,6 +886,7 @@ class VoiceBoxBackendService : Service() {
     }
 
     companion object {
+        const val BRIDGE_PART = "bridge"
         // A restarted service shares the queue with the previous instance until its native worker has exited.
         private val worker = java.util.concurrent.ThreadPoolExecutor(0, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
             java.util.concurrent.LinkedBlockingQueue<Runnable>())

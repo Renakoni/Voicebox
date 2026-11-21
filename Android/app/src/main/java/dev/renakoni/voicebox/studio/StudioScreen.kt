@@ -14,7 +14,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -31,7 +30,6 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -48,25 +46,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
-import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.bridge.OfficialVoice
 import dev.renakoni.voicebox.bridge.GenerationStage
@@ -74,8 +68,14 @@ import dev.renakoni.voicebox.core.ReferenceLanguage
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private enum class StudioDestination(val depth: Int) {
-    CREATE(0), VOICES(0), SETTINGS(0), PICKER(1), VOICE_EDITOR(1), CHECKPOINT_EDITOR(1), ABOUT(1), MODELS(1),
+internal sealed interface StudioDestination
+
+internal enum class StudioTab(val label: Int) : StudioDestination {
+    CREATE(R.string.tab_create), VOICES(R.string.tab_voices), MODELS(R.string.models), SETTINGS(R.string.settings),
+}
+
+private enum class StudioDetail : StudioDestination {
+    PICKER, VOICE_EDITOR, CHECKPOINT_EDITOR, ABOUT,
 }
 
 private data class StudioPage(
@@ -92,49 +92,53 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
     val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val focus = LocalFocusManager.current
+    val uriHandler = LocalUriHandler.current
+    val openLink: (String) -> Unit = { url ->
+        runCatching { uriHandler.openUri(url) }.onFailure { vm.notify(UiText(R.string.link_open_failed)) }
+    }
     var showingAbout by rememberSaveable { mutableStateOf(false) }
-    var showingModels by rememberSaveable { mutableStateOf(false) }
-    val closeAbout = { showingAbout = false; vm.tab = 2 }
+    val closeAbout = { showingAbout = false; vm.tab = StudioTab.SETTINGS }
     val page = when {
-        showingModels -> StudioPage(StudioDestination.MODELS)
-        showingAbout -> StudioPage(StudioDestination.ABOUT)
-        vm.checkpointDraft != null -> StudioPage(StudioDestination.CHECKPOINT_EDITOR, checkpoint = vm.checkpointDraft)
-        vm.draft != null -> StudioPage(StudioDestination.VOICE_EDITOR, voice = vm.draft)
-        vm.choosingVoice -> StudioPage(StudioDestination.PICKER)
-        vm.tab == 1 -> StudioPage(StudioDestination.VOICES)
-        vm.tab == 2 -> StudioPage(StudioDestination.SETTINGS)
-        else -> StudioPage(StudioDestination.CREATE)
+        showingAbout -> StudioPage(StudioDetail.ABOUT)
+        vm.checkpointDraft != null -> StudioPage(StudioDetail.CHECKPOINT_EDITOR, checkpoint = vm.checkpointDraft)
+        vm.draft != null -> StudioPage(StudioDetail.VOICE_EDITOR, voice = vm.draft)
+        vm.choosingVoice -> StudioPage(StudioDetail.PICKER)
+        else -> StudioPage(vm.tab)
     }
     val notice = vm.notice?.resolve(resources)
     LaunchedEffect(vm.notice, notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
-    BackHandler(showingModels || showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
-        if (showingModels) showingModels = false
-        else if (showingAbout) closeAbout()
+    BackHandler(page.destination != StudioTab.CREATE) {
+        if (showingAbout) closeAbout()
         else if (vm.recordingMs != null) vm.cancelReferenceRecording()
         else if (vm.checkpointDraft != null) vm.closeCheckpointImport()
         else if (vm.draft != null) vm.closeEditor()
-        else if (vm.choosingVoice) vm.closeVoicePicker() else vm.tab = 0
+        else if (vm.choosingVoice) vm.closeVoicePicker() else vm.tab = StudioTab.CREATE
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            AnimatedVisibility(page.destination.depth == 0,
+            AnimatedVisibility(page.destination is StudioTab,
                 enter = expandVertically(tween(220), expandFrom = Alignment.Bottom) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(220), shrinkTowards = Alignment.Bottom) + fadeOut(tween(140))) {
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        val labels = listOf(resources.getString(R.string.tab_create), resources.getString(R.string.tab_voices), resources.getString(R.string.settings))
-                        val icons = listOf(Icons.Outlined.Edit, Icons.Outlined.Face, Icons.Outlined.Settings)
-                        labels.forEachIndexed { index, label ->
-                            NavigationBarItem(selected = vm.tab == index,
-                                onClick = { focus.clearFocus(); vm.tab = index },
-                                icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(22.dp)) }, label = { Text(label) },
+                        StudioTab.entries.forEach { tab ->
+                            NavigationBarItem(selected = vm.tab == tab,
+                                onClick = { focus.clearFocus(); vm.tab = tab },
+                                icon = {
+                                    val size = Modifier.size(22.dp)
+                                    when (tab) {
+                                        StudioTab.CREATE -> Icon(Icons.Outlined.Edit, null, size)
+                                        StudioTab.VOICES -> Icon(Icons.Outlined.Face, null, size)
+                                        StudioTab.MODELS -> Icon(painterResource(R.drawable.ic_models), null, size)
+                                        StudioTab.SETTINGS -> Icon(Icons.Outlined.Settings, null, size)
+                                    }
+                                }, label = { Text(resources.getString(tab.label)) },
                                 colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent,
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary),
-                                modifier = Modifier.testTag("tab_$index"))
+                                    selectedTextColor = MaterialTheme.colorScheme.primary))
                         }
                     }
                 }
@@ -145,22 +149,22 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
             val width = Modifier.widthIn(max = 640.dp).fillMaxWidth()
             AnimatedContent(targetState = page, contentKey = { it.destination }, modifier = width.fillMaxHeight(),
                 transitionSpec = {
-                    val direction = targetState.destination.depth.compareTo(initialState.destination.depth)
+                    val direction = (targetState.destination is StudioDetail).compareTo(initialState.destination is StudioDetail)
                     (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { direction * it / 6 }) togetherWith
                         (fadeOut(tween(140)) + slideOutHorizontally(tween(220)) { -direction * it / 10 }) using
                         null
                 }, label = "studio_navigation") { target ->
                 when (target.destination) {
-                    StudioDestination.CHECKPOINT_EDITOR -> CheckpointImportPage(vm, requireNotNull(target.checkpoint),
+                    StudioDetail.CHECKPOINT_EDITOR -> CheckpointImportPage(vm, requireNotNull(target.checkpoint),
                         pickCheckpoint, pickReference, recordReference, pickAvatar, takeAvatarPhoto, Modifier.fillMaxWidth())
-                    StudioDestination.VOICE_EDITOR -> VoiceEditor(vm, requireNotNull(target.voice), pickReference,
+                    StudioDetail.VOICE_EDITOR -> VoiceEditor(vm, requireNotNull(target.voice), pickReference,
                         recordReference, pickAvatar, takeAvatarPhoto, Modifier.fillMaxWidth())
-                    StudioDestination.PICKER -> VoicePickerPage(vm, Modifier.fillMaxWidth())
-                    StudioDestination.CREATE -> CreatePage(vm, saveAudio, shareAudio, sendQqAudio, pickRuntimePackage, Modifier.fillMaxWidth())
-                    StudioDestination.VOICES -> VoicesPage(vm, Modifier.fillMaxWidth())
-                    StudioDestination.SETTINGS -> SettingsPage(vm, { showingAbout = true }, { showingModels = true }, Modifier.fillMaxWidth())
-                    StudioDestination.MODELS -> ModelsPage(vm, { showingModels = false }, Modifier.fillMaxWidth())
-                    StudioDestination.ABOUT -> AboutPage(closeAbout, vm::notify, Modifier.fillMaxWidth())
+                    StudioDetail.PICKER -> VoicePickerPage(vm, Modifier.fillMaxWidth())
+                    StudioTab.CREATE -> CreatePage(vm, saveAudio, shareAudio, sendQqAudio, pickRuntimePackage, Modifier.fillMaxWidth())
+                    StudioTab.VOICES -> VoicesPage(vm, Modifier.fillMaxWidth())
+                    StudioTab.SETTINGS -> SettingsPage(vm, { showingAbout = true }, { openLink(PROJECT_URL) }, Modifier.fillMaxWidth())
+                    StudioTab.MODELS -> ModelsPage(vm, Modifier.fillMaxWidth())
+                    StudioDetail.ABOUT -> AboutPage(closeAbout, vm::notify, openLink, Modifier.fillMaxWidth())
                 }
             }
         }
@@ -168,7 +172,7 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
 }
 
 @Composable
-private fun PageHeader(title: String) {
+internal fun PageHeader(title: String) {
     TopAppBar(title = { Text(title, style = MaterialTheme.typography.titleLarge,
         modifier = Modifier.semantics { heading() }) }, windowInsets = WindowInsets(0, 0, 0, 0),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
@@ -183,7 +187,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
             if (!vm.loading) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(resources.getString(R.string.first_voice), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                    StudioButton(onClick = { vm.tab = 1 }) { Text(resources.getString(R.string.go_voices)) }
+                    StudioButton(onClick = { vm.tab = StudioTab.VOICES }) { Text(resources.getString(R.string.go_voices)) }
                 }
             }
         }
@@ -213,7 +217,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 val voice = vm.selectedVoice
                 Row(Modifier.weight(1f).clip(RoundedCornerShape(8.dp))
                     .clickable(enabled = !vm.busy, onClick = vm::openVoicePicker)
-                    .heightIn(min = 56.dp).testTag("selected_voice"), verticalAlignment = Alignment.CenterVertically,
+                    .heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (voice != null) {
                         VoiceAvatar(vm.voiceName(voice, resources), voice.avatarPath, Modifier.size(36.dp))
@@ -223,13 +227,13 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                     Icon(Icons.Default.ArrowDropDown, resources.getString(R.string.change_voice), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 VerticalDivider(Modifier.height(20.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                LanguageMenu(resources.getString(R.string.output_language), vm.outputLanguage, !vm.busy && vm.selectedVoice != null, "output_language", vm.languages(vm.selectedVoice?.model), onSelect = vm::changeOutputLanguage)
+                LanguageMenu(resources.getString(R.string.output_language), vm.outputLanguage, !vm.busy && vm.selectedVoice != null, vm.languages(vm.selectedVoice?.model), onSelect = vm::changeOutputLanguage)
             }
             if (vm.auxiliaryLimit > 0) {
                 var choosing by remember { mutableStateOf(false) }
                 Box {
                     StudioButton(onClick = { choosing = true }, enabled = !vm.busy && vm.auxiliaryChoices.isNotEmpty(),
-                        style = StudioButtonStyle.Quiet, modifier = Modifier.testTag("auxiliary_references")) {
+                        style = StudioButtonStyle.Quiet) {
                         Text(resources.getString(R.string.aux_references, vm.auxiliaryPaths.size, vm.auxiliaryLimit))
                     }
                     DropdownMenu(choosing, onDismissRequest = { choosing = false }) {
@@ -249,7 +253,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 textStyle = writingStyle.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), minLines = 4, maxLines = 10,
                 modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 12.dp)
-                    .testTag("synthesis_text").semantics { contentDescription = resources.getString(R.string.speech_text) },
+                    .semantics { contentDescription = resources.getString(R.string.speech_text) },
                 decorationBox = { inner ->
                     Box {
                         if (vm.text.isEmpty()) Text(resources.getString(R.string.speech_text_hint), style = writingStyle,
@@ -269,8 +273,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 })) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet) {
                     Text(resources.getString(R.string.sample_text))
                 }
-                StudioButton(onClick = { focus.clearFocus(); vm.generate() }, enabled = vm.canGenerate,
-                    modifier = Modifier.testTag("generate")) {
+                StudioButton(onClick = { focus.clearFocus(); vm.generate() }, enabled = vm.canGenerate) {
                     Text(resources.getString(R.string.generate_speech))
                     Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(18.dp))
                 }
@@ -280,12 +283,12 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Text(if (vm.importing) resources.getString(R.string.resources_importing) else if (vm.cancelling) resources.getString(R.string.stopping) else progress.title,
-                            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f).testTag("generation_status"))
+                            style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                         if (!vm.importing) StudioButton(onClick = vm::cancel, enabled = !vm.cancelling,
                             style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.stop)) }
                     }
                     if (!vm.importing && !vm.cancelling) progress.detail?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("generation_detail"))
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
                     }
                     if (progress.percent != null && !vm.importing && !vm.cancelling) {
                         LinearProgressIndicator(progress = { progress.percent / 100f }, modifier = Modifier.fillMaxWidth())
@@ -327,7 +330,7 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
     var options by remember(vm.synthesisOptions, vm.busy, expanded) { mutableStateOf(vm.synthesisOptions) }
     val commit = { vm.changeSynthesisOptions(options) }
     Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }.heightIn(min = 48.dp)
-        .testTag("advanced_settings").semantics { stateDescription = if (expanded) resources.getString(R.string.expanded) else resources.getString(R.string.collapsed) },
+        .semantics { stateDescription = if (expanded) resources.getString(R.string.expanded) else resources.getString(R.string.collapsed) },
         verticalAlignment = Alignment.CenterVertically) {
         Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null,
@@ -348,9 +351,8 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
                 val current = (options[control.name] ?: control.defaultValue).toFloat()
                 val label = dev.renakoni.voicebox.core.i18n.UiText(control.label).resolve(resources)
                 val display = if (control.integral) current.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", current)
-                val tag = control.name.replace(Regex("([A-Z])")) { "_" + it.value.lowercase() }
                 SynthesisSlider(label, display + control.unit, current, control.min..control.max, control.increments - 1, !vm.busy,
-                    "synthesis_$tag", { changed ->
+                    { changed ->
                         val value = if (control.integral) changed.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", changed)
                         options = options + (control.name to value)
                     }, commit)
@@ -358,7 +360,7 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
             StudioButton(onClick = { options = emptyMap(); commit() }, enabled = !vm.busy && controls.any {
                 options[it.name]?.toFloat()?.let { value -> value != it.defaultValue.toFloat() } == true
             },
-                style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End).testTag("reset_synthesis_options")) {
+                style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End)) {
                 Text(resources.getString(R.string.reset_defaults))
             }
         }
@@ -367,7 +369,7 @@ private fun AdvancedSynthesisSettings(vm: StudioViewModel) {
 
 @Composable
 private fun SynthesisSlider(label: String, displayValue: String, value: Float, range: ClosedFloatingPointRange<Float>,
-    steps: Int, enabled: Boolean, tag: String, onChange: (Float) -> Unit, onFinished: () -> Unit) {
+    steps: Int, enabled: Boolean, onChange: (Float) -> Unit, onFinished: () -> Unit) {
     Column {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -375,7 +377,7 @@ private fun SynthesisSlider(label: String, displayValue: String, value: Float, r
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         StudioSlider(value, onChange, enabled = enabled, valueRange = range, steps = steps, onValueChangeFinished = onFinished,
-            modifier = Modifier.fillMaxWidth().testTag(tag).semantics {
+            modifier = Modifier.fillMaxWidth().semantics {
                 contentDescription = label
                 stateDescription = displayValue
             })
@@ -390,18 +392,18 @@ private fun languageName(resources: Resources, value: String) = when (LanguageTa
 }
 
 @Composable
-private fun LanguageChoice(title: String, value: String, enabled: Boolean, tag: String,
+private fun LanguageChoice(title: String, value: String, enabled: Boolean,
     languages: List<String>, autoText: String? = null, onSelect: (String) -> Unit) {
     FlowRow(Modifier.fillMaxWidth(), itemVerticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        LanguageMenu(title, value, enabled, tag, languages, autoText, onSelect)
+        LanguageMenu(title, value, enabled, languages, autoText, onSelect)
     }
 }
 
 @Composable
-private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: String,
+private fun LanguageMenu(title: String, value: String, enabled: Boolean,
     languages: List<String>, autoText: String? = null, onSelect: (String) -> Unit) {
     val resources = LocalResources.current
     var expanded by remember { mutableStateOf(false) }
@@ -409,16 +411,16 @@ private fun LanguageMenu(title: String, value: String, enabled: Boolean, tag: St
         else if (value.isBlank()) title else languageName(resources, value)
     Box {
         StudioButton(onClick = { expanded = true }, enabled = enabled, style = StudioButtonStyle.Quiet,
-            modifier = Modifier.testTag(tag).semantics { contentDescription = resources.getString(R.string.language_selection_description, title, label) }) {
+            modifier = Modifier.semantics { contentDescription = resources.getString(R.string.language_selection_description, title, label) }) {
             Text(label)
             Icon(Icons.Default.ArrowDropDown, null)
         }
         DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
             if (autoText != null) DropdownMenuItem(text = { Text(resources.getString(R.string.language_from_transcript)) },
-                onClick = { onSelect("auto"); expanded = false }, modifier = Modifier.testTag("${tag}_auto"))
+                onClick = { onSelect("auto"); expanded = false })
             languages.forEach { language ->
                 DropdownMenuItem(text = { Text(languageName(resources, language)) },
-                    onClick = { onSelect(language); expanded = false }, modifier = Modifier.testTag("${tag}_$language"))
+                    onClick = { onSelect(language); expanded = false })
             }
         }
     }
@@ -437,8 +439,7 @@ private fun OutputPlayer(output: StudioOutput, vm: StudioViewModel, save: (Studi
         FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             StudioButton(onClick = { save(output) }, style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.save_audio)) }
             StudioButton(onClick = { share(output) }, style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.share)) }
-            StudioButton(onClick = { sendQq(output) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet,
-                modifier = Modifier.testTag("send_qq_voice")) {
+            StudioButton(onClick = { sendQq(output) }, enabled = !vm.busy, style = StudioButtonStyle.Quiet) {
                 Text(resources.getString(R.string.send_qq))
             }
         }
@@ -453,11 +454,11 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 16.dp).height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             StudioButton(onClick = { vm.beginVoice() }, enabled = !vm.loading && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight().testTag("new_voice")) {
+                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight()) {
                 Text(resources.getString(R.string.clone_voice))
             }
             if (vm.canImportCheckpoints) StudioButton(onClick = vm::beginCheckpointImport, enabled = vm.connected && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight().testTag("import_voice")) {
+                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight()) {
                 Text(resources.getString(R.string.import_voice))
             }
         }
@@ -472,7 +473,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                 Column {
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = !vm.busy && available) { vm.select(voice); vm.tab = 0 }
+                            .clickable(enabled = !vm.busy && available) { vm.select(voice); vm.tab = StudioTab.CREATE }
                             .padding(vertical = 8.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             VoiceAvatar(voice.name, voice.avatarPath)
@@ -487,8 +488,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                             if (vm.selectedId == voice.id) Icon(Icons.Default.Check, resources.getString(R.string.selected),
                                 modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy,
-                            modifier = Modifier.testTag("edit_voice_${voice.id}")) {
+                        IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy) {
                             Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, voice.name), modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -504,16 +504,18 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
 @Composable
 private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
     val resources = LocalResources.current
-    val ready = vm.modelFor(model) != null
+    val installed = vm.modelFor(model) != null
+    val ready = vm.resourcesReady(model.ref)
     val voice = vm.voiceFor(model)
     val status = vm.officialDownload.takeIf { it.voice == model.ref }
+    val error = status?.error
     val downloading = status?.running == true
     Column {
-        Row(Modifier.fillMaxWidth().alpha(if (ready) 1f else .55f).padding(vertical = 8.dp),
+        Row(Modifier.fillMaxWidth().alpha(if (installed) 1f else .55f).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = ready && !vm.busy && !vm.fileBusy) {
-                    if (voice != null) { vm.select(voice); vm.tab = 0 } else vm.editOfficial(model)
+                .clickable(enabled = installed && !vm.busy && !vm.fileBusy) {
+                    if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE } else vm.editOfficial(model)
                 }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 VoiceAvatar(model.displayName(resources), voice?.avatarPath.orEmpty(), Modifier.size(48.dp))
@@ -523,8 +525,9 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
                         color = MaterialTheme.colorScheme.onSurface)
                     val detail = when {
                         downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
-                        status?.error != null -> status.error?.resolve(resources).orEmpty()
-                        !ready -> resources.getString(R.string.not_downloaded)
+                        !ready && error != null -> error.resolve(resources)
+                        !installed -> resources.getString(R.string.not_downloaded)
+                        !ready -> resources.getString(R.string.shared_resources_missing)
                         else -> null
                     }
                     detail?.let { Text(it, style = MaterialTheme.typography.bodySmall,
@@ -536,8 +539,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
             IconButton(onClick = {
                 when { downloading -> vm.cancelOfficialDownload(); ready -> vm.editOfficial(model)
                     else -> vm.downloadOfficial(model) }
-            }, enabled = downloading || (vm.connected && !vm.loading && !vm.busy && !vm.fileBusy),
-                modifier = Modifier.testTag("official_${model.id}")) {
+            }, enabled = downloading || (vm.connected && !vm.loading && !vm.busy && !vm.fileBusy)) {
                 when {
                     downloading -> Icon(Icons.Default.Close, resources.getString(R.string.cancel_download), Modifier.size(20.dp))
                     ready -> Icon(Icons.Default.Edit, resources.getString(R.string.edit_named_voice, model.displayName(resources)), Modifier.size(20.dp))
@@ -557,7 +559,7 @@ private fun VoicePickerPage(vm: StudioViewModel, modifier: Modifier) {
         verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = vm::closeVoicePicker) { Icon(Icons.AutoMirrored.Filled.ArrowBack, resources.getString(R.string.back_create)) }
-            Text(resources.getString(R.string.select_voice), style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("voice_picker"))
+            Text(resources.getString(R.string.select_voice), style = MaterialTheme.typography.titleLarge)
         }
         vm.voices.forEach { voice ->
             val available = vm.modelFor(voice) != null
@@ -600,19 +602,19 @@ private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pi
         actions = {
             StudioButton(onClick = { focus.clearFocus(); vm.importCheckpoints() }, enabled = enabled && vm.connected,
                 style = StudioButtonStyle.Quiet,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("import_checkpoints")) {
+                modifier = Modifier.heightIn(min = 48.dp)) {
                 Text(if (editing) { if (vm.importing) resources.getString(R.string.saving) else resources.getString(R.string.save) }
                     else { if (vm.importing) resources.getString(R.string.importing) else resources.getString(R.string.import_action) })
             }
         }) {
         VoiceAvatarEditor(displayName, draft.avatarPath, enabled, pickAvatar, takeAvatarPhoto)
         OutlinedTextField(displayName, vm::editCheckpointName, label = { Text(resources.getString(R.string.voice_name)) }, singleLine = true,
-            enabled = enabled && !official, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().testTag("checkpoint_name"))
+            enabled = enabled && !official, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
         listOf(true, false).forEach { gpt ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (gpt) resources.getString(R.string.gpt_weights) else resources.getString(R.string.sovits_weights), style = MaterialTheme.typography.titleMedium)
                 StudioButton(onClick = { pickCheckpoint(gpt) }, enabled = enabled && !official, style = StudioButtonStyle.Secondary,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag(if (gpt) "pick_ckpt" else "pick_pth")) {
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text((if (gpt) draft.gptName else draft.sovitsName).ifBlank { if (editing) resources.getString(R.string.original_filename_unknown) else resources.getString(R.string.select_file) },
                         maxLines = 1, softWrap = false, overflow = TextOverflow.MiddleEllipsis,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
@@ -628,25 +630,25 @@ private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pi
             Text(resources.getString(R.string.model_version), style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(vm.checkpointRecognition?.resolve(resources) ?: resources.getString(R.string.awaiting_import),
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).testTag("checkpoint_version"),
+                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
                 color = if (vm.checkpointRecognition == null) MaterialTheme.colorScheme.onSurfaceVariant
                     else MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.End)
         }
         ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
-            pickReference, recordReference, "checkpoint_reference") {
+            pickReference, recordReference) {
             Text(resources.getString(R.string.reference_audio), style = MaterialTheme.typography.titleMedium)
         }
-        LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, enabled, "checkpoint_language", vm.importLanguages,
+        LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, enabled, vm.importLanguages,
             autoText = draft.transcript, onSelect = vm::editCheckpointLanguage)
         OutlinedTextField(draft.transcript, vm::editCheckpointTranscript, label = { Text(resources.getString(R.string.reference_transcript)) },
             minLines = 3, maxLines = 6,
             enabled = enabled, shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().testTag("checkpoint_reference_text"))
+            modifier = Modifier.fillMaxWidth())
         if (vm.importing) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
-        vm.importMessage?.let { Text(it.resolve(resources), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.testTag("checkpoint_progress")) }
+        vm.importMessage?.let { Text(it.resolve(resources), style = MaterialTheme.typography.bodyMedium) }
         vm.checkpointError?.let { ErrorMessage(it, vm::clearCheckpointError) }
     }
 }
@@ -662,12 +664,12 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
         actions = {
             StudioButton(onClick = { focus.clearFocus(); vm.saveVoice() }, enabled = !vm.fileBusy && !vm.busy,
                 style = StudioButtonStyle.Quiet,
-                modifier = Modifier.heightIn(min = 48.dp).testTag("save_voice")) { Text(resources.getString(R.string.save)) }
+                modifier = Modifier.heightIn(min = 48.dp)) { Text(resources.getString(R.string.save)) }
         }) {
         VoiceAvatarEditor(draft.name, draft.avatarPath, !vm.fileBusy && !vm.busy, pickAvatar, takeAvatarPhoto)
         OutlinedTextField(draft.name, { vm.edit(draft.copy(name = it)) }, label = { Text(resources.getString(R.string.voice_name)) },
             placeholder = { Text(resources.getString(R.string.voice_name_hint)) }, singleLine = true, enabled = !vm.fileBusy,
-            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().testTag("voice_name"))
+            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             StepTitle("01", resources.getString(R.string.select_base_voice))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -675,7 +677,7 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
                     val installed = vm.modelFor(model)
                     FilterChip(selected = installed != null && draft.modelRef == installed.ref,
                         onClick = { installed?.let { vm.edit(draft.copy(modelRef = it.ref)) } },
-                        label = { Text(model.displayName(resources)) }, enabled = vm.modelFor(model) != null && !vm.fileBusy && !vm.busy)
+                        label = { Text(model.displayName(resources)) }, enabled = installed != null && !vm.fileBusy && !vm.busy)
                 }
                 vm.models.filterNot { vm.isOfficial(it.ref) }.forEach { model ->
                     FilterChip(selected = draft.modelRef == model.ref,
@@ -688,17 +690,17 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
             }
         }
         ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
-            pickReference, recordReference, "pick_reference") {
+            pickReference, recordReference) {
             StepTitle("02", resources.getString(R.string.reference_audio))
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             StepTitle("03", resources.getString(R.string.enter_transcript))
-            LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, !vm.fileBusy, "editor_language", vm.languages(draft.modelRef),
+            LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, !vm.fileBusy, vm.languages(draft.modelRef),
                 autoText = draft.transcript, onSelect = { vm.edit(draft.copy(referenceLanguage = it)) })
             OutlinedTextField(draft.transcript, { vm.edit(draft.copy(transcript = it)) },
                 minLines = 3, maxLines = 6,
                 enabled = !vm.fileBusy, shape = RoundedCornerShape(14.dp),
-                modifier = Modifier.fillMaxWidth().testTag("reference_text"))
+                modifier = Modifier.fillMaxWidth())
         }
         vm.editorError?.let { ErrorMessage(it, vm::clearEditorError) }
         if (editing) TextButton(onClick = { confirmDelete = true }, enabled = !vm.busy && !vm.fileBusy) {
@@ -732,97 +734,6 @@ private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Bo
 }
 
 @Composable
-private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openModels: () -> Unit, modifier: Modifier) {
-    val resources = LocalResources.current
-    val uriHandler = LocalUriHandler.current
-    var advanced by rememberSaveable { mutableStateOf(false) }
-    val advancedRotation by animateFloatAsState(if (advanced) 90f else 0f, tween(180), label = "advanced_settings")
-    Column(modifier.fillMaxHeight()) {
-        Text(resources.getString(R.string.settings), style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).semantics { heading() })
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
-            .padding(bottom = 24.dp)) {
-            Column(Modifier.padding(top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(resources.getString(R.string.appearance), style = MaterialTheme.typography.titleMedium)
-                val modes = listOf(ThemeMode.SYSTEM to resources.getString(R.string.theme_system), ThemeMode.LIGHT to resources.getString(R.string.theme_light), ThemeMode.DARK to resources.getString(R.string.theme_dark))
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    modes.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(selected = vm.theme == value, onClick = { vm.changeTheme(value) },
-                            shape = SegmentedButtonDefaults.itemShape(index, modes.size, RoundedCornerShape(8.dp)),
-                            icon = {}, modifier = Modifier.testTag("theme_${value.name}")) { Text(label) }
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.gpu_acceleration), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Switch(checked = vm.gpuEnabled && vm.gpuAvailable, onCheckedChange = vm::setGpu, enabled = vm.gpuAvailable && !vm.busy)
-            }
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(resources.getString(R.string.device_acceleration), style = MaterialTheme.typography.titleMedium)
-                    Text(vm.acceleration.device.ifBlank { resources.getString(R.string.device_loading) }, style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(dev.renakoni.voicebox.core.i18n.UiText(vm.acceleration.detail).resolve(resources), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("device_acceleration_status"))
-                }
-                Switch(checked = vm.deviceAccelerationEnabled && vm.acceleration.available && vm.gpuEnabled,
-                    onCheckedChange = vm::setDeviceAcceleration,
-                    enabled = vm.acceleration.available && vm.gpuEnabled && !vm.busy,
-                    modifier = Modifier.testTag("device_acceleration"))
-            }
-            HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.fillMaxWidth().clickable(onClick = openModels).heightIn(min = 56.dp).testTag("models"),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.models), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 56.dp).testTag("advanced_settings"),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, if (advanced) resources.getString(R.string.collapse) else resources.getString(R.string.expand),
-                    Modifier.size(22.dp).rotate(advancedRotation), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            AnimatedVisibility(advanced, enter = expandVertically(tween(180)) + fadeIn(tween(180)),
-                exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
-                Column(Modifier.padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(resources.getString(R.string.local_api), modifier = Modifier.weight(1f))
-                        Switch(checked = vm.apiEnabled, onCheckedChange = vm::setApi)
-                    }
-                    if (vm.apiEnabled) {
-                        Text(resources.getString(R.string.local_api_description), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(vm.apiPort, vm::editPort, label = { Text(resources.getString(R.string.port)) }, singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = vm.apiPortError != null,
-                            trailingIcon = {
-                                IconButton(onClick = vm::applyPort) {
-                                    Icon(Icons.Default.Check, resources.getString(R.string.save_port), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            supportingText = vm.apiPortError?.let { error -> ({
-                                DismissErrorAfterTimeout(error, vm::clearPortError)
-                                Text(error.resolve(resources))
-                            }) },
-                            modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            StarInvitation(onClick = {
-                runCatching { uriHandler.openUri("https://github.com/Renakoni/Voicebox") }
-                    .onFailure { vm.notify(UiText(R.string.github_open_failed)) }
-            })
-            Row(Modifier.fillMaxWidth().clickable(onClick = openAbout).heightIn(min = 56.dp).testTag("open_about"),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.about), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
 private fun StepTitle(number: String, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -847,7 +758,7 @@ private fun ErrorMessage(message: UiText, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun DismissErrorAfterTimeout(message: UiText, onDismiss: () -> Unit) {
+internal fun DismissErrorAfterTimeout(message: UiText, onDismiss: () -> Unit) {
     val dismiss by rememberUpdatedState(onDismiss)
     val timeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
         originalTimeoutMillis = 10_000L, containsText = true,

@@ -4,13 +4,19 @@ import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ModelInspectionResult
 import dev.renakoni.voicebox.bridge.ReferenceExample
+import dev.renakoni.voicebox.core.openBackendAsset
+import dev.renakoni.voicebox.core.regularFileAttributes
+import dev.renakoni.voicebox.model.gptsovits.checkpoint.CheckpointImporter
 
 import android.content.Context
 import java.io.File
+import java.io.InputStream
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONObject
 
-class GptModelRepository(private val filesRoot: File) {
-    constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)))
+class GptModelRepository(private val filesRoot: File, private val openAsset: (String) -> InputStream) {
+    constructor(context: Context) : this(requireNotNull(context.getExternalFilesDir(null)), context::openBackendAsset)
+    private val weightSizes = ConcurrentHashMap<String, Map<String, Long>>()
 
     private val modelRoot: File
         get() = File(filesRoot, "CharacterModels")
@@ -40,44 +46,38 @@ class GptModelRepository(private val filesRoot: File) {
 
     fun inspect(requiredModelFiles: RequiredModelFiles): ModelInspectionResult {
         val modelDirectory = File(modelRoot, requiredModelFiles.assetSubdirectory)
-        val missingFiles = requiredModelFiles.files.filterNot { fileName ->
-            File(modelDirectory, fileName).isFile ||
-                requiredModelFiles.derivedFiles.any { d ->
-                    d.outputFile == fileName && File(modelDirectory, d.sourceFile).isFile
-                }
+        val required = requiredModelFiles.files + requiredModelFiles.sessionModels
+        if (!modelDirectory.isDirectory) return ModelInspectionResult(required)
+        val variant = requiredModelFiles.assetSubdirectory.substringBefore('/')
+        // Original V2 uses prepared exports. The checkpoint-pair variants have fixed template shapes.
+        val sizes = if (variant == "v2") emptyMap() else weightSizes.computeIfAbsent(variant) {
+            val groups = CheckpointImporter.readManifest(it, openAsset).getJSONArray("groups")
+            (0 until groups.length()).associate { index ->
+                val group = groups.getJSONObject(index)
+                val tensors = group.getJSONArray("tensors")
+                CheckpointImporter.weightFilename(group) to
+                    (0 until tensors.length()).sumOf { tensor -> tensors.getJSONObject(tensor).getLong("elements") * Float.SIZE_BYTES }
+            }
         }
-        val missingSessionModels = missingSessionModels(modelDirectory, requiredModelFiles)
-        return ModelInspectionResult(
-            missingFiles = missingFiles + missingSessionModels,
-        )
+        val missing = requiredModelFiles.files.filterNot { name ->
+            val derived = requiredModelFiles.derivedFiles.firstOrNull { it.outputFile == name }
+            val sourceBytes = derived?.let { File(modelDirectory, it.sourceFile).regularFileAttributes()?.size() }
+            if (sourceBytes != null) return@filterNot sourceBytes > 0 && sourceBytes % 2 == 0L
+            val bytes = File(modelDirectory, name).regularFileAttributes()?.size() ?: return@filterNot false
+            val expected = sizes[name]
+            if (expected != null) bytes == expected else bytes > 0 && bytes % Float.SIZE_BYTES == 0L
+        }
+        val missingGraphs = requiredModelFiles.sessionModels.filter { (File(modelDirectory, it).regularFileAttributes()?.size() ?: 0) == 0L }
+        return ModelInspectionResult(missing + missingGraphs)
     }
 
-    fun installToPrivateStorage(requiredModelFiles: RequiredModelFiles, progress: (Long, Long) -> Unit = { _, _ -> }): File {
-        val targetDirectory = File(modelRoot, requiredModelFiles.assetSubdirectory)
-        if (!targetDirectory.exists()) {
-            targetDirectory.mkdirs()
+    fun prepareExportedWeights(files: RequiredModelFiles, progress: (Long, Long) -> Unit) {
+        val directory = File(modelRoot, files.assetSubdirectory)
+        for (derived in files.derivedFiles) {
+            val source = File(directory, derived.sourceFile)
+            val target = File(directory, derived.outputFile)
+            if (source.isFile) HalfPrecisionFileConverter.prepare(filesRoot, source, target, progress)
         }
-        requiredModelFiles.files.forEach { fileName ->
-            val targetFile = File(targetDirectory, fileName)
-            val derivedFile = requiredModelFiles.derivedFiles.firstOrNull { it.outputFile == fileName }
-            if (derivedFile != null) {
-                val sourceFile = File(targetDirectory, derivedFile.sourceFile)
-                if (sourceFile.isFile) {
-                    if (!targetFile.isFile || targetFile.length() != sourceFile.length() * 2L) {
-                        HalfPrecisionFileConverter.convertFp16FileToFp32File(sourceFile, targetFile, progress)
-                    }
-                    return@forEach
-                }
-            }
-            require(targetFile.isFile) { "Missing model file: ${targetDirectory.absolutePath}/$fileName" }
-        }
-
-        val missingSessionModels = missingSessionModels(targetDirectory, requiredModelFiles)
-        require(missingSessionModels.isEmpty()) {
-            "Missing model file: ${targetDirectory.absolutePath}/${missingSessionModels.first()}"
-        }
-
-        return targetDirectory
     }
 
     fun findReferenceExample(characterModel: CharacterModel): ReferenceExample? {
@@ -120,12 +120,4 @@ class GptModelRepository(private val filesRoot: File) {
 
         return null
     }
-
-    private fun missingSessionModels(
-        modelDirectory: File,
-        requiredModelFiles: RequiredModelFiles,
-    ): List<String> =
-        requiredModelFiles.sessionModels.filterNot { fileName ->
-            File(modelDirectory, fileName).isFile
-        }
 }

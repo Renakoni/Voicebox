@@ -74,12 +74,9 @@ class OrtSessionRuntime(
         val model = request.characterModel
         request.context.checkCancelled()
         if (!backendEngine.isInitialized() || initializedModelDirectory != model.relativeModelDirectory) {
-            callbacks?.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Preparing model")
-            timer.measure("model_install_ms") {
-                modelRepository.installToPrivateStorage(model.modelFiles) { done, total ->
-                    request.context.checkCancelled()
-                    callbacks?.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Unpacking weights $done/$total")
-                }
+            modelRepository.prepareExportedWeights(model.modelFiles) { done, total ->
+                request.context.checkCancelled()
+                callbacks?.onStage(GenerationStage.INSTALLING_MODEL, "installing_model", null, "Unpacking weights $done/$total")
             }
             callbacks?.onStage(GenerationStage.INITIALIZING_BACKEND, "initializing_backend", null, "Initializing backend")
             timer.measure("backend_initialization_ms") {

@@ -34,28 +34,28 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun findReferenceExample(model: CharacterModel) = metadata()?.findReferenceExample(model)
     override fun supportsAuxiliaryReferences(model: CharacterModel) = metadata()?.supportsAuxiliaryReferences(model) == true
     private fun library() = metadata() as? VoiceLibrary
+    val hasVoiceLibrary get() = library() != null
+    override fun recoverInstallations() { library()?.recoverInstallations() }
     override fun officialVoices() = library()?.officialVoices().orEmpty()
     override fun variantLabel(variant: String) = library()?.variantLabel(variant) ?: ""
-    override fun resourcesReady(variant: String): Boolean {
-        val provider = metadata() ?: return false
-        return provider !is VoiceLibrary || provider.resourcesReady(variant)
-    }
+    override fun resourcePacks(cancel: () -> Unit) = library()?.resourcePacks(cancel).orEmpty()
     override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
-    private var report = AccelerationInfo()
-    override fun hasNpuGraphs(model: CharacterModel) = library()?.hasNpuGraphs(model) == true
+    private var report: AccelerationInfo? = null
     override fun accelerationInfo() = report
     override fun executionModes(): Set<ExecutionBackend> {
-        if (!archive.installed) return emptySet()
+        if (!archive.installed) {
+            report = null
+            return emptySet()
+        }
         return try {
             val result = WorkerRuntime(context, id, ExecutionBackend.CPU, settings(), false).probe()
-            report = AccelerationInfo(result.getString("device").orEmpty(), result.getBoolean("npu"),
-                result.getString("detail") ?: "npu_unavailable")
+            report = result.getString("detail")?.let { AccelerationInfo(result.getString("device").orEmpty(), result.getBoolean("npu"), it) }
             result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
         } catch (error: Exception) {
             android.util.Log.w("VoiceBoxWorker", "Acceleration probe failed for $id", error)
-            report = AccelerationInfo(detail = "npu_unavailable")
+            report = AccelerationInfo(detail = "npu_probe_failed")
             setOf(ExecutionBackend.CPU)
         }
     }
@@ -66,5 +66,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
 
     override fun validateOptions(options: Map<String, String>) = requireNotNull(metadata()).validateOptions(options)
     override fun createRuntime(execution: ExecutionBackend): BackendRuntime =
-        WorkerRuntime(context, id, execution, settings(), supportsWarmup)
+        WorkerRuntime(context, id, execution, settings().apply {
+            putBoolean("allowNpu", getBoolean("allowNpu") && report?.available == true)
+        }, supportsWarmup)
 }

@@ -1,7 +1,6 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.tasks.testing.Test
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -66,10 +65,8 @@ android {
         applicationId = "dev.renakoni.voicebox"
         minSdk = 30
         targetSdk = 36
-        versionCode = 10
+        versionCode = providers.gradleProperty("voiceboxVersionCode").get().toInt()
         versionName = providers.gradleProperty("voiceboxVersionName").get()
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         externalNativeBuild {
             cmake {
@@ -129,11 +126,6 @@ val syncLicenseAssets = tasks.register<Sync>("syncLicenseAssets") {
 }
 tasks.named("preBuild").configure { dependsOn(syncLicenseAssets) }
 
-tasks.withType<Test>().configureEach {
-    maxParallelForks = 1
-    jvmArgs("-Xmx96m")
-}
-
 afterEvaluate {
     tasks.configureEach {
         if (name.startsWith("assemble") && name.endsWith("Release")) {
@@ -150,15 +142,8 @@ dependencies {
     implementation(platform("androidx.compose:compose-bom:2026.06.01"))
     implementation("androidx.activity:activity-compose:1.8.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("io.noties.markwon:core:4.6.2")
     implementation("androidx.compose.material3:material3:1.5.0-alpha24")
     implementation("androidx.compose.material:material-icons-core:1.7.8")
-    androidTestImplementation(platform("androidx.compose:compose-bom:2026.06.01"))
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("androidx.core:core-ktx:1.19.0")
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
-    // Align Compose's transitive Espresso version with AndroidX Test 1.3.
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

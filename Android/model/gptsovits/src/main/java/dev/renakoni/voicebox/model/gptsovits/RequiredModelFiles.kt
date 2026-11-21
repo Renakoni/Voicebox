@@ -34,11 +34,6 @@ data class RequiredModelFiles(
                 "vits_fp32.onnx",
             ),
             optionalSessionModels = listOf("prompt_encoder_multi_fp32.onnx"),
-            derivedFiles = listOf(
-                DerivedModelFile("prompt_encoder_fp16.bin", "prompt_encoder_fp32.bin"),
-                DerivedModelFile("t2s_shared_fp16.bin", "t2s_shared_fp32.bin"),
-                DerivedModelFile("vits_fp16.bin", "vits_fp32.bin"),
-            ),
             // The graph reserves one slot for the primary reference.
             maxAuxiliaryReferenceCount = 7,
         )
@@ -68,14 +63,12 @@ data class RequiredModelFiles(
             ),
         )
 
-        fun v5TurboCharacter(characterId: String): RequiredModelFiles = v2Character(characterId).copy(
+        fun v5TurboCharacter(characterId: String): RequiredModelFiles = RequiredModelFiles(
             variantName = "$characterId (V5 Turbo)",
             assetSubdirectory = "v5turbo/$characterId/tts_models",
             files = listOf("t2s_encoder_fp32.bin", "t2s_shared_fp32.bin", "v5_sovits_fp32.bin"),
             sessionModels = listOf("t2s_encoder_fp32.onnx", "t2s_first_stage_decoder_fp32.onnx", "t2s_stage_decoder_fp32.onnx",
                 "v5-reference-audio.onnx", "v5-condition.onnx", "v5-static.onnx", "v5-dit.onnx"),
-            derivedFiles = listOf(DerivedModelFile("t2s_shared_fp16.bin", "t2s_shared_fp32.bin"),
-                DerivedModelFile("v5_sovits_fp16.bin", "v5_sovits_fp32.bin")),
         )
     }
 }

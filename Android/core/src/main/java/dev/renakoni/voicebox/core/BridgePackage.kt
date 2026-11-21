@@ -12,6 +12,8 @@ import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import java.util.zip.ZipFile
 
+private val SHA256_PATTERN = Regex("[a-f0-9]{64}")
+
 /** Only catalogs shipped with the application can name executable packages. */
 class BridgePackageSpec(json: JSONObject) {
     val id = json.getString("id")
@@ -35,12 +37,12 @@ class BridgePackageSpec(json: JSONObject) {
 
     init {
         require(json.getInt("format") == 2 && contract == BackendEntry.CONTRACT)
-        require(id.matches(Regex("[a-z][a-z0-9-]{0,63}")) && revision.matches(HASH))
-        require(adapterSource.matches(HASH) && sourceCommit.matches(Regex("[a-f0-9]{40}")) && abi in setOf("arm64-v8a", "x86_64"))
+        require(id.matches(Regex("[a-z][a-z0-9-]{0,63}")) && revision.matches(SHA256_PATTERN))
+        require(adapterSource.matches(SHA256_PATTERN) && sourceCommit.matches(Regex("[a-f0-9]{40}")) && abi in setOf("arm64-v8a", "x86_64"))
         require(entry.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))
         require(parts.size in 1..64 && parts.all {
             (it.url.startsWith("https://") || it.url.startsWith("asset://") && safePath(it.url.removePrefix("asset://"))) &&
-                it.bytes in 1..2_000_000_000L && it.sha256.matches(HASH)
+                it.bytes in 1..2_000_000_000L && it.sha256.matches(SHA256_PATTERN)
         })
         require(files.size in 2..4096 && files.all { (name, size) ->
             safePath(name) && size in 0..1_900_000_000L
@@ -58,7 +60,6 @@ class BridgePackageSpec(json: JSONObject) {
     }
 
     companion object {
-        private val HASH = Regex("[a-f0-9]{64}")
         internal fun safePath(name: String) = name.length in 1..512 && name.split('/').all {
             it.matches(Regex("[A-Za-z0-9_][A-Za-z0-9.+_-]*"))
         }
@@ -101,7 +102,7 @@ class BridgePackage(
     }
     val installed get() = directory != null
 
-    fun install(checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    fun install(checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
         require(supported) { "Unsupported backend ABI: ${spec.abi}" }
         checkCancelled()
         synchronized(installLock) {
@@ -109,9 +110,12 @@ class BridgePackage(
             FileChannel.open(File(root, ".lock").toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
                 channel.lock().use {
                     checkCancelled()
-                    if (installed) return
                     root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
                         ?.forEach { it.deleteRecursively() }
+                    directory?.let { active ->
+                        pruneOtherInstallations(active)
+                        return false
+                    }
                     require(root.usableSpace > spec.files.values.sum() + spec.parts.maxOf { it.bytes })
                     val id = UUID.randomUUID().toString()
                     val staging = File(root, ".stage-$id").also { check(it.mkdir()) }
@@ -133,8 +137,11 @@ class BridgePackage(
                         check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
                         revisions.mkdirs()
                         checkCancelled()
-                        Files.move(staging.toPath(), File(revisions, id).toPath(), StandardCopyOption.ATOMIC_MOVE)
+                        val active = File(revisions, id)
+                        Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
+                        pruneOtherInstallations(active)
                         progress(100)
+                        return true
                     } finally {
                         archive.delete()
                         staging.deleteRecursively()
@@ -142,6 +149,13 @@ class BridgePackage(
                 }
             }
         }
+    }
+
+    private fun pruneOtherInstallations(active: File) {
+        // Each backend owns its root. Keep its last revision until the replacement has been published.
+        root.listFiles()?.filter { it.isDirectory && it != active.parentFile && it.name.matches(SHA256_PATTERN) }
+            ?.forEach { it.deleteRecursively() }
+        active.parentFile!!.listFiles()?.filter { it != active }?.forEach { it.deleteRecursively() }
     }
 
     private fun extract(archive: File, staging: File, seen: MutableSet<String>, checkCancelled: () -> Unit) {

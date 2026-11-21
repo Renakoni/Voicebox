@@ -27,8 +27,8 @@ class CheckpointImporter(
 
     fun import(
         name: String,
-        openGpt: () -> InputStream,
-        openSovits: () -> InputStream,
+        stageGpt: (File) -> File,
+        stageSovits: (File) -> File,
         progress: (UiText) -> Unit = {},
         checkCancelled: () -> Unit = {},
         reference: Reference? = null,
@@ -37,6 +37,7 @@ class CheckpointImporter(
         sovitsFilename: String = "",
         architectureHint: String? = null,
         newCharacterId: String? = null,
+        prepareResources: (String) -> Unit = {},
     ): Result {
         requireUi(name.isNotBlank() && name.length <= 80) { UiText("voice_name_length") }
         requireUi(newCharacterId == null || newCharacterId.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { UiText("voice_directory_invalid") }
@@ -46,92 +47,84 @@ class CheckpointImporter(
             requireUi(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { UiText("reference_extension_missing") }
         }
         requireUi(filesRoot.isDirectory || filesRoot.mkdirs()) { UiText("model_directory_failed") }
-        val staging = File(filesRoot, ".voicebox-checkpoint-${UUID.randomUUID()}")
-        require(staging.mkdir())
+        // All imports run on the service's single worker. A retry can reclaim an interrupted conversion.
+        val knownTarget = replace ?: newCharacterId?.let { ModelRef("gptsovits", requireNotNull(architectureHint), it) }
+        val target = knownTarget?.let { CharacterVoiceEditor(filesRoot).character(it.modelId, it.variant) }
+        val staging = File(filesRoot, "$WORK/" + (knownTarget?.let { "${it.variant}/${it.modelId}" } ?: "new"))
+        clearStage(staging, target)
+        if (replace != null) requireUi(File(requireNotNull(target), "tts_models").isDirectory) { UiText("voice_model_missing") }
+        require(staging.mkdirs())
         try {
             lateinit var architecture: String
-            lateinit var manifestBytes: ByteArray
             lateinit var manifest: JSONObject
-            val existing = replace?.let { CharacterVoiceEditor(filesRoot).character(it.modelId, it.variant) }
             progress(UiText("reading_gpt"))
-            val gptFile = File(staging, "source.ckpt")
-            val gptHash = copyCheckpoint(openGpt, gptFile, checkCancelled)
+            val stagedGpt = File(staging, "source.ckpt")
+            val gptFile = normalizeZipHeader(stageGpt(stagedGpt), stagedGpt)
             progress(UiText("reading_sovits"))
-            val sovitsFile = File(staging, "source.pth")
-            val sovitsHash = copyCheckpoint(openSovits, sovitsFile, checkCancelled)
+            val stagedSovits = File(staging, "source.pth")
+            val sovitsFile = normalizeZipHeader(stageSovits(stagedSovits), stagedSovits)
             val characterId = replace?.modelId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
             val character = File(staging, characterId).apply { mkdirs() }
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
                 TorchCheckpoint(sovitsFile).use { sovits ->
-                    architecture = validateArchitecture(gpt, sovits, sovitsHash, architectureHint)
-                    replace?.let { target -> requireUi(target.variant == architecture) {
-                        UiText("checkpoint_structure_mismatch", target.variant, architecture)
+                    architecture = validateArchitecture(gpt, sovits, sovitsFile, architectureHint, checkCancelled)
+                    knownTarget?.let { ref -> requireUi(ref.variant == architecture) {
+                        UiText("checkpoint_structure_mismatch", ref.variant, architecture)
                     } }
                     progress(UiText("reading_architecture", architecture))
-                    manifestBytes = openAsset("${assetDirectory(architecture)}/manifest.json").use { it.readBytes() }
-                    manifest = JSONObject(manifestBytes.toString(Charsets.UTF_8))
+                    manifest = readManifest(architecture, openAsset)
                     val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
                     val groups = manifest.getJSONArray("groups")
-                    var storedBytes = 0L
-                    var expandedBytes = 0L
+                    var finalWeightBytes = 0L
                     // Validate the complete pair before producing any installed weight file.
-                    for (g in 0 until groups.length()) {
+                    val tensorsByGroup = List(groups.length()) { g ->
                         val group = groups.getJSONObject(g)
-                        val half = group.getString("precision") == "fp16"
                         val entries = group.getJSONArray("tensors")
-                        for (i in 0 until entries.length()) {
+                        List(entries.length()) { i ->
                             checkCancelled()
                             val entry = entries.getJSONObject(i)
-                            val tensor = checkpoints.getValue(entry.getString("checkpoint")).tensor(entry.getString("key"))
+                            val checkpoint = checkpoints.getValue(entry.getString("checkpoint"))
+                            val tensor = checkpoint.tensor(entry.getString("key"))
                             val expected = entry.getJSONArray("shape").let { array -> List(array.length()) { array.getLong(it) } }
                             requireUi(tensor.shape == expected && tensor.elements == entry.getLong("elements")) {
                                 UiText("checkpoint_structure_mismatch", architecture, entry.getString("key"))
                             }
-                            storedBytes += tensor.elements * if (half) 2 else 4
-                            if (half) expandedBytes += tensor.elements * 4
+                            finalWeightBytes += tensor.elements * Float.SIZE_BYTES
+                            checkpoint to tensor
                         }
                     }
-                    // Check the actual final layout once; source copies are removed before expansion.
-                    val remainingBytes = maxOf(storedBytes, storedBytes + expandedBytes - gptFile.length() - sovitsFile.length())
-                    requireUi(filesRoot.usableSpace >= remainingBytes) { UiText("checkpoint_storage_full") }
-                    for (g in 0 until groups.length()) {
+                    prepareResources(architecture)
+                    requireUi(filesRoot.usableSpace >= finalWeightBytes) { UiText("checkpoint_storage_full") }
+                    val writer = TensorWriter()
+                    for (g in tensorsByGroup.indices) {
                         val group = groups.getJSONObject(g)
-                        val half = group.getString("precision") == "fp16"
+                        // The manifest describes the rounding precision; the graphs read FP32.
+                        val roundToHalf = group.getString("precision") == "fp16"
+                        val filename = weightFilename(group)
                         progress(UiText("converting_weights", g + 1, groups.length()))
-                        File(models, group.getString("file")).outputStream().buffered(1024 * 1024).use { output ->
-                            val entries = group.getJSONArray("tensors")
-                            for (i in 0 until entries.length()) {
+                        File(models, filename).outputStream().buffered(1024 * 1024).use { output ->
+                            for ((checkpoint, tensor) in tensorsByGroup[g]) {
                                 checkCancelled()
-                                val entry = entries.getJSONObject(i)
-                                val checkpoint = checkpoints.getValue(entry.getString("checkpoint"))
-                                val tensor = checkpoint.tensor(entry.getString("key"))
-                                checkpoint.open(tensor).use { input -> writeTensor(input, output, tensor, half, checkCancelled) }
+                                checkpoint.open(tensor).use { input -> writer.write(input, output, tensor, roundToHalf, checkCancelled) }
                             }
                         }
                     }
                 }
             }
+            stagedGpt.delete()
+            stagedSovits.delete()
             progress(UiText("installing_optimized_model"))
             val templates = manifest.getJSONObject("files")
             for (filename in templates.keys()) {
                 checkCancelled()
-                val digest = MessageDigest.getInstance("SHA-256")
-                openAsset("${assetDirectory(architecture)}/$filename").use { input -> File(models, filename).outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = input.read(buffer); if (count < 0) break
-                        digest.update(buffer, 0, count); output.write(buffer, 0, count)
-                    }
-                } }
-                requireUi(hex(digest.digest()) == templates.getString(filename)) { UiText("model_template_corrupt") }
+                openAsset("${assetDirectory(architecture)}/$filename").use { input ->
+                    File(models, filename).outputStream().use { output -> input.copyTo(output, 64 * 1024) }
+                }
             }
             File(character, "checkpoint-import.json").writeText(JSONObject().put("schema_version", 1)
                 .put("architecture", architecture).put("display_name", name.trim())
-                .put("gpt_sha256", gptHash).put("sovits_sha256", sovitsHash)
-                .put("gpt_filename", gptFilename).put("sovits_filename", sovitsFilename)
-                .put("template_sha256", hex(MessageDigest.getInstance("SHA-256").digest(
-                    manifestBytes))).toString(2))
+                .put("gpt_filename", gptFilename).put("sovits_filename", sovitsFilename).toString(2))
             reference?.let {
                 progress(UiText("saving_reference"))
                 val audioDirectory = File(character, "prompt_wav").apply { mkdirs() }
@@ -142,42 +135,36 @@ class CheckpointImporter(
             }
             checkCancelled()
             val parent = File(filesRoot, "CharacterModels/$architecture").apply { mkdirs() }
-            if (existing == null) Files.move(character.toPath(), File(parent, characterId).toPath())
-            else CharacterVoiceEditor.replaceDirectory(character, existing)
+            val destination = File(parent, characterId)
+            if (destination.isDirectory && newCharacterId != null) {
+                // Repair just the official model. Recordings and user-edited names live beside tts_models.
+                val weights = File(destination, "tts_models")
+                if (weights.isDirectory) CharacterVoiceEditor.replaceDirectory(models, weights)
+                else Files.move(models.toPath(), weights.toPath())
+            } else if (destination.isDirectory) CharacterVoiceEditor.replaceDirectory(character, destination)
+            else Files.move(character.toPath(), destination.toPath())
             return Result(characterId, name.trim(), architecture)
         } finally {
-            // A failed rollback must never erase the last working weights.
-            if (!File(staging, ".previous").exists()) staging.deleteRecursively()
+            clearStage(staging, target)
         }
     }
 
-    private fun copyCheckpoint(open: () -> InputStream, target: File, checkCancelled: () -> Unit): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        var total = 0L
-        open().use { input -> target.outputStream().use { output ->
-            val buffer = ByteArray(1024 * 1024)
-            while (true) {
-                checkCancelled()
-                val count = input.read(buffer); if (count < 0) break
-                total += count
-                requireUi(total <= 2L * 1024 * 1024 * 1024) { UiText("checkpoint_size_limit") }
-                digest.update(buffer, 0, count); output.write(buffer, 0, count)
-            }
-        } }
-        RandomAccessFile(target, "rw").use { file ->
+    private fun normalizeZipHeader(source: File, staged: File): File {
+        RandomAccessFile(source, "r").use { file ->
             requireUi(file.length() >= 4) { UiText("checkpoint_empty") }
             val first = file.readUnsignedByte(); val second = file.readUnsignedByte()
             requireUi(file.readUnsignedByte() == 3 && file.readUnsignedByte() == 4) { UiText("checkpoint_zip_required") }
-            if (first != 80 || second != 75) {
-                // GPT-SoVITS may replace PK with a two-digit model-version marker.
-                requireUi(first in 48..57 && second in 48..57) { UiText("checkpoint_format_unsupported") }
-                file.seek(0); file.write(byteArrayOf(80, 75))
-            }
+            if (first == 80 && second == 75) return source
+            // GPT-SoVITS may replace PK with a two-digit model-version marker.
+            requireUi(first in 48..57 && second in 48..57) { UiText("checkpoint_format_unsupported") }
         }
-        return hex(digest.digest())
+        if (source != staged) source.copyTo(staged)
+        RandomAccessFile(staged, "rw").use { it.write(byteArrayOf(80, 75)) }
+        return staged
     }
 
-    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint, sovitsHash: String, architectureHint: String?): String {
+    private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint, sovitsFile: File,
+        architectureHint: String?, checkCancelled: () -> Unit): String {
         fun config(checkpoint: TorchCheckpoint, key: String) =
             ((checkpoint.root["config"] as? Map<*, *>)?.get(key) as? Map<*, *>)
                 ?: errorUi(UiText("checkpoint_config_missing"))
@@ -193,9 +180,20 @@ class CheckpointImporter(
                 !sovits.weights.containsKey("cfm.estimator.d_embed.time_mlp.0.weight") && !sovits.root.containsKey("lora_rank")) {
                 UiText("v5_variant_unsupported")
             }
-            requireUi(sovitsHash == "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022" ||
-                s["version"] == "v5turbo" || architectureHint == "v5turbo") {
-                UiText("v5_variant_ambiguous")
+            if (s["version"] != "v5turbo" && architectureHint != "v5turbo") {
+                val digest = MessageDigest.getInstance("SHA-256")
+                sovitsFile.inputStream().use { input ->
+                    val buffer = ByteArray(1024 * 1024)
+                    while (true) {
+                        checkCancelled()
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        digest.update(buffer, 0, count)
+                    }
+                }
+                requireUi(hex(digest.digest()) == "287b32a06b7d486f5303ec520468b0728fb01aac8b0f5d86fd5455c9a1d3e022") {
+                    UiText("v5_variant_ambiguous")
+                }
             }
             return "v5turbo"
         }
@@ -214,25 +212,50 @@ class CheckpointImporter(
         return if (pro) "v2Pro" else "v2ProPlus"
     }
 
-    internal fun writeTensor(input: InputStream, output: OutputStream, tensor: TorchTensor, half: Boolean, checkCancelled: () -> Unit) {
+    companion object {
+        private const val WORK = ".gpt-packages/checkpoints"
+
+        internal fun recoverInterrupted(root: File) {
+            val editor = CharacterVoiceEditor(root)
+            for (variant in File(root, WORK).listFiles().orEmpty()) {
+                if (variant.name == "new") clearStage(variant, null)
+                else for (stage in variant.listFiles().orEmpty()) clearStage(stage, editor.character(stage.name, variant.name))
+            }
+        }
+
+        private fun clearStage(stage: File, target: File?) {
+            if (!stage.exists()) return
+            if (target != null) {
+                CharacterVoiceEditor.recoverReplacement(stage, target)
+                CharacterVoiceEditor.recoverReplacement(File(stage, target.name), File(target, "tts_models"))
+            }
+            check(stage.deleteRecursively())
+        }
+
+        private fun assetDirectory(architecture: String) = "checkpoint-${architecture.lowercase()}"
+        internal fun readManifest(architecture: String, openAsset: (String) -> InputStream) =
+            openAsset("${assetDirectory(architecture)}/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+
+        internal fun weightFilename(group: JSONObject) = group.getString("file").replace("_fp16.bin", "_fp32.bin")
+        internal fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
+    }
+}
+
+internal class TensorWriter {
+    private val bytes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN)
+    private val converted = ByteBuffer.allocate(128 * 1024).order(ByteOrder.LITTLE_ENDIAN)
+
+    fun write(input: InputStream, output: OutputStream, tensor: TorchTensor, roundToHalf: Boolean, checkCancelled: () -> Unit) {
         val width = tensor.storage.bytesPerElement
-        val buffer = ByteArray(64 * 1024)
-        val converted = ByteBuffer.allocate(128 * 1024).order(ByteOrder.LITTLE_ENDIAN)
+        val needsRounding = roundToHalf && tensor.storage.type != "HalfStorage"
+        val buffer = bytes.array()
         var remaining = Math.multiplyExact(tensor.elements, width.toLong())
         while (remaining > 0) {
             checkCancelled()
             val count = minOf(remaining, buffer.size.toLong()).toInt()
             var read = 0
             while (read < count) { val n = input.read(buffer, read, count - read); requireUi(n > 0) { UiText("checkpoint_truncated") }; read += n }
-            if (half && tensor.storage.type == "HalfStorage") {
-                for (index in 1 until count step 2) {
-                    requireUi(buffer[index].toInt() and 0x7c != 0x7c) { UiText("checkpoint_nonfinite") }
-                }
-                output.write(buffer, 0, count)
-                remaining -= count
-                continue
-            }
-            val bytes = ByteBuffer.wrap(buffer, 0, count).order(ByteOrder.LITTLE_ENDIAN)
+            bytes.clear()
             converted.clear()
             repeat(count / width) {
                 val value = when (tensor.storage.type) {
@@ -241,11 +264,12 @@ class CheckpointImporter(
                     else -> bytes.float
                 }
                 requireUi(value.isFinite()) { UiText("checkpoint_nonfinite") }
-                if (half) {
+                val stored = if (needsRounding) {
                     val bits = floatToHalf(value)
                     requireUi(bits and 0x7c00 != 0x7c00) { UiText("checkpoint_fp16_range") }
-                    converted.putShort(bits.toShort())
-                } else converted.putFloat(value)
+                    HalfPrecision.fp16BitsToFloat(bits)
+                } else value
+                converted.putFloat(stored)
             }
             output.write(converted.array(), 0, converted.position())
             remaining -= count
@@ -253,11 +277,8 @@ class CheckpointImporter(
     }
 
     companion object {
-        private fun assetDirectory(architecture: String) = "checkpoint-${architecture.lowercase()}"
-        internal fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
-
         /** IEEE binary16 round-to-nearest, ties-to-even, matching torch.float16. */
-        internal fun floatToHalf(value: Float): Int {
+        private fun floatToHalf(value: Float): Int {
             val bits = value.toRawBits()
             val sign = (bits ushr 16) and 0x8000
             val exponent = ((bits ushr 23) and 255) - 127
