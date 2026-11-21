@@ -47,6 +47,7 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
                     releaseUrl.removePrefix(prefix)
                 }
             } ?: return null
+            if (tag == "v${BuildConfig.VERSION_NAME}") return null
             val match = Regex("v([0-9]+)\\.([0-9]+)\\.([0-9]+)").matchEntire(tag) ?: return null
             val major = match.groupValues[1].toIntOrNull() ?: return null
             val minor = match.groupValues[2].toIntOrNull() ?: return null
@@ -57,6 +58,7 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
             val code = properties.getProperty("voiceboxVersionCode").toInt()
             val version = properties.getProperty("voiceboxVersionName")
             require(code > 0 && tag == "v$version")
+            if (code <= BuildConfig.VERSION_CODE) return null
 
             val name = "Voicebox-$version-arm64.apk"
             val assetBase = "$APP_RELEASES_URL/download/$tag"
@@ -136,6 +138,10 @@ internal class AppUpdateViewModel(private val app: Application) : AndroidViewMod
     var state by mutableStateOf<UpdateState>(UpdateState.Idle)
         private set
 
+    fun checkOnLaunch() {
+        if (state == UpdateState.Idle) check()
+    }
+
     fun check() {
         if (state == UpdateState.Checking || state is UpdateState.Downloading) return
         release = null
@@ -144,7 +150,7 @@ internal class AppUpdateViewModel(private val app: Application) : AndroidViewMod
             state = try {
                 val update = withContext(Dispatchers.IO) { AppUpdate.fetch() }
                 release = update
-                if (update == null || update.code <= BuildConfig.VERSION_CODE) UpdateState.Current else UpdateState.Available
+                if (update == null) UpdateState.Current else UpdateState.Available
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -156,7 +162,7 @@ internal class AppUpdateViewModel(private val app: Application) : AndroidViewMod
 
     fun download() {
         val update = release ?: return
-        if (update.code <= BuildConfig.VERSION_CODE || state is UpdateState.Downloading || state == UpdateState.Checking) return
+        if (state != UpdateState.Available && state !is UpdateState.Failed) return
         state = UpdateState.Downloading(0)
         viewModelScope.launch {
             state = try {

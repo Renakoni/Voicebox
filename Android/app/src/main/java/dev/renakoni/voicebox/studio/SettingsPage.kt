@@ -52,12 +52,14 @@ internal fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openProjec
             SettingsGroup(stringResource(R.string.settings_acceleration)) {
                 SettingsSwitch(stringResource(R.string.gpu_acceleration), vm.gpuEnabled && vm.gpuAvailable,
                     vm::setGpu, enabled = vm.gpuAvailable && !vm.busy)
-                val acceleration = vm.acceleration
-                val device = listOf(acceleration.device, Build.MODEL).firstOrNull { it.isNotBlank() && it != Build.UNKNOWN }
-                val status = UiText(acceleration.detail).resolve(resources)
-                val npuEnabledForGpu = vm.gpuEnabled && vm.hybridAvailable
-                SettingsSwitch(stringResource(R.string.device_acceleration), vm.deviceAccelerationEnabled && npuEnabledForGpu,
-                    vm::setDeviceAcceleration, enabled = npuEnabledForGpu && !vm.busy,
+                val device = listOf(vm.deviceFacts.soc, vm.deviceFacts.model).firstOrNull { it.isNotBlank() && it != Build.UNKNOWN }
+                val status = stringResource(when (vm.deviceNpuAvailable) {
+                    true -> R.string.npu_device_supported
+                    false -> R.string.npu_device_unconfirmed
+                    null -> R.string.npu_checking
+                })
+                SettingsSwitch(stringResource(R.string.device_acceleration), vm.deviceAccelerationEnabled,
+                    vm::setDeviceAcceleration, enabled = !vm.busy,
                     detail = listOfNotNull(status, device).joinToString(" · "))
             }
             SettingsGroup(stringResource(R.string.settings_local_service)) {

@@ -114,6 +114,8 @@
     <string name="npu_runtime_missing">缺少 NPU 加速组件</string>
     <string name="npu_unavailable">NPU 不可用</string>
     <string name="npu_available">NPU 验证通过</string>
+    <string name="npu_device_supported">设备支持 NPU</string>
+    <string name="npu_device_unconfirmed">未确认设备 NPU 支持</string>
     <string name="model_v5_dev_unsupported">V5 Dev · 暂不支持</string>
     <string name="model_v5_pending">V5 · 导入时确认版本</string>
     <string name="model_lora_unsupported">LoRA · 暂不支持</string>
@@ -394,6 +396,9 @@
     <string name="model_remaining">待下载 %1$s</string>
     <string name="model_device_unsupported">本设备不支持</string>
     <string name="model_bridge">推理桥接</string>
+    <string name="model_install">安装</string>
+    <string name="model_update">更新</string>
+    <string name="model_installed_update_available">已安装 · 可更新</string>
     <string name="model_install_part">安装%1$s</string>
     <string name="model_prepare">准备</string>
     <string name="pack_gpt_common">V2 / V5 通用资源</string>

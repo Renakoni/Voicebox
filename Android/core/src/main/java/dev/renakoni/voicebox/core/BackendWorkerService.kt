@@ -67,9 +67,9 @@ class BackendWorkerService : Service() {
         try {
             val backend = provider ?: run {
                 val archive = BridgePackages(this).get(data.getString("backendId")!!)
-                val directory = requireNotNull(archive.directory) { "Backend is unavailable" }
+                val installed = requireNotNull(archive.active) { "Backend is unavailable" }
                 val work = File(cacheDir, "bridge-workers/${data.getString("session")}").also { it.mkdirs() }
-                archive.openProvider(this, directory, work, requireNotNull(data.getBundle("settings"))).also { provider = it }
+                installed.openProvider(this, work, requireNotNull(data.getBundle("settings"))).also { provider = it }
             }
             val engine by lazy {
                 runtime ?: backend.createRuntime(ExecutionBackend.valueOf(data.getString("execution")!!)).also { runtime = it }
@@ -87,13 +87,11 @@ class BackendWorkerService : Service() {
                         setOf(ExecutionBackend.CPU)
                     }
                     result.putStringArrayList("modes", ArrayList(modes.map { it.name }))
-                    val acceleration = runCatching { backend.accelerationInfo() }.getOrElse {
+                    val npu = runCatching { backend.accelerationInfo()?.available == true }.getOrElse {
                         Log.w("VoiceBoxWorker", "NPU probe failed for ${backend.id}", it)
-                        AccelerationInfo(detail = "npu_probe_failed")
+                        false
                     }
-                    acceleration?.let {
-                        result.putString("device", it.device); result.putBoolean("npu", it.available); result.putString("detail", it.detail)
-                    }
+                    result.putBoolean("npu", npu)
                 }
                 WorkerProtocol.LIBRARY -> {
                     val library = backend as VoiceLibrary

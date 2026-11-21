@@ -1,6 +1,5 @@
 package dev.renakoni.voicebox.studio
 
-import dev.renakoni.voicebox.bridge.AccelerationInfo
 import dev.renakoni.voicebox.bridge.OfficialVoice
 import dev.renakoni.voicebox.bridge.ResourcePack
 import dev.renakoni.voicebox.bridge.VoiceImport
@@ -34,7 +33,7 @@ import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.AppSettingsRepository
 import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.BackendProbeResult
+import dev.renakoni.voicebox.DeviceNpu
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
@@ -46,6 +45,7 @@ import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.core.ReferenceLanguage
+import dev.renakoni.voicebox.core.DeviceFacts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -72,7 +72,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val modelsRepository = app.backends
     private val settings = AppSettingsRepository(app)
     val backendPackages = app.bridgePackages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
-    var installedPackages by mutableStateOf<Set<String>?>(null); private set
+    var installedBridgeVersions by mutableStateOf<Map<String, Int>?>(null); private set
+    val installedPackages get() = installedBridgeVersions?.keys
     var resourcePacks by mutableStateOf<Map<String, List<ResourcePack>>>(emptyMap()); private set
     private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
     private val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
@@ -144,18 +145,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
-    private var probes by mutableStateOf(emptyMap<String, BackendProbeResult>())
+    private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
-        model.executionModes intersect probes[model.ref.backendId]?.modes.orEmpty()
+        model.executionModes intersect probes[model.ref.backendId].orEmpty()
     }.orEmpty()
-    val gpuAvailable get() = probes.values.any { ExecutionBackend.WEBGPU in it.modes }
-    val hybridAvailable get() = probes.values.any { it.acceleration?.available == true && ExecutionBackend.WEBGPU in it.modes }
+    val gpuAvailable get() = probes.values.any { ExecutionBackend.WEBGPU in it }
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
-    val acceleration: AccelerationInfo get() {
-        val reports = probes.values.mapNotNull { it.acceleration }
-        return reports.firstOrNull { it.available } ?: reports.firstOrNull { it.device.isNotBlank() }
-            ?: reports.firstOrNull() ?: AccelerationInfo(detail = if (connected && probes.size < backendPackages.size) "npu_checking" else "npu_unavailable")
-    }
+    val deviceFacts = DeviceFacts.read(app)
+    var deviceNpuAvailable by mutableStateOf<Boolean?>(null); private set
     private var auxiliaryLimits by mutableStateOf(emptyMap<ModelRef, Int>())
     private var auxiliarySelection by mutableStateOf(emptyMap<String, List<String>>())
     val auxiliaryLimit get() = auxiliaryLimits[selectedVoice?.model] ?: 0
@@ -256,6 +253,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        viewModelScope.launch {
+            deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceNpu.isSupported(deviceFacts) }
+        }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
             ContextCompat.startForegroundService(app, intent)
@@ -264,7 +264,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>,
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Map<String, Int>,
         val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>)
 
     internal fun refreshResources() {
@@ -273,7 +273,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    val installed = backendPackages.filter { it.installed }.map { it.spec.id }.toSet()
+                    val installed = backendPackages.mapNotNull { archive ->
+                        archive.active?.spec?.let { it.id to it.version }
+                    }.toMap()
                     val providers = modelsRepository.providers.filter { it.id in installed }
                     val catalog = providers.flatMap { it.officialVoices() }
                     val discovered = providers.flatMap { provider -> provider.discoverCharacterModels().filter { provider.inspect(it).isComplete } }
@@ -300,7 +302,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 readyResources = data.ready
                 officialModels = data.catalog
                 auxiliaryLimits = data.auxiliary
-                installedPackages = data.installed
+                installedBridgeVersions = data.installed
                 resourcePacks = data.packs
                 capabilities = data.capabilities
                 if (voices.none { it.id == selectedId }) {

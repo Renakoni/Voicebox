@@ -19,6 +19,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import dev.renakoni.voicebox.studio.AppUpdateViewModel
 import dev.renakoni.voicebox.studio.StudioOutput
 import dev.renakoni.voicebox.studio.StudioScreen
 import dev.renakoni.voicebox.studio.StudioTheme
@@ -69,6 +70,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         window.isNavigationBarContrastEnforced = false
         studio = ViewModelProvider(this)[StudioViewModel::class.java]
+        ViewModelProvider(this)[AppUpdateViewModel::class.java].checkOnLaunch()
         studio.warmupEnabled = !(BuildConfig.DEBUG && intent.getBooleanExtra("benchmarkNoWarmup", false))
         exportPath = savedInstanceState?.getString("export_path")
         avatarCameraPath = savedInstanceState?.getString("avatar_camera_path")

@@ -82,7 +82,9 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val resources = LocalResources.current
     val context = LocalContext.current
     val installed = vm.installedPackages
-    val bridgeReady = installed?.contains(spec.id) == true
+    val installedVersion = vm.installedBridgeVersions?.get(spec.id)
+    val bridgeReady = installedVersion != null
+    val update = archive.installable && installedVersion != null && spec.version > installedVersion
     val packs = vm.resourcePacks[spec.id].orEmpty()
     val ready = (if (bridgeReady) 1 else 0) + packs.count { it.installed }
     val total = packs.size + 1
@@ -94,6 +96,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val complete = ready == total
     val status = when {
         installed == null || download?.running == true -> null
+        update -> stringResource(R.string.model_installed_update_available)
         expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         complete -> stringResource(R.string.backend_installed)
         else -> stringResource(R.string.model_parts_ready, ready, total)
@@ -157,7 +160,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 HorizontalDivider(color = colors.outlineVariant.copy(alpha = .6f))
                 Column(Modifier.padding(vertical = 4.dp)) {
                     ModelPart(stringResource(R.string.model_bridge),
-                        if (spec.bundled && !bridgeReady) 0L else spec.downloadBytes, bridgeReady, enabled) {
+                        if (bridgeReady || spec.bundled) 0L else spec.downloadBytes, bridgeReady, enabled && archive.installable) {
                         vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART)
                     }
                     packs.forEach { pack ->
@@ -169,12 +172,19 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 }
             }
         }
-        if (installed != null && !complete && download?.running != true) {
-            StudioButton({ vm.installModelParts(spec.id, null) }, enabled = enabled, style = StudioButtonStyle.Secondary,
+        if (installed != null && (update || !complete && (bridgeReady || archive.installable)) && download?.running != true) {
+            val part = if (update) VoiceBoxBackendService.BRIDGE_PART else null
+            val bytes = if (update) spec.downloadBytes else remaining
+            val label = when {
+                update -> stringResource(R.string.model_update)
+                packs.isEmpty() -> stringResource(R.string.model_install)
+                else -> stringResource(R.string.model_download_all)
+            }
+            StudioButton({ vm.installModelParts(spec.id, part) }, enabled = enabled, style = StudioButtonStyle.Secondary,
                 modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = if (expanded) 4.dp else 0.dp)) {
                 Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(16.dp))
-                Text(stringResource(R.string.model_download_all))
-                if (remaining > 0) Text(Formatter.formatShortFileSize(context, remaining),
+                Text(label)
+                if (bytes > 0) Text(Formatter.formatShortFileSize(context, bytes),
                     style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = Tabular),
                     color = LocalContentColor.current.copy(alpha = .62f))
             }
@@ -185,8 +195,11 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
 @Composable
 private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: Boolean, install: () -> Unit) {
     val colors = MaterialTheme.colorScheme
-    val size = if (bytes == 0L && !installed) stringResource(R.string.model_prepare)
-        else Formatter.formatShortFileSize(LocalContext.current, bytes)
+    val size = when {
+        bytes > 0 -> Formatter.formatShortFileSize(LocalContext.current, bytes)
+        !installed -> stringResource(R.string.model_prepare)
+        else -> null
+    }
     val action = if (installed) Modifier.semantics(mergeDescendants = true) {} else
         Modifier.clickable(enabled = enabled, role = Role.Button,
             onClickLabel = stringResource(R.string.model_install_part, title), onClick = install)
@@ -196,8 +209,10 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(title, style = MaterialTheme.typography.bodyMedium,
                 color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurface)
-            Text(size, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = Tabular),
-                color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurfaceVariant)
+            size?.let {
+                Text(it, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = Tabular),
+                    color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurfaceVariant)
+            }
         }
         PartMark(installed, enabled)
     }

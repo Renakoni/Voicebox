@@ -114,6 +114,8 @@
     <string name="npu_runtime_missing">NPU acceleration components are missing</string>
     <string name="npu_unavailable">NPU unavailable</string>
     <string name="npu_available">NPU available</string>
+    <string name="npu_device_supported">Device supports NPU</string>
+    <string name="npu_device_unconfirmed">Device NPU support unconfirmed</string>
     <string name="model_v5_dev_unsupported">V5 Dev · Unsupported</string>
     <string name="model_v5_pending">V5 · To be confirmed on import</string>
     <string name="model_lora_unsupported">LoRA · Unsupported</string>
@@ -398,6 +400,9 @@
     <string name="model_remaining">%1$s to download</string>
     <string name="model_device_unsupported">Unsupported on this device</string>
     <string name="model_bridge">Inference bridge</string>
+    <string name="model_install">Install</string>
+    <string name="model_update">Update</string>
+    <string name="model_installed_update_available">Installed · Update available</string>
     <string name="model_install_part">Install %1$s</string>
     <string name="model_prepare">Prepare</string>
     <string name="pack_gpt_common">V2 / V5 shared resources</string>

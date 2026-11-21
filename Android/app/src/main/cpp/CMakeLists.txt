@@ -9,3 +9,6 @@ file(GLOB SILK_SOURCES CONFIGURE_DEPENDS "third_party/silk/src/*.c")
 add_library(voicebox_silk SHARED qq_silk.cpp ${SILK_SOURCES})
 target_include_directories(voicebox_silk PRIVATE third_party/silk/interface third_party/silk/src)
 target_compile_definitions(voicebox_silk PRIVATE NO_ASM)
+
+add_library(voicebox_device_npu SHARED device_npu.cpp)
+target_link_libraries(voicebox_device_npu PRIVATE neuralnetworks)

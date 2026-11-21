@@ -6,7 +6,7 @@ import dalvik.system.DexClassLoader
 import dev.renakoni.voicebox.bridge.*
 import java.io.File
 
-internal fun BridgePackage.openProvider(context: Context, directory: File, work: File, settings: Bundle): BackendProvider {
+internal fun InstalledBridge.openProvider(context: Context, work: File, settings: Bundle): BackendProvider {
     val loader = DexClassLoader(File(directory, spec.code).absolutePath, context.codeCacheDir.absolutePath,
         directory.absolutePath, BackendEntry::class.java.classLoader)
     val entry = loader.loadClass(spec.entry).asSubclass(BackendEntry::class.java)
@@ -21,10 +21,11 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     private val settings: () -> Bundle = { Bundle() }) : BackendProvider, VoiceLibrary {
     override val id get() = archive.spec.id
     private var cached: BackendProvider? = null
+    @Synchronized fun invalidateMetadata() { cached = null }
     @Synchronized private fun metadata(): BackendProvider? {
         cached?.let { return it }
-        val directory = archive.directory ?: return null
-        return archive.openProvider(context, directory, context.cacheDir, settings()).also { cached = it }
+        val installed = archive.active ?: return null
+        return installed.openProvider(context, context.cacheDir, settings()).also { cached = it }
     }
     override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
     override val supportsWarmup get() = metadata()?.supportsWarmup == true
@@ -42,20 +43,19 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
-    private var report: AccelerationInfo? = null
-    override fun accelerationInfo() = report
+    private var npuAvailable = false
     override fun executionModes(): Set<ExecutionBackend> {
         if (!archive.installed) {
-            report = null
+            npuAvailable = false
             return emptySet()
         }
         return try {
             val result = WorkerRuntime(context, id, ExecutionBackend.CPU, settings(), false).probe()
-            report = result.getString("detail")?.let { AccelerationInfo(result.getString("device").orEmpty(), result.getBoolean("npu"), it) }
+            npuAvailable = result.getBoolean("npu")
             result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
         } catch (error: Exception) {
             android.util.Log.w("VoiceBoxWorker", "Acceleration probe failed for $id", error)
-            report = AccelerationInfo(detail = "npu_probe_failed")
+            npuAvailable = false
             setOf(ExecutionBackend.CPU)
         }
     }
@@ -67,6 +67,6 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun validateOptions(options: Map<String, String>) = requireNotNull(metadata()).validateOptions(options)
     override fun createRuntime(execution: ExecutionBackend): BackendRuntime =
         WorkerRuntime(context, id, execution, settings().apply {
-            putBoolean("allowNpu", getBoolean("allowNpu") && report?.available == true)
+            putBoolean("allowNpu", getBoolean("allowNpu") && npuAvailable)
         }, supportsWarmup)
 }

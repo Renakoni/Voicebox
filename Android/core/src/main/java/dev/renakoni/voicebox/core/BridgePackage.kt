@@ -8,7 +8,6 @@ import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
-import java.nio.file.attribute.BasicFileAttributes
 import java.util.UUID
 import java.util.zip.ZipFile
 
@@ -16,8 +15,11 @@ private val SHA256_PATTERN = Regex("[a-f0-9]{64}")
 
 /** Only catalogs shipped with the application can name executable packages. */
 class BridgePackageSpec(json: JSONObject) {
+    internal val catalog = json.toString()
     val id = json.getString("id")
     val displayName = json.optString("displayName", id)
+    val version = json.getInt("version")
+    val minAppVersionCode = if (json.has("minAppVersionCode")) json.getLong("minAppVersionCode") else 1L
     val revision = json.getString("revision")
     val abi = json.getString("abi")
     val entry = json.getString("entry")
@@ -37,6 +39,7 @@ class BridgePackageSpec(json: JSONObject) {
 
     init {
         require(json.getInt("format") == 2 && contract == BackendEntry.CONTRACT)
+        require(version > 0 && minAppVersionCode > 0)
         require(id.matches(Regex("[a-z][a-z0-9-]{0,63}")) && revision.matches(SHA256_PATTERN))
         require(adapterSource.matches(SHA256_PATTERN) && sourceCommit.matches(Regex("[a-f0-9]{40}")) && abi in setOf("arm64-v8a", "x86_64"))
         require(entry.matches(Regex("[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z][A-Za-z0-9_]*)+")))
@@ -54,7 +57,8 @@ class BridgePackageSpec(json: JSONObject) {
         require(manifest.getString("id") == id && manifest.getInt("contract") == contract &&
             manifest.getString("entry") == entry && manifest.getString("abi") == abi &&
             manifest.getString("code") == code && manifest.getString("sourceCommit") == sourceCommit &&
-            manifest.getString("adapterSourceSha256") == adapterSource) {
+            manifest.getString("adapterSourceSha256") == adapterSource &&
+            (!manifest.has("minAppVersionCode") || manifest.getLong("minAppVersionCode") == minAppVersionCode)) {
             "Bridge manifest differs from the application catalog"
         }
     }
@@ -68,10 +72,11 @@ class BridgePackageSpec(json: JSONObject) {
 
 class BridgePackages(private val context: Context) {
     private val processAbi = DeviceFacts.read(context).abi
+    private val appVersion = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
     val packages = context.assets.list("bridges").orEmpty().filter { it.endsWith(".json") }.map { name ->
         val spec = context.assets.open("bridges/$name").bufferedReader().use { BridgePackageSpec(JSONObject(it.readText())) }
         require(name == "${spec.id}.json")
-        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi) {
+        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi, appVersion) {
             part, destination, cancel, progress ->
             if (part.url.startsWith("asset://")) {
                 context.assets.open(part.url.removePrefix("asset://")).use {
@@ -81,29 +86,38 @@ class BridgePackages(private val context: Context) {
         }
     }
     fun installBundled() {
-        packages.filter { it.spec.bundled }.forEach { it.install({}, {}) }
+        packages.filter { it.spec.bundled && it.installable && !it.installed }.forEach { it.install({}, {}) }
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }
 
+data class InstalledBridge(val spec: BridgePackageSpec, val directory: File)
+
 class BridgePackage(
-    private val root: File, val spec: BridgePackageSpec, private val abi: String,
+    private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val download: (ModelDownload, File, () -> Unit, (Int) -> Unit) -> Unit,
 ) {
     val supported get() = spec.abi == abi
-    private val revisions get() = File(root, spec.revision)
-    val directory: File? get() = if (!supported) null else revisions.listFiles()?.firstOrNull { candidate ->
-        spec.files.all { (name, bytes) ->
-            try {
-                val file = Files.readAttributes(File(candidate, name).toPath(), BasicFileAttributes::class.java)
-                file.isRegularFile && file.size() == bytes
-            } catch (_: java.io.IOException) { false }
-        }
+    val installable get() = compatible(spec)
+    private val receipt = File(root, "active.json")
+    val active: InstalledBridge? get() {
+        if (!receipt.isFile) return null
+        return runCatching {
+            val json = JSONObject(receipt.readText())
+            val candidate = BridgePackageSpec(json)
+            val slot = json.getString("directory")
+            require(compatible(candidate) && '/' !in slot && BridgePackageSpec.safePath(slot))
+            val directory = File(File(root, candidate.revision), slot)
+            InstalledBridge(candidate, directory).takeIf { File(directory, candidate.code).isFile }
+        }.getOrNull()
     }
-    val installed get() = directory != null
+    val installed get() = active != null
+
+    private fun compatible(candidate: BridgePackageSpec) =
+        candidate.id == spec.id && candidate.abi == abi && candidate.minAppVersionCode <= appVersion
 
     fun install(checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
-        require(supported) { "Unsupported backend ABI: ${spec.abi}" }
+        require(installable) { "Bridge package is incompatible with this app" }
         checkCancelled()
         synchronized(installLock) {
             root.mkdirs()
@@ -112,9 +126,14 @@ class BridgePackage(
                     checkCancelled()
                     root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
                         ?.forEach { it.deleteRecursively() }
-                    directory?.let { active ->
-                        pruneOtherInstallations(active)
-                        return false
+                    val previous = active
+                    if (previous != null && previous.spec.version >= spec.version) return false
+                    val revisions = File(root, spec.revision)
+                    // A fully extracted directory can be left behind if activation was interrupted.
+                    revisions.listFiles()?.firstOrNull { File(it, spec.code).isFile }?.let { ready ->
+                        activate(ready)
+                        progress(100)
+                        return true
                     }
                     require(root.usableSpace > spec.files.values.sum() + spec.parts.maxOf { it.bytes })
                     val id = UUID.randomUUID().toString()
@@ -139,7 +158,7 @@ class BridgePackage(
                         checkCancelled()
                         val active = File(revisions, id)
                         Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                        pruneOtherInstallations(active)
+                        activate(active)
                         progress(100)
                         return true
                     } finally {
@@ -149,6 +168,17 @@ class BridgePackage(
                 }
             }
         }
+    }
+
+    private fun activate(directory: File) {
+        val pending = File(root, ".active")
+        try {
+            pending.writeText(JSONObject(spec.catalog).put("directory", directory.name).toString())
+            Files.move(pending.toPath(), receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            pending.delete()
+        }
+        pruneOtherInstallations(directory)
     }
 
     private fun pruneOtherInstallations(active: File) {

@@ -9,7 +9,6 @@ import dev.renakoni.voicebox.core.OutputStorage
 import dev.renakoni.voicebox.bridge.LibraryAction
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.OfficialVoice
-import dev.renakoni.voicebox.bridge.AccelerationInfo
 
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.UiLanguageContext
@@ -58,7 +57,6 @@ import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-internal data class BackendProbeResult(val modes: Set<ExecutionBackend>, val acceleration: AccelerationInfo?)
 
 class VoiceBoxBackendService : Service() {
     override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
@@ -97,7 +95,7 @@ class VoiceBoxBackendService : Service() {
     // Mutated only on the serial inference worker.
     private var workerRuntime: BackendRuntime? = null
     private var runtimeOwner: String? = null
-    private val enabledBackends = MutableStateFlow<Map<String, BackendProbeResult>>(emptyMap())
+    private val enabledBackends = MutableStateFlow<Map<String, Set<ExecutionBackend>>>(emptyMap())
     internal val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
@@ -233,10 +231,10 @@ class VoiceBoxBackendService : Service() {
     fun currentState(): BackendServiceState = state
 
     private fun supportedBackends(model: CharacterModel) =
-        model.executionModes intersect (enabledBackends.value[model.ref.backendId]?.modes ?: setOf(ExecutionBackend.CPU))
+        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
 
     fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
-        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId]?.modes.orEmpty() }
+        val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
             ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
@@ -295,8 +293,7 @@ class VoiceBoxBackendService : Service() {
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
     private fun refreshBackendModes(provider: InstalledBackend) {
-        val modes = provider.executionModes()
-        enabledBackends.value += provider.id to BackendProbeResult(modes, provider.accelerationInfo())
+        enabledBackends.value += provider.id to provider.executionModes()
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->
@@ -309,14 +306,20 @@ class VoiceBoxBackendService : Service() {
     /** A null part installs the complete family. The bridge can also be installed independently. */
     fun installModelParts(id: String, part: String?): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        if (!archive.supported) return false
+        val needsBridge = part == BRIDGE_PART || !archive.installed
+        if (needsBridge && !archive.installable) return false
         val target = OfficialDownloadState(packageId = id)
         return downloadOnWorker(target) { context ->
             val provider = modelRepository.provider(id)
-            val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
-                officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
+            if (needsBridge) {
+                val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
+                    officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
+                }
+                if (bridgeInstalled) {
+                    provider.invalidateMetadata()
+                    refreshBackendModes(provider)
+                }
             }
-            if (bridgeInstalled) refreshBackendModes(provider)
             if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
                 provider.perform(LibraryAction.INSTALL_RESOURCES, Bundle().apply { putString("pack", part) }, context) { label, percent ->
                     officialDownloadState.value = target.copy(label = UiText.literal(label), percent = percent, running = true)

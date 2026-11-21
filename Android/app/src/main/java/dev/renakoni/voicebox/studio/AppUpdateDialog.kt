@@ -48,7 +48,7 @@ internal fun AppUpdateEntry(onError: (UiText) -> Unit, openLink: (String) -> Uni
     val release = vm.release
     AboutAction(stringResource(R.string.update_check), stringResource(R.string.update_release_notes)) {
         show = true
-        if (state !is UpdateState.Ready && state !is UpdateState.Downloading) vm.check()
+        if (state == UpdateState.Idle || state == UpdateState.Current || state is UpdateState.Failed) vm.check()
     }
     if (!show) return
 
@@ -93,10 +93,10 @@ internal fun AppUpdateEntry(onError: (UiText) -> Unit, openLink: (String) -> Uni
 private fun AppUpdateDialog(release: AppUpdate?, state: UpdateState, onDismiss: () -> Unit,
                             openLink: (String) -> Unit, onConfirm: () -> Unit) {
     val downloading = state is UpdateState.Downloading
-    val newer = release != null && release.code > BuildConfig.VERSION_CODE
+    val newer = release != null
     val title = when {
         newer -> R.string.update_available
-        state == UpdateState.Current && release != null -> R.string.update_current
+        state == UpdateState.Current -> R.string.update_current
         else -> R.string.update_check
     }
     val colors = MaterialTheme.colorScheme
@@ -119,7 +119,7 @@ private fun AppUpdateDialog(release: AppUpdate?, state: UpdateState, onDismiss: 
                         }
                         is UpdateState.Failed -> Text(state.reason.resolve(LocalResources.current),
                             style = MaterialTheme.typography.bodyMedium, color = colors.error)
-                        UpdateState.Current -> if (release == null) {
+                        UpdateState.Current -> {
                             Text(stringResource(R.string.update_no_release), style = MaterialTheme.typography.bodyMedium)
                         }
                         else -> Unit
@@ -127,11 +127,9 @@ private fun AppUpdateDialog(release: AppUpdate?, state: UpdateState, onDismiss: 
                     if (release != null) {
                         val codes = SpanStyle(color = colors.onSurfaceVariant, fontWeight = FontWeight.Normal)
                         val versions = buildAnnotatedString {
-                            if (newer) {
-                                append(BuildConfig.VERSION_NAME)
-                                withStyle(codes) { append(" (${BuildConfig.VERSION_CODE})") }
-                                append("  →  ")
-                            }
+                            append(BuildConfig.VERSION_NAME)
+                            withStyle(codes) { append(" (${BuildConfig.VERSION_CODE})") }
+                            append("  →  ")
                             withStyle(SpanStyle(color = colors.primary, fontWeight = FontWeight.Bold)) { append(release.version) }
                             withStyle(codes) { append(" (${release.code})") }
                         }
@@ -179,7 +177,7 @@ private fun AppUpdateDialog(release: AppUpdate?, state: UpdateState, onDismiss: 
                         StudioButton(onDismiss, enabled = !downloading, style = StudioButtonStyle.Quiet) {
                             Text(stringResource(if (newer) R.string.update_later else R.string.update_close))
                         }
-                        if (newer || release == null && state != UpdateState.Checking) {
+                        if (state != UpdateState.Checking) {
                             val url = release?.apk?.url ?: APP_RELEASES_URL
                             StudioButton({ openLink(url) }, enabled = !downloading, style = StudioButtonStyle.Secondary) {
                                 Text(stringResource(if (newer) R.string.update_manual else R.string.update_github))

@@ -9,6 +9,7 @@
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
   "version": "2",
+  "minAppVersionCode": 11,
   "revision": "61cca5a4c6108be76c9dfe98c8676f3616ddc977d6003bfd4ac901ad2303eaa7",
   "parts": [
     {
