@@ -67,7 +67,8 @@ internal data class AppUpdate(val version: String, val code: Int, val notes: Str
                 if (item.getBoolean("draft") || item.getBoolean("prerelease")) return@mapNotNull null
                 val match = tag.matchEntire(item.getString("tag_name")) ?: return@mapNotNull null
                 val parts = match.groupValues.drop(1).map { it.toIntOrNull() ?: return@mapNotNull null }
-                if (parts[0] < 2) null else item to parts
+                val (major, minor) = parts
+                if (major == 0 || (major == 1 && minor < 2)) null else item to parts
             }.maxWithOrNull(compareBy({ it.second[0] }, { it.second[1] }, { it.second[2] }))?.first
         }
 
