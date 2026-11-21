@@ -19,9 +19,14 @@ class GptEntry : BackendEntry {
 internal class GptLibrary(private val context: Context) : VoiceLibrary {
     private val root by lazy { requireNotNull(context.getExternalFilesDir(null)) }
     private val catalog by lazy { OfficialModelCatalog(context) }
+    private val shared by lazy { GptSharedResources(root, catalog, context::openBackendAsset) }
+    override fun recoverInstallations() {
+        shared.recoverRuntime()
+        CheckpointImporter.recoverInterrupted(root)
+    }
     override fun officialVoices() = catalog.models.map { OfficialVoice(it.ref, it.name, variantLabel(it.architecture)) }
     override fun variantLabel(variant: String) = modelArchitectureLabel(variant)
-    override fun resourcesReady(variant: String) = catalog.runtimeReady(root, variant)
+    override fun resourcePacks(cancel: () -> Unit) = shared.packs(cancel)
     override fun resourceHint(variant: String) = if (variant == "v5turbo") "engine_v5_resources" else "engine_resources"
     override val controls = listOf(
         OptionControl("speed", "speech_speed", "1.0", 0.6f, 1.65f, 21, unit = "×"),
@@ -36,7 +41,7 @@ internal class GptLibrary(private val context: Context) : VoiceLibrary {
         val app = this.context
         fun value(key: String) = requireNotNull(arguments.getString(key))
         fun open(key: String) = app.contentResolver.openInputStream(Uri.parse(value(key))) ?: errorUi(UiText("resource_open_failed"))
-        fun stageCheckpoint(key: String, target: File) {
+        fun stageCheckpoint(key: String, target: File): File {
             open(key).use { input -> target.outputStream().use { output ->
                 val buffer = ByteArray(1024 * 1024)
                 var total = 0L
@@ -49,16 +54,18 @@ internal class GptLibrary(private val context: Context) : VoiceLibrary {
                     output.write(buffer, 0, count)
                 }
             } }
+            return target
         }
         fun report(label: UiText) = progress(label.resolve(app.resources), null)
+        fun reportDownload(label: UiText, percent: Int?) = progress(label.resolve(app.resources), percent)
         val result = Bundle()
         when (action) {
             LibraryAction.PREVIEW_PAIR -> result.putString("variant", CheckpointPreview.read(app, Uri.parse(value("uri"))))
-            LibraryAction.DOWNLOAD_VOICE -> OfficialModelInstaller(root, catalog, app::openBackendAsset)
-                .install(catalog.models.single { it.id == value("model") && it.architecture == value("variant") }, context::checkCancelled) {
-                    it.label?.let { label -> progress(label.resolve(app.resources), it.percent) }
-                }
-            LibraryAction.IMPORT_ARCHIVE -> open("uri").use { ResourcePackageImporter(root).importRuntime(it, context::checkCancelled) }
+            LibraryAction.INSTALL_RESOURCES -> shared.install(arguments.getString("pack"), context::checkCancelled, ::reportDownload)
+            LibraryAction.DOWNLOAD_VOICE -> OfficialModelInstaller(root, catalog, shared, app::openBackendAsset)
+                .install(catalog.models.single { it.id == value("model") && it.architecture == value("variant") },
+                    context::checkCancelled, ::reportDownload)
+            LibraryAction.IMPORT_ARCHIVE -> open("uri").use { shared.importRuntime(it, context::checkCancelled) }
             LibraryAction.CLEAR_CACHE -> result.putInt("derived", RuntimeAssetRepository(root).clearDerivedFiles())
             LibraryAction.EDIT_REFERENCE, LibraryAction.IMPORT_PAIR -> {
                 val reference = arguments.getString("reference")?.let {
@@ -71,6 +78,7 @@ internal class GptLibrary(private val context: Context) : VoiceLibrary {
                 } else CheckpointImporter(root, app::openBackendAsset).import(name,
                     stageGpt = { stageCheckpoint("first", it) }, stageSovits = { stageCheckpoint("second", it) }, progress = ::report,
                     checkCancelled = context::checkCancelled, reference = reference,
+                    prepareResources = { variant -> shared.forVoice(variant, context::checkCancelled, ::reportDownload) },
                     replace = arguments.getString("id")?.let { ModelRef("gptsovits", value("variant"), it) },
                     gptFilename = arguments.getString("firstName").orEmpty(), sovitsFilename = arguments.getString("secondName").orEmpty())
                 result.putString("id", imported.characterId); result.putString("name", imported.displayName)

@@ -102,8 +102,8 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
             }) }
         }
         val hook = cancellation?.onCancel {
+            connected.completeExceptionally(GenerationCancelledException(cancellation.cancellationReason ?: "CANCELLED"))
             if (cooperative) cancelOperation() else {
-                connected.completeExceptionally(GenerationCancelledException(cancellation.cancellationReason ?: "CANCELLED"))
                 responses.offer(Bundle().apply { putBoolean("cancelled", true) })
             }
         }
@@ -114,18 +114,23 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
             worker.send(Message.obtain(null, what).apply { this.data = data; replyTo = receiver })
             if (cooperative && cancellation?.cancellationReason != null) cancelOperation()
             val timeout = if (what == WorkerProtocol.PROBE) TimeUnit.SECONDS.toMillis(30) else TimeUnit.MINUTES.toMillis(15)
-            val deadline = SystemClock.elapsedRealtime() + timeout
+            var deadline = SystemClock.elapsedRealtime() + timeout
             while (true) {
                 val item = responses.poll((deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0), TimeUnit.MILLISECONDS)
                     ?: throw TimeoutException("Backend worker timed out")
-                if (!cooperative || item.getInt("type") == WorkerProtocol.RESULT || item.getBoolean("disconnected")) cancellation?.checkCancelled()
+                if (!cooperative || item.getBoolean("disconnected")) cancellation?.checkCancelled()
                 check(!item.getBoolean("disconnected")) { "Backend worker disconnected" }
                 if (item.getString("request") != data.getString("request")) continue
                 if (item.getInt("type") == WorkerProtocol.EVENT) {
+                    if (cooperative) deadline = SystemClock.elapsedRealtime() + timeout
                     callbacks?.onStage(GenerationStage.valueOf(item.getString("stage")!!), item.getString("message").orEmpty(),
                         if (item.containsKey("percent")) item.getInt("percent") else null, item.getString("label"))
                 } else {
-                    item.getString("error")?.let { throw item.workerFailure(it) }
+                    item.getString("error")?.let {
+                        cancellation?.checkCancelled()
+                        throw item.workerFailure(it)
+                    }
+                    // A successful library result has already published the operation's files.
                     return item
                 }
             }

@@ -7,7 +7,6 @@ import dev.renakoni.voicebox.core.LanguageTags
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalAccessibilityManager
 import android.content.res.Resources
-import android.os.Build
 import dev.renakoni.voicebox.core.i18n.UiText
 import kotlinx.coroutines.delay
 
@@ -15,7 +14,6 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
@@ -32,7 +30,6 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -49,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.layout
@@ -60,13 +56,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
-import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.bridge.OfficialVoice
 import dev.renakoni.voicebox.bridge.GenerationStage
@@ -74,8 +68,14 @@ import dev.renakoni.voicebox.core.ReferenceLanguage
 import java.util.Locale
 import kotlin.math.roundToInt
 
-private enum class StudioDestination(val depth: Int) {
-    CREATE(0), VOICES(0), SETTINGS(0), PICKER(1), VOICE_EDITOR(1), CHECKPOINT_EDITOR(1), ABOUT(1), MODELS(1),
+internal sealed interface StudioDestination
+
+internal enum class StudioTab(val label: Int) : StudioDestination {
+    CREATE(R.string.tab_create), VOICES(R.string.tab_voices), MODELS(R.string.models), SETTINGS(R.string.settings),
+}
+
+private enum class StudioDetail : StudioDestination {
+    PICKER, VOICE_EDITOR, CHECKPOINT_EDITOR, ABOUT,
 }
 
 private data class StudioPage(
@@ -92,45 +92,50 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
     val resources = LocalResources.current
     val snackbar = remember { SnackbarHostState() }
     val focus = LocalFocusManager.current
+    val uriHandler = LocalUriHandler.current
+    val openLink: (String) -> Unit = { url ->
+        runCatching { uriHandler.openUri(url) }.onFailure { vm.notify(UiText(R.string.link_open_failed)) }
+    }
     var showingAbout by rememberSaveable { mutableStateOf(false) }
-    var showingModels by rememberSaveable { mutableStateOf(false) }
-    val closeAbout = { showingAbout = false; vm.tab = 2 }
+    val closeAbout = { showingAbout = false; vm.tab = StudioTab.SETTINGS }
     val page = when {
-        showingModels -> StudioPage(StudioDestination.MODELS)
-        showingAbout -> StudioPage(StudioDestination.ABOUT)
-        vm.checkpointDraft != null -> StudioPage(StudioDestination.CHECKPOINT_EDITOR, checkpoint = vm.checkpointDraft)
-        vm.draft != null -> StudioPage(StudioDestination.VOICE_EDITOR, voice = vm.draft)
-        vm.choosingVoice -> StudioPage(StudioDestination.PICKER)
-        vm.tab == 1 -> StudioPage(StudioDestination.VOICES)
-        vm.tab == 2 -> StudioPage(StudioDestination.SETTINGS)
-        else -> StudioPage(StudioDestination.CREATE)
+        showingAbout -> StudioPage(StudioDetail.ABOUT)
+        vm.checkpointDraft != null -> StudioPage(StudioDetail.CHECKPOINT_EDITOR, checkpoint = vm.checkpointDraft)
+        vm.draft != null -> StudioPage(StudioDetail.VOICE_EDITOR, voice = vm.draft)
+        vm.choosingVoice -> StudioPage(StudioDetail.PICKER)
+        else -> StudioPage(vm.tab)
     }
     val notice = vm.notice?.resolve(resources)
     LaunchedEffect(vm.notice, notice) { notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
-    BackHandler(showingModels || showingAbout || vm.draft != null || vm.checkpointDraft != null || vm.choosingVoice || vm.tab != 0) {
-        if (showingModels) showingModels = false
-        else if (showingAbout) closeAbout()
+    BackHandler(page.destination != StudioTab.CREATE) {
+        if (showingAbout) closeAbout()
         else if (vm.recordingMs != null) vm.cancelReferenceRecording()
         else if (vm.checkpointDraft != null) vm.closeCheckpointImport()
         else if (vm.draft != null) vm.closeEditor()
-        else if (vm.choosingVoice) vm.closeVoicePicker() else vm.tab = 0
+        else if (vm.choosingVoice) vm.closeVoicePicker() else vm.tab = StudioTab.CREATE
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            AnimatedVisibility(page.destination.depth == 0,
+            AnimatedVisibility(page.destination is StudioTab,
                 enter = expandVertically(tween(220), expandFrom = Alignment.Bottom) + fadeIn(tween(180)),
                 exit = shrinkVertically(tween(220), shrinkTowards = Alignment.Bottom) + fadeOut(tween(140))) {
                 Column {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-                        val labels = listOf(resources.getString(R.string.tab_create), resources.getString(R.string.tab_voices), resources.getString(R.string.settings))
-                        val icons = listOf(Icons.Outlined.Edit, Icons.Outlined.Face, Icons.Outlined.Settings)
-                        labels.forEachIndexed { index, label ->
-                            NavigationBarItem(selected = vm.tab == index,
-                                onClick = { focus.clearFocus(); vm.tab = index },
-                                icon = { Icon(icons[index], contentDescription = null, modifier = Modifier.size(22.dp)) }, label = { Text(label) },
+                        StudioTab.entries.forEach { tab ->
+                            NavigationBarItem(selected = vm.tab == tab,
+                                onClick = { focus.clearFocus(); vm.tab = tab },
+                                icon = {
+                                    val size = Modifier.size(22.dp)
+                                    when (tab) {
+                                        StudioTab.CREATE -> Icon(Icons.Outlined.Edit, null, size)
+                                        StudioTab.VOICES -> Icon(Icons.Outlined.Face, null, size)
+                                        StudioTab.MODELS -> Icon(painterResource(R.drawable.ic_models), null, size)
+                                        StudioTab.SETTINGS -> Icon(Icons.Outlined.Settings, null, size)
+                                    }
+                                }, label = { Text(resources.getString(tab.label)) },
                                 colors = NavigationBarItemDefaults.colors(indicatorColor = Color.Transparent,
                                     selectedIconColor = MaterialTheme.colorScheme.primary,
                                     selectedTextColor = MaterialTheme.colorScheme.primary))
@@ -144,22 +149,22 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
             val width = Modifier.widthIn(max = 640.dp).fillMaxWidth()
             AnimatedContent(targetState = page, contentKey = { it.destination }, modifier = width.fillMaxHeight(),
                 transitionSpec = {
-                    val direction = targetState.destination.depth.compareTo(initialState.destination.depth)
+                    val direction = (targetState.destination is StudioDetail).compareTo(initialState.destination is StudioDetail)
                     (fadeIn(tween(220)) + slideInHorizontally(tween(220)) { direction * it / 6 }) togetherWith
                         (fadeOut(tween(140)) + slideOutHorizontally(tween(220)) { -direction * it / 10 }) using
                         null
                 }, label = "studio_navigation") { target ->
                 when (target.destination) {
-                    StudioDestination.CHECKPOINT_EDITOR -> CheckpointImportPage(vm, requireNotNull(target.checkpoint),
+                    StudioDetail.CHECKPOINT_EDITOR -> CheckpointImportPage(vm, requireNotNull(target.checkpoint),
                         pickCheckpoint, pickReference, recordReference, pickAvatar, takeAvatarPhoto, Modifier.fillMaxWidth())
-                    StudioDestination.VOICE_EDITOR -> VoiceEditor(vm, requireNotNull(target.voice), pickReference,
+                    StudioDetail.VOICE_EDITOR -> VoiceEditor(vm, requireNotNull(target.voice), pickReference,
                         recordReference, pickAvatar, takeAvatarPhoto, Modifier.fillMaxWidth())
-                    StudioDestination.PICKER -> VoicePickerPage(vm, Modifier.fillMaxWidth())
-                    StudioDestination.CREATE -> CreatePage(vm, saveAudio, shareAudio, sendQqAudio, pickRuntimePackage, Modifier.fillMaxWidth())
-                    StudioDestination.VOICES -> VoicesPage(vm, Modifier.fillMaxWidth())
-                    StudioDestination.SETTINGS -> SettingsPage(vm, { showingAbout = true }, { showingModels = true }, Modifier.fillMaxWidth())
-                    StudioDestination.MODELS -> ModelsPage(vm, { showingModels = false }, Modifier.fillMaxWidth())
-                    StudioDestination.ABOUT -> AboutPage(closeAbout, vm::notify, Modifier.fillMaxWidth())
+                    StudioDetail.PICKER -> VoicePickerPage(vm, Modifier.fillMaxWidth())
+                    StudioTab.CREATE -> CreatePage(vm, saveAudio, shareAudio, sendQqAudio, pickRuntimePackage, Modifier.fillMaxWidth())
+                    StudioTab.VOICES -> VoicesPage(vm, Modifier.fillMaxWidth())
+                    StudioTab.SETTINGS -> SettingsPage(vm, { showingAbout = true }, { openLink(PROJECT_URL) }, Modifier.fillMaxWidth())
+                    StudioTab.MODELS -> ModelsPage(vm, Modifier.fillMaxWidth())
+                    StudioDetail.ABOUT -> AboutPage(closeAbout, vm::notify, openLink, Modifier.fillMaxWidth())
                 }
             }
         }
@@ -167,7 +172,7 @@ fun StudioScreen(vm: StudioViewModel, pickReference: () -> Unit, pickRuntimePack
 }
 
 @Composable
-private fun PageHeader(title: String) {
+internal fun PageHeader(title: String) {
     TopAppBar(title = { Text(title, style = MaterialTheme.typography.titleLarge,
         modifier = Modifier.semantics { heading() }) }, windowInsets = WindowInsets(0, 0, 0, 0),
         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
@@ -182,7 +187,7 @@ private fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share:
             if (!vm.loading) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(resources.getString(R.string.first_voice), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-                    StudioButton(onClick = { vm.tab = 1 }) { Text(resources.getString(R.string.go_voices)) }
+                    StudioButton(onClick = { vm.tab = StudioTab.VOICES }) { Text(resources.getString(R.string.go_voices)) }
                 }
             }
         }
@@ -468,7 +473,7 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                 Column {
                     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                            .clickable(enabled = !vm.busy && available) { vm.select(voice); vm.tab = 0 }
+                            .clickable(enabled = !vm.busy && available) { vm.select(voice); vm.tab = StudioTab.CREATE }
                             .padding(vertical = 8.dp, horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             VoiceAvatar(voice.name, voice.avatarPath)
@@ -499,16 +504,18 @@ private fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
 @Composable
 private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
     val resources = LocalResources.current
-    val ready = vm.modelFor(model) != null
+    val installed = vm.modelFor(model) != null
+    val ready = vm.resourcesReady(model.ref)
     val voice = vm.voiceFor(model)
     val status = vm.officialDownload.takeIf { it.voice == model.ref }
+    val error = status?.error
     val downloading = status?.running == true
     Column {
-        Row(Modifier.fillMaxWidth().alpha(if (ready) 1f else .55f).padding(vertical = 8.dp),
+        Row(Modifier.fillMaxWidth().alpha(if (installed) 1f else .55f).padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Row(Modifier.weight(1f).clip(RoundedCornerShape(12.dp))
-                .clickable(enabled = ready && !vm.busy && !vm.fileBusy) {
-                    if (voice != null) { vm.select(voice); vm.tab = 0 } else vm.editOfficial(model)
+                .clickable(enabled = installed && !vm.busy && !vm.fileBusy) {
+                    if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE } else vm.editOfficial(model)
                 }.padding(8.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 VoiceAvatar(model.displayName(resources), voice?.avatarPath.orEmpty(), Modifier.size(48.dp))
@@ -518,8 +525,9 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice) {
                         color = MaterialTheme.colorScheme.onSurface)
                     val detail = when {
                         downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
-                        status?.error != null -> status.error?.resolve(resources).orEmpty()
-                        !ready -> resources.getString(R.string.not_downloaded)
+                        !ready && error != null -> error.resolve(resources)
+                        !installed -> resources.getString(R.string.not_downloaded)
+                        !ready -> resources.getString(R.string.shared_resources_missing)
                         else -> null
                     }
                     detail?.let { Text(it, style = MaterialTheme.typography.bodySmall,
@@ -669,7 +677,7 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
                     val installed = vm.modelFor(model)
                     FilterChip(selected = installed != null && draft.modelRef == installed.ref,
                         onClick = { installed?.let { vm.edit(draft.copy(modelRef = it.ref)) } },
-                        label = { Text(model.displayName(resources)) }, enabled = vm.modelFor(model) != null && !vm.fileBusy && !vm.busy)
+                        label = { Text(model.displayName(resources)) }, enabled = installed != null && !vm.fileBusy && !vm.busy)
                 }
                 vm.models.filterNot { vm.isOfficial(it.ref) }.forEach { model ->
                     FilterChip(selected = draft.modelRef == model.ref,
@@ -726,98 +734,6 @@ private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Bo
 }
 
 @Composable
-private fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openModels: () -> Unit, modifier: Modifier) {
-    val resources = LocalResources.current
-    val uriHandler = LocalUriHandler.current
-    var advanced by rememberSaveable { mutableStateOf(false) }
-    val advancedRotation by animateFloatAsState(if (advanced) 90f else 0f, tween(180), label = "advanced_settings")
-    Column(modifier.fillMaxHeight()) {
-        Text(resources.getString(R.string.settings), style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp).semantics { heading() })
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
-            .padding(bottom = 24.dp)) {
-            Column(Modifier.padding(top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(resources.getString(R.string.appearance), style = MaterialTheme.typography.titleMedium)
-                val modes = listOf(ThemeMode.SYSTEM to resources.getString(R.string.theme_system), ThemeMode.LIGHT to resources.getString(R.string.theme_light), ThemeMode.DARK to resources.getString(R.string.theme_dark))
-                SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                    modes.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(selected = vm.theme == value, onClick = { vm.changeTheme(value) },
-                            shape = SegmentedButtonDefaults.itemShape(index, modes.size, RoundedCornerShape(8.dp)),
-                            icon = {}) { Text(label) }
-                    }
-                }
-            }
-            Row(Modifier.fillMaxWidth().heightIn(min = 56.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.gpu_acceleration), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Switch(checked = vm.gpuEnabled && vm.gpuAvailable, onCheckedChange = vm::setGpu, enabled = vm.gpuAvailable && !vm.busy)
-            }
-            val acceleration = vm.acceleration
-            val npuEnabledForGpu = vm.gpuEnabled && vm.hybridAvailable
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 16.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(resources.getString(R.string.device_acceleration), style = MaterialTheme.typography.titleMedium)
-                    val device = listOf(acceleration.device, Build.MODEL).firstOrNull { it.isNotBlank() && it != Build.UNKNOWN }
-                    if (device != null) Text(device, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(UiText(acceleration.detail).resolve(resources), style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                Switch(checked = vm.deviceAccelerationEnabled && npuEnabledForGpu,
-                    onCheckedChange = vm::setDeviceAcceleration,
-                    enabled = npuEnabledForGpu && !vm.busy)
-            }
-            HorizontalDivider(Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-            Row(Modifier.fillMaxWidth().clickable(onClick = openModels).heightIn(min = 56.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.models), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Row(Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 56.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.advanced_settings), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, if (advanced) resources.getString(R.string.collapse) else resources.getString(R.string.expand),
-                    Modifier.size(22.dp).rotate(advancedRotation), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            AnimatedVisibility(advanced, enter = expandVertically(tween(180)) + fadeIn(tween(180)),
-                exit = shrinkVertically(tween(180)) + fadeOut(tween(120))) {
-                Column(Modifier.padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(resources.getString(R.string.local_api), modifier = Modifier.weight(1f))
-                        Switch(checked = vm.apiEnabled, onCheckedChange = vm::setApi)
-                    }
-                    if (vm.apiEnabled) {
-                        Text(resources.getString(R.string.local_api_description), style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        OutlinedTextField(vm.apiPort, vm::editPort, label = { Text(resources.getString(R.string.port)) }, singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), isError = vm.apiPortError != null,
-                            trailingIcon = {
-                                IconButton(onClick = vm::applyPort) {
-                                    Icon(Icons.Default.Check, resources.getString(R.string.save_port), Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                                }
-                            },
-                            supportingText = vm.apiPortError?.let { error -> ({
-                                DismissErrorAfterTimeout(error, vm::clearPortError)
-                                Text(error.resolve(resources))
-                            }) },
-                            modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-            StarInvitation(onClick = {
-                runCatching { uriHandler.openUri("https://github.com/Renakoni/Voicebox") }
-                    .onFailure { vm.notify(UiText(R.string.github_open_failed)) }
-            })
-            Row(Modifier.fillMaxWidth().clickable(onClick = openAbout).heightIn(min = 56.dp),
-                verticalAlignment = Alignment.CenterVertically) {
-                Text(resources.getString(R.string.about), style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.size(22.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
-@Composable
 private fun StepTitle(number: String, title: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
@@ -842,7 +758,7 @@ private fun ErrorMessage(message: UiText, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun DismissErrorAfterTimeout(message: UiText, onDismiss: () -> Unit) {
+internal fun DismissErrorAfterTimeout(message: UiText, onDismiss: () -> Unit) {
     val dismiss by rememberUpdatedState(onDismiss)
     val timeout = LocalAccessibilityManager.current?.calculateRecommendedTimeoutMillis(
         originalTimeoutMillis = 10_000L, containsText = true,

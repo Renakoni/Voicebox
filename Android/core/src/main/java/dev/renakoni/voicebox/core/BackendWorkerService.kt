@@ -22,16 +22,20 @@ class BackendWorkerService : Service() {
         val data = Bundle(message.data)
         val session = data.getString("session")
         val what = message.what
-        val reply = message.replyTo
         if (session == null || runCatching { UUID.fromString(session).toString() }.getOrNull() != session) return@Handler true
-        if (owner == null && what != WorkerProtocol.CLOSE) {
+        if (what == WorkerProtocol.CLOSE || what == WorkerProtocol.CANCEL) {
+            if (owner == session) {
+                if (what == WorkerProtocol.CLOSE) terminate()
+                else operation?.takeIf { it.requestId == data.getString("request") }?.cancel("CANCELLED")
+            }
+            return@Handler true
+        }
+        val reply = message.replyTo ?: return@Handler true
+        if (owner == null) {
             owner = session
             try { reply.binder.linkToDeath({ terminate() }, 0) } catch (_: RemoteException) { terminate() }
         }
-        if (owner == session && what == WorkerProtocol.CLOSE) terminate()
-        else if (owner == session && what == WorkerProtocol.CANCEL) {
-            operation?.takeIf { it.requestId == data.getString("request") }?.cancel("CANCELLED")
-        } else if (owner == session) {
+        if (owner == session) {
             val active = if (what == WorkerProtocol.LIBRARY) GenerationContext(data.getString("request")!!) else null
             operation = active
             executor.execute { try { execute(what, data, reply, active) } finally { operation = null } }

@@ -27,8 +27,8 @@ class CheckpointImporter(
 
     fun import(
         name: String,
-        stageGpt: (File) -> Unit,
-        stageSovits: (File) -> Unit,
+        stageGpt: (File) -> File,
+        stageSovits: (File) -> File,
         progress: (UiText) -> Unit = {},
         checkCancelled: () -> Unit = {},
         reference: Reference? = null,
@@ -37,6 +37,7 @@ class CheckpointImporter(
         sovitsFilename: String = "",
         architectureHint: String? = null,
         newCharacterId: String? = null,
+        prepareResources: (String) -> Unit = {},
     ): Result {
         requireUi(name.isNotBlank() && name.length <= 80) { UiText("voice_name_length") }
         requireUi(newCharacterId == null || newCharacterId.matches(Regex("[a-zA-Z0-9_-]{1,80}"))) { UiText("voice_directory_invalid") }
@@ -46,31 +47,33 @@ class CheckpointImporter(
             requireUi(it.audioFile.extension.matches(Regex("[A-Za-z0-9]{1,8}"))) { UiText("reference_extension_missing") }
         }
         requireUi(filesRoot.isDirectory || filesRoot.mkdirs()) { UiText("model_directory_failed") }
-        val staging = File(filesRoot, ".voicebox-checkpoint-${UUID.randomUUID()}")
-        require(staging.mkdir())
+        // All imports run on the service's single worker. A retry can reclaim an interrupted conversion.
+        val knownTarget = replace ?: newCharacterId?.let { ModelRef("gptsovits", requireNotNull(architectureHint), it) }
+        val target = knownTarget?.let { CharacterVoiceEditor(filesRoot).character(it.modelId, it.variant) }
+        val staging = File(filesRoot, "$WORK/" + (knownTarget?.let { "${it.variant}/${it.modelId}" } ?: "new"))
+        clearStage(staging, target)
+        if (replace != null) requireUi(File(requireNotNull(target), "tts_models").isDirectory) { UiText("voice_model_missing") }
+        require(staging.mkdirs())
         try {
             lateinit var architecture: String
             lateinit var manifest: JSONObject
-            val existing = replace?.let { CharacterVoiceEditor(filesRoot).character(it.modelId, it.variant) }
             progress(UiText("reading_gpt"))
-            val gptFile = File(staging, "source.ckpt")
-            stageGpt(gptFile)
-            normalizeZipHeader(gptFile)
+            val stagedGpt = File(staging, "source.ckpt")
+            val gptFile = normalizeZipHeader(stageGpt(stagedGpt), stagedGpt)
             progress(UiText("reading_sovits"))
-            val sovitsFile = File(staging, "source.pth")
-            stageSovits(sovitsFile)
-            normalizeZipHeader(sovitsFile)
+            val stagedSovits = File(staging, "source.pth")
+            val sovitsFile = normalizeZipHeader(stageSovits(stagedSovits), stagedSovits)
             val characterId = replace?.modelId ?: newCharacterId ?: ("imported-" + UUID.randomUUID().toString())
             val character = File(staging, characterId).apply { mkdirs() }
             val models = File(character, "tts_models").apply { mkdirs() }
             TorchCheckpoint(gptFile).use { gpt ->
                 TorchCheckpoint(sovitsFile).use { sovits ->
                     architecture = validateArchitecture(gpt, sovits, sovitsFile, architectureHint, checkCancelled)
-                    replace?.let { target -> requireUi(target.variant == architecture) {
-                        UiText("checkpoint_structure_mismatch", target.variant, architecture)
+                    knownTarget?.let { ref -> requireUi(ref.variant == architecture) {
+                        UiText("checkpoint_structure_mismatch", ref.variant, architecture)
                     } }
                     progress(UiText("reading_architecture", architecture))
-                    manifest = openAsset("${assetDirectory(architecture)}/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+                    manifest = readManifest(architecture, openAsset)
                     val checkpoints = mapOf("gpt" to gpt, "sovits" to sovits)
                     val groups = manifest.getJSONArray("groups")
                     var finalWeightBytes = 0L
@@ -91,13 +94,14 @@ class CheckpointImporter(
                             checkpoint to tensor
                         }
                     }
+                    prepareResources(architecture)
                     requireUi(filesRoot.usableSpace >= finalWeightBytes) { UiText("checkpoint_storage_full") }
                     val writer = TensorWriter()
                     for (g in tensorsByGroup.indices) {
                         val group = groups.getJSONObject(g)
                         // The manifest describes the rounding precision; the graphs read FP32.
                         val roundToHalf = group.getString("precision") == "fp16"
-                        val filename = group.getString("file").replace("_fp16.bin", "_fp32.bin")
+                        val filename = weightFilename(group)
                         progress(UiText("converting_weights", g + 1, groups.length()))
                         File(models, filename).outputStream().buffered(1024 * 1024).use { output ->
                             for ((checkpoint, tensor) in tensorsByGroup[g]) {
@@ -108,19 +112,15 @@ class CheckpointImporter(
                     }
                 }
             }
-            gptFile.delete()
-            sovitsFile.delete()
+            stagedGpt.delete()
+            stagedSovits.delete()
             progress(UiText("installing_optimized_model"))
             val templates = manifest.getJSONObject("files")
             for (filename in templates.keys()) {
                 checkCancelled()
-                openAsset("${assetDirectory(architecture)}/$filename").use { input -> File(models, filename).outputStream().use { output ->
-                    val buffer = ByteArray(64 * 1024)
-                    while (true) {
-                        val count = input.read(buffer); if (count < 0) break
-                        output.write(buffer, 0, count)
-                    }
-                } }
+                openAsset("${assetDirectory(architecture)}/$filename").use { input ->
+                    File(models, filename).outputStream().use { output -> input.copyTo(output, 64 * 1024) }
+                }
             }
             File(character, "checkpoint-import.json").writeText(JSONObject().put("schema_version", 1)
                 .put("architecture", architecture).put("display_name", name.trim())
@@ -135,26 +135,32 @@ class CheckpointImporter(
             }
             checkCancelled()
             val parent = File(filesRoot, "CharacterModels/$architecture").apply { mkdirs() }
-            if (existing == null) Files.move(character.toPath(), File(parent, characterId).toPath())
-            else CharacterVoiceEditor.replaceDirectory(character, existing)
+            val destination = File(parent, characterId)
+            if (destination.isDirectory && newCharacterId != null) {
+                // Repair just the official model. Recordings and user-edited names live beside tts_models.
+                val weights = File(destination, "tts_models")
+                if (weights.isDirectory) CharacterVoiceEditor.replaceDirectory(models, weights)
+                else Files.move(models.toPath(), weights.toPath())
+            } else if (destination.isDirectory) CharacterVoiceEditor.replaceDirectory(character, destination)
+            else Files.move(character.toPath(), destination.toPath())
             return Result(characterId, name.trim(), architecture)
         } finally {
-            // A failed rollback must never erase the last working weights.
-            if (!File(staging, ".previous").exists()) staging.deleteRecursively()
+            clearStage(staging, target)
         }
     }
 
-    private fun normalizeZipHeader(target: File) {
-        RandomAccessFile(target, "rw").use { file ->
+    private fun normalizeZipHeader(source: File, staged: File): File {
+        RandomAccessFile(source, "r").use { file ->
             requireUi(file.length() >= 4) { UiText("checkpoint_empty") }
             val first = file.readUnsignedByte(); val second = file.readUnsignedByte()
             requireUi(file.readUnsignedByte() == 3 && file.readUnsignedByte() == 4) { UiText("checkpoint_zip_required") }
-            if (first != 80 || second != 75) {
-                // GPT-SoVITS may replace PK with a two-digit model-version marker.
-                requireUi(first in 48..57 && second in 48..57) { UiText("checkpoint_format_unsupported") }
-                file.seek(0); file.write(byteArrayOf(80, 75))
-            }
+            if (first == 80 && second == 75) return source
+            // GPT-SoVITS may replace PK with a two-digit model-version marker.
+            requireUi(first in 48..57 && second in 48..57) { UiText("checkpoint_format_unsupported") }
         }
+        if (source != staged) source.copyTo(staged)
+        RandomAccessFile(staged, "rw").use { it.write(byteArrayOf(80, 75)) }
+        return staged
     }
 
     private fun validateArchitecture(gpt: TorchCheckpoint, sovits: TorchCheckpoint, sovitsFile: File,
@@ -207,7 +213,30 @@ class CheckpointImporter(
     }
 
     companion object {
+        private const val WORK = ".gpt-packages/checkpoints"
+
+        internal fun recoverInterrupted(root: File) {
+            val editor = CharacterVoiceEditor(root)
+            for (variant in File(root, WORK).listFiles().orEmpty()) {
+                if (variant.name == "new") clearStage(variant, null)
+                else for (stage in variant.listFiles().orEmpty()) clearStage(stage, editor.character(stage.name, variant.name))
+            }
+        }
+
+        private fun clearStage(stage: File, target: File?) {
+            if (!stage.exists()) return
+            if (target != null) {
+                CharacterVoiceEditor.recoverReplacement(stage, target)
+                CharacterVoiceEditor.recoverReplacement(File(stage, target.name), File(target, "tts_models"))
+            }
+            check(stage.deleteRecursively())
+        }
+
         private fun assetDirectory(architecture: String) = "checkpoint-${architecture.lowercase()}"
+        internal fun readManifest(architecture: String, openAsset: (String) -> InputStream) =
+            openAsset("${assetDirectory(architecture)}/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+
+        internal fun weightFilename(group: JSONObject) = group.getString("file").replace("_fp16.bin", "_fp32.bin")
         internal fun hex(bytes: ByteArray): String = bytes.joinToString("") { "%02x".format(it.toInt() and 255) }
     }
 }

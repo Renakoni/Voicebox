@@ -31,6 +31,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     api(project(":bridge-api"))
     implementation("androidx.annotation:annotation:1.10.0")
 }

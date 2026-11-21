@@ -144,6 +144,9 @@ class VoiceBoxBackendService : Service() {
         )
         worker.execute {
             runCatching { app.bridgePackages.installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
+            modelRepository.providers.forEach { provider ->
+                runCatching { provider.recoverInstallations() }.onFailure { Log.e("VoiceBoxWorker", "Cannot recover ${provider.id}", it) }
+            }
             catalogReady.complete(Unit)
             mainHandler.post { if (!destroyed) syncLocalHttpApiServer() }
             modelRepository.providers.forEach { if (!destroyed) refreshBackendModes(it) }
@@ -303,20 +306,27 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
-    fun installBridge(id: String): Boolean {
+    /** A null part installs the complete family. The bridge can also be installed independently. */
+    fun installModelParts(id: String, part: String?): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        return downloadOnWorker(OfficialDownloadState(packageId = id)) { context ->
-            archive.install(context::checkCancelled) { percent ->
-                officialDownloadState.value = OfficialDownloadState(packageId = id, label = UiText(R.string.download_preparing), percent = percent, running = true)
+        if (!archive.supported) return false
+        val target = OfficialDownloadState(packageId = id)
+        return downloadOnWorker(target) { context ->
+            val provider = modelRepository.provider(id)
+            val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
+                officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
             }
-            refreshBackendModes(modelRepository.provider(id))
+            if (bridgeInstalled) refreshBackendModes(provider)
+            if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
+                provider.perform(LibraryAction.INSTALL_RESOURCES, Bundle().apply { putString("pack", part) }, context) { label, percent ->
+                    officialDownloadState.value = target.copy(label = UiText.literal(label), percent = percent, running = true)
+                }
+            }
         }
     }
 
     private fun downloadOnWorker(target: OfficialDownloadState, transfer: (GenerationContext) -> Unit): Boolean {
-        val previous = officialDownloadState.value
-        officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
-        val accepted = importOnWorker<Unit>(onComplete = { result ->
+        return importOnWorker<Unit>(onComplete = { result ->
             officialDownloadState.value = result.fold(
                 { target.copy(label = UiText(R.string.download_complete), completed = true) },
                 { error ->
@@ -325,9 +335,10 @@ class VoiceBoxBackendService : Service() {
                         UiText(R.string.download_cancelled) else error.userText()
                         ?: UiText(R.string.download_failed))
                 })
-        }) { context, _ -> transfer(context) }
-        if (!accepted) officialDownloadState.value = previous
-        return accepted
+        }) { context, _ ->
+            officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
+            transfer(context)
+        }
     }
 
     /** Import on the session owner thread; a replacement must never race inference or warmup. */
@@ -875,6 +886,7 @@ class VoiceBoxBackendService : Service() {
     }
 
     companion object {
+        const val BRIDGE_PART = "bridge"
         // A restarted service shares the queue with the previous instance until its native worker has exited.
         private val worker = java.util.concurrent.ThreadPoolExecutor(0, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
             java.util.concurrent.LinkedBlockingQueue<Runnable>())

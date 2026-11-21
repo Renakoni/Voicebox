@@ -50,6 +50,8 @@
         @string/ming_worker_failed,
         @string/model_directory_failed,
         @string/model_incomplete,
+        @string/pack_gpt_common,
+        @string/pack_gpt_vocoder,
         @string/model_lora_unsupported,
         @string/model_v2,
         @string/model_v2_pro,

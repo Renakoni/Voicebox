@@ -1,5 +1,7 @@
 package dev.renakoni.voicebox.model.gptsovits
 
+import dev.renakoni.voicebox.core.fileStamp
+import dev.renakoni.voicebox.core.regularFileAttributes
 import java.io.File
 import java.io.DataInputStream
 import java.nio.ByteBuffer
@@ -8,13 +10,18 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 object HalfPrecisionFileConverter {
-    fun convertFp16FileToFp32File(sourceFile: File, outputFile: File, progress: (Long, Long) -> Unit = { _, _ -> }) {
-        outputFile.parentFile?.mkdirs()
-        val total = sourceFile.length()
-        require(sourceFile.isFile && total > 0 && total % 2L == 0L) { "Invalid FP16 file length: ${sourceFile.name}" }
+    fun prepare(filesRoot: File, sourceFile: File, outputFile: File, progress: (Long, Long) -> Unit) {
+        val sourceStamp = requireNotNull(sourceFile.regularFileAttributes()) { "Missing FP16 file: ${sourceFile.name}" }
+        val total = sourceStamp.size()
+        require(total > 0 && total % 2L == 0L) { "Invalid FP16 file length: ${sourceFile.name}" }
+        val receipt = File(filesRoot, ".gpt-packages/derived/${outputFile.relativeTo(filesRoot).path}.stamp")
+        val current = outputFile.regularFileAttributes()
+        if (current != null && current.size() == total * 2 && receipt.isFile &&
+            receipt.readText() == "${sourceStamp.fileStamp()}\n${current.fileStamp()}") return
         var consumed = 0L
         progress(0, total)
-        val temporary = Files.createTempFile(outputFile.toPath().toAbsolutePath().parent, ".${outputFile.name}-", ".tmp").toFile()
+        // The service serializes conversion. Reuse the scratch path after a process interruption.
+        val temporary = File(outputFile.parentFile, ".${outputFile.name}.tmp")
         try {
             val bytes = ByteArray(64 * 1024)
             val source = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
@@ -34,7 +41,10 @@ object HalfPrecisionFileConverter {
                 }
             }
             progress(consumed, total)
-            Files.move(temporary.toPath(), outputFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            check(sourceFile.regularFileAttributes()?.fileStamp() == sourceStamp.fileStamp()) { "FP16 source changed during conversion" }
+            Files.move(temporary.toPath(), outputFile.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            receipt.parentFile!!.mkdirs()
+            receipt.writeText("${sourceStamp.fileStamp()}\n${requireNotNull(outputFile.regularFileAttributes()).fileStamp()}")
         } finally {
             temporary.delete()
         }

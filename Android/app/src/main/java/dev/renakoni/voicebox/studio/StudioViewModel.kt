@@ -2,6 +2,7 @@ package dev.renakoni.voicebox.studio
 
 import dev.renakoni.voicebox.bridge.AccelerationInfo
 import dev.renakoni.voicebox.bridge.OfficialVoice
+import dev.renakoni.voicebox.bridge.ResourcePack
 import dev.renakoni.voicebox.bridge.VoiceImport
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.ImportedVoice
@@ -48,6 +49,7 @@ import dev.renakoni.voicebox.core.ReferenceLanguage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -71,6 +73,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val settings = AppSettingsRepository(app)
     val backendPackages = app.bridgePackages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
     var installedPackages by mutableStateOf<Set<String>?>(null); private set
+    var resourcePacks by mutableStateOf<Map<String, List<ResourcePack>>>(emptyMap()); private set
     private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
     private val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
     var officialModels by mutableStateOf(emptyList<OfficialVoice>()); private set
@@ -105,7 +108,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var handledOutput: String? = null
     var warmupEnabled = true
 
-    var tab by mutableStateOf(0)
+    internal var tab by mutableStateOf(StudioTab.CREATE)
     var models by mutableStateOf<List<CharacterModel>>(emptyList()); private set
     var voices by mutableStateOf<List<StudioVoice>>(emptyList()); private set
     var selectedId by mutableStateOf(store.selectedId); private set
@@ -120,6 +123,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val synthesisOptions get() = optionsByBackend[selectedVoice?.model?.backendId].orEmpty()
     var loading by mutableStateOf(true); private set
     private var readyResources by mutableStateOf(emptySet<ModelRef>())
+    fun resourcesReady(ref: ModelRef) = ref in readyResources
     val runtimeReady get() = selectedVoice?.model in readyResources
     var connected by mutableStateOf(false); private set
     var state by mutableStateOf(BackendServiceState()); private set
@@ -260,9 +264,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>, val capabilities: Map<String, BackendCapabilities>)
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>,
+        val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>)
 
-    private fun refreshResources() {
+    internal fun refreshResources() {
         resourceUpdates?.cancel()
         resourceUpdates = viewModelScope.launch {
             loading = true
@@ -272,11 +277,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val providers = modelsRepository.providers.filter { it.id in installed }
                     val catalog = providers.flatMap { it.officialVoices() }
                     val discovered = providers.flatMap { provider -> provider.discoverCharacterModels().filter { provider.inspect(it).isComplete } }
-                    val ready = discovered.groupBy { it.ref.backendId to it.ref.variant }
-                        .filterKeys { (id, variant) -> modelsRepository.provider(id).resourcesReady(variant) }
-                        .values.flatten().map { it.ref }.toSet()
-                    val available = discovered.filter { it.ref in ready || catalog.none { voice -> voice.ref == it.ref } }
-                    val defaults = available.mapNotNull { model ->
+                    val packs = providers.associate { provider -> provider.id to provider.resourcePacks { ensureActive() } }
+                    val ready = discovered.map { it.ref }.filter { ref ->
+                        packs.getValue(ref.backendId).all { it.installed || (it.variants.isNotEmpty() && ref.variant !in it.variants) }
+                    }.toSet()
+                    val defaults = discovered.mapNotNull { model ->
                         runCatching { modelsRepository.findReferenceExample(model) }.getOrNull()?.let { reference ->
                             StudioVoice(defaultVoiceId(model.ref), model.displayName,
                                 model.ref, reference.audioFile.absolutePath,
@@ -287,8 +292,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                         if (voice.durationMs > 0) voice else voice.copy(
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
-                    val auxiliary = available.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
-                    ResourcesSnapshot(available, voices, ready, catalog, auxiliary, installed, providers.associate { it.id to it.capabilities })
+                    val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
+                    ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, installed, providers.associate { it.id to it.capabilities }, packs)
                 }
                 models = data.models
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
@@ -296,6 +301,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 officialModels = data.catalog
                 auxiliaryLimits = data.auxiliary
                 installedPackages = data.installed
+                resourcePacks = data.packs
                 capabilities = data.capabilities
                 if (voices.none { it.id == selectedId }) {
                     selectedId = voices.firstOrNull()?.id.orEmpty()
@@ -354,9 +360,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         if (service?.downloadOfficialModel(official) != true) notify(UiText(R.string.engine_busy))
     }
-    fun installBackend(id: String) {
+    fun installModelParts(id: String, part: String?) {
         if (busy || fileBusy) return
-        if (service?.installBridge(id) != true) notify(UiText(R.string.engine_busy))
+        if (service?.installModelParts(id, part) != true) notify(UiText(R.string.engine_busy))
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -367,7 +373,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || modelFor(voice) == null) return
         select(voice)
         choosingVoice = false
-        tab = 0
+        tab = StudioTab.CREATE
     }
     fun beginVoice(voice: StudioVoice? = null) {
         if (busy || fileBusy) return
@@ -534,7 +540,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 voices = voices.filterNot { it.id == voice.id } + voice
                 draft = null
                 select(voice)
-                tab = 0
+                tab = StudioTab.CREATE
                 notify(UiText(R.string.voice_saved))
             }.onFailure { editorError = UiText(R.string.voice_save_failed) }
         }
@@ -773,14 +779,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 store.selectedId = selectedId
                 avatars.save(selectedId, value.avatarPath)
                 refreshResources()
-                tab = if (editing) 1 else 0
+                tab = if (editing) StudioTab.VOICES else StudioTab.CREATE
                 notify(if (editing) UiText(R.string.voice_updated) else UiText(R.string.voice_imported))
             }.onFailure {
                 Log.e("VoiceStudio", "Checkpoint import failed", it)
                 checkpointError = it.userText()
                     ?: UiText(R.string.checkpoint_import_failed)
                 importMessage = null
-                syncDefaults()
+                refreshResources()
             }
         }
         val accepted = if (editing && value.gpt == null) {

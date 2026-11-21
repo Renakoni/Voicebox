@@ -21,8 +21,9 @@ data class ModelDownload(val url: String, val bytes: Long, val sha256: String, v
 
 data class ModelDownloadFile(val source: ModelDownload, val target: File)
 
-/** Probe the whole queue first, then transfer at most two files at a time. */
+/** Choose a reachable mirror once per host group, then transfer up to two missing files at a time. */
 fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Unit,
+    onInstalled: (ModelDownloadFile) -> Unit = {},
     progress: (completed: Int, total: Int, percent: Int) -> Unit) {
     if (files.isEmpty()) return
     val pool = Executors.newFixedThreadPool(2)
@@ -33,11 +34,15 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
         if (stopped.get() || Thread.currentThread().isInterrupted) throw CancellationException()
     }
     try {
-        val routes = files.map { file -> pool.submit(Callable {
+        val preferredMirrors = mutableMapOf<List<String>, Int>()
+        val routes = files.map { file ->
             checkActive()
             val urls = listOf(file.source.url) + file.source.mirrors
-            if (urls.size == 1) urls else fastestSources(urls, ::checkActive)
-        }) }.map { it.get() }
+            if (urls.size == 1) urls else {
+                val index = preferredMirrors.getOrPut(urls.map { URL(it).authority }) { preferredMirror(urls, ::checkActive) }
+                listOf(urls[index]) + urls.filterIndexed { i, _ -> i != index }
+            }
+        }
         checkActive()
         val received = LongArray(files.size)
         val totalBytes = files.sumOf { it.source.bytes }
@@ -57,7 +62,8 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
                     }
                 }
                 checkActive()
-                Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                onInstalled(file)
                 synchronized(received) { completed++; publish() }
             } finally { temporary.delete() }
         }) }
@@ -83,6 +89,12 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
 fun downloadModelFile(source: ModelDownload, target: File, checkCancelled: () -> Unit,
     ordered: List<String> = listOf(source.url) + source.mirrors,
     progress: (Int) -> Unit) {
+    checkCancelled()
+    val directory = requireNotNull(target.absoluteFile.parentFile)
+    requireUi(directory.mkdirs() || directory.isDirectory) { UiText("download_directory_failed") }
+    // All callers supply a scratch file. An interrupted transfer may still occupy its space.
+    Files.deleteIfExists(target.toPath())
+    requireUi(directory.usableSpace >= source.bytes) { UiText("download_storage_full") }
     var failure: Exception? = null
     for (url in ordered) {
         checkCancelled()
@@ -98,43 +110,28 @@ fun downloadModelFile(source: ModelDownload, target: File, checkCancelled: () ->
     throw requireNotNull(failure)
 }
 
-/** Equal-sized range probes race each other; a dead route never delays a working one. */
-private fun fastestSources(urls: List<String>, checkCancelled: () -> Unit): List<String> {
+private fun preferredMirror(urls: List<String>, checkCancelled: () -> Unit): Int {
     val pool = Executors.newFixedThreadPool(urls.size)
-    val completion = ExecutorCompletionService<String?>(pool)
+    val completion = ExecutorCompletionService<Int?>(pool)
     val connections = java.util.Collections.synchronizedList(mutableListOf<HttpURLConnection>())
     try {
-        urls.forEach { url -> completion.submit(Callable {
+        urls.forEachIndexed { index, url -> completion.submit(Callable {
             val connection = URL(url).openConnection() as HttpURLConnection
             connections.add(connection)
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4)
             try {
                 connection.connectTimeout = 4_000
                 connection.readTimeout = 4_000
-                connection.setRequestProperty("Range", "bytes=0-65535")
-                if (connection.responseCode !in listOf(200, 206)) return@Callable null
-                connection.inputStream.use { input ->
-                    val buffer = ByteArray(8192)
-                    var total = 0
-                    while (total < 65536) {
-                        checkCancelled()
-                        if (Thread.currentThread().isInterrupted || System.nanoTime() >= deadline) return@Callable null
-                        val count = input.read(buffer, 0, minOf(buffer.size, 65536 - total))
-                        if (count < 0) break
-                        total += count
-                    }
-                    if (total == 0) return@Callable null
-                }
-                url
+                connection.requestMethod = "HEAD"
+                if (connection.responseCode in 200..299) index else null
             } catch (_: Exception) { null }
             finally { connection.disconnect() }
         }) }
         repeat(urls.size) {
             checkCancelled()
             val winner = completion.take().get()
-            if (winner != null) return listOf(winner) + urls.filterNot { it == winner }
+            if (winner != null) return winner
         }
-        return urls
+        return 0
     } finally {
         pool.shutdownNow()
         synchronized(connections) { connections.forEach(HttpURLConnection::disconnect) }
@@ -151,9 +148,6 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
     try {
         checkCancelled()
         requireUi(connection.responseCode == HttpURLConnection.HTTP_OK) { UiText("download_service_unavailable") }
-        target.parentFile?.mkdirs()
-        requireUi(target.parentFile?.isDirectory == true) { UiText("download_directory_failed") }
-        requireUi(target.parentFile!!.usableSpace > source.bytes) { UiText("download_storage_full") }
         connection.inputStream.use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }
         complete = true
     } finally {
@@ -166,7 +160,7 @@ fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, targ
     checkCancelled: () -> Unit, progress: (Int) -> Unit) {
     val digest = MessageDigest.getInstance("SHA-256")
     var total = 0L
-    var lastPercent = -1
+    var lastPercent = 0
     progress(0)
     target.outputStream().buffered().use { output ->
         val buffer = ByteArray(128 * 1024)
@@ -183,6 +177,6 @@ fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, targ
         }
     }
     checkCancelled()
-    val hash = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+    val hash = digest.digest().toHexString()
     requireUi(total == source.bytes && hash == source.sha256) { UiText("download_checksum_failed") }
 }

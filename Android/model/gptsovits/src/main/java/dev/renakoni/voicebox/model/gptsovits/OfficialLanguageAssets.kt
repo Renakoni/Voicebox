@@ -4,22 +4,16 @@ import java.io.DataInputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.file.Files
 import java.util.zip.GZIPInputStream
 import java.util.zip.ZipFile
 
 /** Converts the pinned upstream GRU arrays with the same gate order as prepare_language_assets.py. */
 internal object OfficialLanguageAssets {
-    fun install(root: File, stage: File, openAsset: (String) -> InputStream, cancel: () -> Unit) {
-        val target = File(root, "RuntimeAssets/language_frontends")
-        val output = File(stage, "language_frontends").apply { mkdirs() }
-        val english = File(output, "english").apply { mkdir() }
-        val graphs = File(english, "external").apply { mkdir() }
-        for (name in listOf("names.tsv", "dictionary.tsv", "encoder.onnx", "decoder.onnx")) {
-            openAsset("english-g2p/$name").use { input -> File(if (name.endsWith(".onnx")) graphs else english, name).outputStream().use(input::copyTo) }
+    fun buildEnglish(checkpoint: File, graphs: File, openAsset: (String) -> InputStream, cancel: () -> Unit) {
+        for (name in listOf("encoder.onnx", "decoder.onnx")) {
+            openAsset("english-g2p/$name").use { input -> File(graphs, name).outputStream().use(input::copyTo) }
         }
-        for (name in listOf("pos-tagdict.json", "pos-classes.json", "pos-weights.json")) File(stage, name).copyTo(File(english, name))
-        ZipFile(File(stage, "checkpoint20.npz")).use { npz ->
+        ZipFile(checkpoint).use { npz ->
             fun array(name: String, elements: Int): ByteArray {
                 cancel()
                 val entry = requireNotNull(npz.getEntry("$name.npy"))
@@ -49,10 +43,12 @@ internal object OfficialLanguageAssets {
                 }
             }
         }
-        val japanese = File(output, "japanese").apply { mkdir() }
+    }
+
+    fun buildJapanese(archive: File, japanese: File, cancel: () -> Unit) {
         val required = mutableSetOf("sys.dic", "unk.dic", "char.bin", "matrix.bin", "COPYING")
         val buffer = ByteArray(128 * 1024)
-        DataInputStream(GZIPInputStream(File(stage, "open_jtalk_dic_utf_8-1.11.tar.gz").inputStream())).use { tar ->
+        DataInputStream(GZIPInputStream(archive.inputStream())).use { tar ->
             val header = ByteArray(512)
             fun copy(count: Long, to: OutputStream?) {
                 var remaining = count
@@ -76,21 +72,17 @@ internal object OfficialLanguageAssets {
         }
         require(required.isEmpty())
         cancel()
-        target.parentFile!!.mkdirs()
-        if (target.exists()) dev.renakoni.voicebox.model.gptsovits.checkpoint.CharacterVoiceEditor.replaceDirectory(output, target)
-        else Files.move(output.toPath(), target.toPath())
+
     }
 
-    fun missing(root: File): List<String> {
-        val base = File(root, "RuntimeAssets/language_frontends")
-        val graphs = if (File(base, "english/external").isDirectory) {
+    fun requiredFiles(externalEnglish: Boolean): List<String> {
+        val graphs = if (externalEnglish) {
             listOf("encoder.onnx", "decoder.onnx", "encoder.weights", "decoder.weights").map { "english/external/$it" }
         } else listOf("english/encoder.onnx", "english/decoder.onnx")
         val required = listOf("japanese/sys.dic", "japanese/char.bin", "japanese/unk.dic", "japanese/matrix.bin",
             "english/dictionary.tsv", "english/names.tsv", "english/pos-weights.json", "english/pos-classes.json",
             "english/pos-tagdict.json") + graphs
-        return required.filterNot { File(base, it).isFile }.map { "language_frontends/$it" }
+        return required.map { "language_frontends/$it" }
     }
 
-    fun ready(root: File) = missing(root).isEmpty()
 }

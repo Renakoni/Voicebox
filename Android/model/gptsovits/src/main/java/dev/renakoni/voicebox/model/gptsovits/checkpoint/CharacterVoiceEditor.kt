@@ -16,7 +16,6 @@ class CharacterVoiceEditor(private val filesRoot: File) {
         val root = File(filesRoot, "CharacterModels/$version").canonicalFile
         val target = File(root, id).canonicalFile
         requireUi(target.parentFile == root && id == target.name && !id.startsWith('.')) { UiText("voice_directory_invalid") }
-        requireUi(File(target, "tts_models").isDirectory) { UiText("voice_model_missing") }
         return target
     }
 
@@ -24,6 +23,7 @@ class CharacterVoiceEditor(private val filesRoot: File) {
         requireUi(name.isNotBlank() && name.length <= 80) { UiText("voice_name_length") }
         requireUi(reference.text.isNotBlank() && reference.audioFile.isFile) { UiText("reference_required") }
         val target = character(id, version)
+        requireUi(File(target, "tts_models").isDirectory) { UiText("voice_model_missing") }
         val manifest = File(target, "prompt_wav.json")
         val json = if (manifest.isFile) JSONObject(manifest.readText()) else JSONObject()
         val previous = json.optJSONObject("Normal")?.optString("wav")?.takeIf { it.isNotBlank() }
@@ -50,6 +50,13 @@ class CharacterVoiceEditor(private val filesRoot: File) {
     }
 
     companion object {
+        fun recoverReplacement(stage: File, target: File) {
+            val previous = File(stage, ".previous")
+            if (!previous.exists()) return
+            if (target.exists()) check(previous.deleteRecursively())
+            else Files.move(previous.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        }
+
         /** Publish a fully converted replacement under the same model ID. No old weights remain after success. */
         fun replaceDirectory(prepared: File, installed: File) {
             require(prepared.isDirectory && installed.isDirectory)

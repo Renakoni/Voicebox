@@ -13,7 +13,9 @@ import java.security.MessageDigest
 /** Converts the official flat V5 vocoder checkpoint into the existing mobile runtime layout. */
 class DownloadedVocoder(private val root: File, private val openAsset: (String) -> InputStream) {
     fun install(source: File, checkCancelled: () -> Unit) {
-        val stage = File(root, ".official-vocoder").apply { mkdirs() }
+        val target = File(root, "RuntimeAssets/v5-vocoder")
+        val work = File(root, ".gpt-packages/vocoder")
+        val stage = File(work, "output").apply { mkdirs() }
         try {
             val manifest = openAsset("official-runtime/v5-vocoder.json").use { JSONObject(it.bufferedReader().readText()) }
             val digest = MessageDigest.getInstance("SHA-256")
@@ -36,10 +38,9 @@ class DownloadedVocoder(private val root: File, private val openAsset: (String) 
                 File(stage, "v5-vocoder-subpixel.onnx").outputStream().use(input::copyTo)
             }
             checkCancelled()
-            val target = File(root, "RuntimeAssets/v5-vocoder")
             target.parentFile!!.mkdirs()
             if (target.isDirectory) CharacterVoiceEditor.replaceDirectory(stage, target)
             else Files.move(stage.toPath(), target.toPath())
-        } finally { if (!File(root, ".previous").exists()) stage.deleteRecursively() }
+        } finally { stage.deleteRecursively() }
     }
 }
