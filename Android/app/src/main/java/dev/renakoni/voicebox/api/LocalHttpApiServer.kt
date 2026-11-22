@@ -1,5 +1,6 @@
 package dev.renakoni.voicebox.api
 
+import android.util.Log
 import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ExecutionBackend
@@ -10,12 +11,15 @@ import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
 import java.io.File
+import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
@@ -41,11 +45,10 @@ class LocalHttpApiServer(
     @Volatile
     private var serverSocket: ServerSocket? = null
 
-    @Volatile
-    private var acceptThread: Thread? = null
+    private val clients = ConcurrentHashMap.newKeySet<Socket>()
+    private var requestExecutor: ExecutorService? = null
 
-    private val requestExecutor: ExecutorService = ThreadPoolExecutor(0, 4, 60L, TimeUnit.SECONDS, SynchronousQueue())
-
+    @Synchronized
     fun start(port: Int) {
         if (serverSocket?.let { !it.isClosed && it.localPort == port } == true) return
         stop()
@@ -64,24 +67,48 @@ class LocalHttpApiServer(
             serverSocket = socket
             socket.reuseAddress = true
             socket.bind(InetSocketAddress(InetAddress.getByName(LOOPBACK_ADDRESS), port))
+            val executor = ThreadPoolExecutor(0, 4, 60L, TimeUnit.SECONDS, SynchronousQueue())
+            requestExecutor = executor
             updateStatus(ApiServerStatus(running = true, port = port))
-            acceptThread = thread(
+            thread(
                 start = true,
                 isDaemon = true,
                 name = "VoiceBoxLocalHttpApi",
             ) {
                 while (!socket.isClosed) {
-                    val client = runCatching { socket.accept() }.getOrNull() ?: break
+                    val client = try {
+                        socket.accept()
+                    } catch (error: IOException) {
+                        synchronized(this) {
+                            if (serverSocket === socket) {
+                                stop()
+                                updateStatus(ApiServerStatus(running = false, port = port, lastError = error.message))
+                            }
+                        }
+                        break
+                    }
+                    if (!registerClient(socket, client)) {
+                        client.close()
+                        break
+                    }
                     try {
-                        requestExecutor.execute { runCatching { handleClient(client) } }
-                    } catch (_: java.util.concurrent.RejectedExecutionException) {
+                        executor.execute {
+                            try {
+                                handleClient(client)
+                            } catch (_: IOException) {
+                                // A disconnected client cannot receive a response.
+                            } finally {
+                                clients -= client
+                            }
+                        }
+                    } catch (_: RejectedExecutionException) {
+                        clients -= client
                         client.close()
                     }
                 }
             }
-        } catch (error: Throwable) {
-            runCatching { serverSocket?.close() }
-            serverSocket = null
+        } catch (error: IOException) {
+            stop()
             updateStatus(
                 ApiServerStatus(
                     running = false,
@@ -92,33 +119,36 @@ class LocalHttpApiServer(
         }
     }
 
+    @Synchronized
+    private fun registerClient(server: ServerSocket, client: Socket): Boolean =
+        serverSocket === server && clients.add(client)
+
+    @Synchronized
     fun stop() {
         runCatching { serverSocket?.close() }
-        runCatching { acceptThread?.interrupt() }
-        acceptThread = null
         serverSocket = null
-        val previousPort = status.port
-        updateStatus(ApiServerStatus(running = false, port = previousPort))
-    }
-
-    fun close() {
-        stop()
-        requestExecutor.shutdownNow()
+        clients.forEach { runCatching { it.close() } }
+        clients.clear()
+        requestExecutor?.shutdownNow()
+        requestExecutor = null
+        updateStatus(ApiServerStatus(running = false, port = status.port))
     }
 
     private fun handleClient(socket: Socket) {
         socket.use { client ->
             client.soTimeout = 10_000
-            val request = runCatching { readRequest(client) }.getOrElse { error ->
+            val request = try {
+                readRequest(client)
+            } catch (error: Exception) {
                 writeResponse(client, HttpResponse(400, errorJson(error.message ?: "Bad request.")))
                 return
             }
-            val response = route(
-                method = request.method,
-                path = request.path,
-                body = request.body,
-                queryParams = request.queryParams,
-            )
+            val response = try {
+                route(request.method, request.path, request.body, request.queryParams)
+            } catch (error: Exception) {
+                Log.w("VoiceBoxLocalHttpApi", "Request failed", error)
+                HttpResponse(500, errorJson(error.message ?: "Request failed."))
+            }
             writeResponse(client, response)
         }
     }
@@ -317,25 +347,32 @@ class LocalHttpApiServer(
         val path = rawPath.substringBefore('?')
         val queryString = rawPath.substringAfter('?', "")
         val queryParams = parseQueryParams(queryString)
-        val headers = linkedMapOf<String, String>()
+        var contentLength: Int? = null
         var headerBytes = 0
         while (true) {
             val line = readAsciiLine(input)
-            if (line.isBlank()) {
+            if (line.isEmpty()) {
                 break
             }
             headerBytes += line.length
             require(headerBytes <= 65_536) { "Request headers are too large." }
             val separator = line.indexOf(':')
-            if (separator > 0) {
-                headers[line.substring(0, separator).trim().lowercase()] = line.substring(separator + 1).trim()
+            require(separator > 0) { "Invalid request header." }
+            val name = line.substring(0, separator)
+            require(name.none { it.isWhitespace() }) { "Invalid request header name." }
+            when (name.lowercase()) {
+                "content-length" -> {
+                    require(contentLength == null) { "Duplicate Content-Length." }
+                    contentLength = requireNotNull(line.substring(separator + 1).trim().toIntOrNull()) {
+                        "Invalid Content-Length."
+                    }
+                }
+                "transfer-encoding" -> error("Transfer-Encoding is not supported.")
             }
         }
-        val contentLength = headers["content-length"]?.let {
-            it.toIntOrNull() ?: error("Invalid Content-Length.")
-        } ?: 0
-        require(contentLength in 0..MAX_REQUEST_BYTES) { "Request body must be at most $MAX_REQUEST_BYTES bytes." }
-        val bodyBytes = ByteArray(contentLength).also { DataInputStream(input).readFully(it) }
+        val size = contentLength ?: 0
+        require(size in 0..MAX_REQUEST_BYTES) { "Request body must be at most $MAX_REQUEST_BYTES bytes." }
+        val bodyBytes = ByteArray(size).also { DataInputStream(input).readFully(it) }
         return ParsedRequest(
             method = method,
             path = path,
@@ -402,12 +439,12 @@ class LocalHttpApiServer(
             if (next == '\n'.code) {
                 break
             }
-            if (next != '\r'.code) {
-                require(bytes.size() < MAX_LINE_BYTES) { "Request line is too long." }
-                bytes.write(next)
-            }
+            require(bytes.size() < MAX_LINE_BYTES) { "Request line is too long." }
+            bytes.write(next)
         }
-        return String(bytes.toByteArray(), StandardCharsets.UTF_8)
+        val line = String(bytes.toByteArray(), StandardCharsets.UTF_8).removeSuffix("\r")
+        require('\r' !in line) { "Invalid line ending." }
+        return line
     }
 
     private fun errorJson(message: String, code: String? = null): String =

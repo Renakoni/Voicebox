@@ -42,6 +42,15 @@ final class Native {
         File root = new File(command.get(0)).getParentFile();
         boolean encode = new File(command.get(0)).getName().equals("ming-reference");
         if (encode) {
+            File assets = new File(command.get(1));
+            for (String name : List.of("campplus.onnx", "speaker.onnx", "mel.f32", "povey.f32")) {
+                if (new File(assets, name).length() == 0) throw new IllegalStateException("MING_CLONE_RESOURCES_REQUIRED");
+            }
+            if (command.get(4).equals("full")) {
+                for (String name : List.of("encoder.onnx", "encoder.data", "projection.onnx", "projection.data")) {
+                    if (new File(assets, name).length() == 0) throw new IllegalStateException("MING_CLONE_RESOURCES_REQUIRED");
+                }
+            }
             System.load(new File(root, "libonnxruntime.so").getAbsolutePath());
             System.load(new File(root, "libming-reference.so").getAbsolutePath());
         } else {

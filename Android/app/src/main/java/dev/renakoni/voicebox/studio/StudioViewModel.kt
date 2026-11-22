@@ -9,6 +9,8 @@ import dev.renakoni.voicebox.core.OfficialDownloadState
 import dev.renakoni.voicebox.VoiceBoxApplication
 
 import dev.renakoni.voicebox.R
+import dev.renakoni.voicebox.BuildConfig
+import dev.renakoni.voicebox.MingModelPackage
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.userText
 import dev.renakoni.voicebox.core.i18n.requireUi
@@ -74,13 +76,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val avatars = VoiceAvatarStore(app)
     private val modelsRepository = app.backends
     private val settings = AppSettingsRepository(app)
-    val backendPackages = app.bridgePackages.packages.sortedWith(compareBy({ !it.spec.bundled }, { it.spec.displayName }))
-    var installedBridgeVersions by mutableStateOf<Map<String, Int>?>(null); private set
-    val installedPackages get() = installedBridgeVersions?.keys
+    val backendPackages = app.bridgePackages.packages.sortedBy { it.spec.displayName }
+    var installedPackages by mutableStateOf<Set<String>?>(null); private set
     var resourcePacks by mutableStateOf<Map<String, List<ResourcePack>>>(emptyMap()); private set
+    internal var mingVoiceWeights by mutableStateOf<ResourcePack?>(null); private set
+    internal val mingName get() = backendPackages.first { it.spec.id == MingModelPackage.BACKEND }.spec.displayName
+    internal val mingInstalled get() = installedPackages?.contains(MingModelPackage.BACKEND) == true
     private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
     private val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
     var officialModels by mutableStateOf(emptyList<OfficialVoice>()); private set
+    val needsModel get() = installedPackages.isNullOrEmpty()
     private fun providerFor(type: VoiceImport) = capabilities.entries.firstOrNull { type in it.value.imports }?.key
     private val importProvider get() = (checkpointDraft?.editingRef?.backendId ?: providerFor(VoiceImport.CHECKPOINT_PAIR))
         ?.let(modelsRepository::provider)
@@ -107,7 +112,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var pendingRequest by mutableStateOf<GenerationContext?>(null)
     var warmupEnabled = true
 
-    internal var tab by mutableStateOf(StudioTab.CREATE)
+    internal val modelPreview = BuildConfig.DEBUG && BuildConfig.MODEL_PREVIEW
+    internal var tab by mutableStateOf(if (modelPreview) StudioTab.MODELS else StudioTab.CREATE)
     var models by mutableStateOf<List<CharacterModel>>(emptyList()); private set
     var voices by mutableStateOf<List<StudioVoice>>(emptyList()); private set
     var selectedId by mutableStateOf(store.selectedId); private set
@@ -212,6 +218,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             service = (binder as VoiceBoxBackendService.LocalBinder).getService()
+            loading = true
             connected = true
             val backendService = service!!
             backendService.addListener(listener)
@@ -237,6 +244,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             streamAudio.stop()
             accelerationUpdates?.cancel()
             downloadUpdates?.cancel()
+            resourceUpdates?.cancel()
+            loading = false
+            importing = false
+            importMessage = null
             officialDownload = OfficialDownloadState()
             service = null
             connected = false
@@ -255,14 +266,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
             ContextCompat.startForegroundService(app, intent)
-            bound = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            val binding = app.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            bound = true
+            check(binding)
         }.onFailure { loading = false; notify(UiText(R.string.service_start_failed)) }
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Map<String, Int>,
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>,
         val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>,
-        val presets: Map<ModelRef, List<SynthesisVoicePreset>>)
+        val presets: Map<ModelRef, List<SynthesisVoicePreset>>, val mingVoiceWeights: ResourcePack)
 
     internal fun refreshResources() {
         resourceUpdates?.cancel()
@@ -270,12 +283,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    val installed = backendPackages.mapNotNull { archive ->
-                        archive.active?.spec?.let { it.id to it.version }
-                    }.toMap()
+                    val installed = backendPackages.filter { it.installed }.map { it.spec.id }.toSet()
                     val providers = modelsRepository.providers.filter { it.id in installed }
                     val catalog = providers.flatMap { it.officialVoices() }
-                    val discovered = providers.flatMap { provider -> provider.discoverCharacterModels().filter { provider.inspect(it).isComplete } }
+                    val ming = app.mingModelPackage
+                    val mingWeights = ming.officialPack()
+                    val discovered = app.completeModels(providers, mingWeights.installed)
                     val packs = providers.associate { provider -> provider.id to provider.resourcePacks { ensureActive() } }
                     val ready = discovered.map { it.ref }.filter { ref ->
                         packs.getValue(ref.backendId).all { it.installed || (it.variants.isNotEmpty() && ref.variant !in it.variants) }
@@ -294,7 +307,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
                     val presets = discovered.associate { it.ref to modelsRepository.provider(it).voicePresets(it) }
                     ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, installed,
-                        providers.associate { it.id to it.capabilities }, packs, presets)
+                        providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to ming.modelPacks()),
+                        presets, mingWeights)
                 }
                 models = data.models
                 creationSettings.updatePresets(data.presets)
@@ -302,13 +316,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 readyResources = data.ready
                 officialModels = data.catalog
                 auxiliaryLimits = data.auxiliary
-                installedBridgeVersions = data.installed
+                installedPackages = data.installed
                 resourcePacks = data.packs
+                mingVoiceWeights = data.mingVoiceWeights
                 capabilities = data.capabilities
-                if (voices.none { it.id == selectedId }) {
-                    selectedId = voices.firstOrNull()?.id.orEmpty()
-                    store.selectedId = selectedId
-                }
+                restoreVoiceSelection()
                 syncDefaults()
             } catch (error: Exception) {
                 if (error is kotlinx.coroutines.CancellationException) throw error
@@ -337,6 +349,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private fun defaultVoiceId(ref: ModelRef) = "default:${ref.backendId}/${ref.variant}/${ref.modelId}"
 
     fun modelFor(voice: StudioVoice): CharacterModel? = models.firstOrNull { it.ref == voice.model }
+    private fun restoreVoiceSelection() {
+        if (selectedVoice?.let(::modelFor) != null) return
+        val fallback = voices.firstOrNull { modelFor(it) != null }?.id.orEmpty()
+        if (selectedId == fallback) return
+        selectedId = fallback
+        store.selectedId = fallback
+        generationError = null
+    }
+
     fun modelFor(official: OfficialVoice): CharacterModel? = models.firstOrNull { it.ref == official.ref }
     fun isOfficial(ref: ModelRef) = officialModels.any { it.ref == ref }
     fun voiceFor(official: OfficialVoice): StudioVoice? = voices.firstOrNull { it.builtIn && it.model == official.ref }
@@ -357,15 +378,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         if (service?.installModelParts(id, part) != true) notify(UiText(R.string.engine_busy))
     }
+    internal fun downloadMingVoices() {
+        if (busy || fileBusy) return
+        if (service?.downloadMingVoices() != true) notify(UiText(R.string.engine_busy))
+    }
     fun removeModelPart(id: String, part: String) {
         if (loading || busy || fileBusy) return
-        if (service?.removeModelPart(id, part) { result ->
-            result.onFailure {
-                Log.e("VoiceStudio", "Model component removal failed", it)
-                notify(it.userText() ?: UiText(R.string.model_remove_failed))
-            }
-            refreshResources()
-        } != true) notify(UiText(R.string.engine_busy))
+        if (service?.removeModelPart(id, part, ::onModelRemoval) != true) notify(UiText(R.string.engine_busy))
+    }
+    internal fun removeOfficialWeights(voice: OfficialVoice) {
+        if (loading || busy || fileBusy) return
+        if (service?.removeOfficialWeights(voice, ::onModelRemoval) != true) notify(UiText(R.string.engine_busy))
+    }
+    private fun onModelRemoval(result: Result<Unit>) {
+        result.onFailure {
+            Log.e("VoiceStudio", "Model component removal failed", it)
+            notify(it.userText() ?: UiText(R.string.model_remove_failed))
+        }
+        refreshResources()
     }
     fun cancelOfficialDownload() {
         if (officialDownload.running) state.requestId?.let { service?.cancelGeneration(it) }
@@ -522,14 +552,16 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     val old = previous.firstOrNull { it.id == value.id }?.audioPath
                     val target = if (value.audioPath == old) source
                         else File(referenceRoot, "${UUID.randomUUID()}.${source.extension}")
-                    if (target != source) {
-                        try { source.copyTo(target) }
-                        catch (error: Exception) { target.delete(); throw error }
-                    }
                     val voice = StudioVoice(value.id, value.name.trim(), value.modelRef,
                         target.absolutePath, value.audioName, value.transcript.trim(), value.durationMs,
                         referenceLanguage = value.referenceLanguage, avatarPath = value.avatarPath)
-                    store.save(previous.filterNot { it.id == voice.id } + voice)
+                    try {
+                        if (target != source) source.copyTo(target)
+                        store.save(previous.filterNot { it.id == voice.id } + voice)
+                    } catch (error: Exception) {
+                        if (target != source) target.delete()
+                        throw error
+                    }
                     avatars.save(voice.id, value.avatarPath)
                     old?.let {
                         File(it).takeIf { file -> file != target && file.parentFile == referenceRoot }?.delete()
@@ -545,21 +577,30 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 select(voice)
                 tab = StudioTab.CREATE
                 notify(UiText(R.string.voice_saved))
+                if (loading) refreshResources()
             }.onFailure { editorError = UiText(R.string.voice_save_failed) }
         }
     }
 
     fun deleteVoice(voice: StudioVoice) {
         if (busy || fileBusy || voice.builtIn) return
+        fileBusy = true
         audio.stop()
-        store.save(store.voices().filterNot { it.id == voice.id })
-        avatars.save(voice.id, "")
-        File(voice.audioPath).takeIf { it.parentFile == referenceRoot }?.delete()
-        voices = voices.filterNot { it.id == voice.id }
-        if (selectedId == voice.id) {
-            selectedId = voices.firstOrNull()?.id.orEmpty()
-            store.selectedId = selectedId
-            syncDefaults()
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    store.save(store.voices().filterNot { it.id == voice.id })
+                    avatars.save(voice.id, "")
+                    File(voice.audioPath).takeIf { it.parentFile == referenceRoot }?.delete()
+                }
+            }
+            fileBusy = false
+            result.onSuccess {
+                voices = voices.filterNot { it.id == voice.id }
+                restoreVoiceSelection()
+                syncDefaults()
+                if (loading) refreshResources()
+            }.onFailure { notify(UiText(R.string.voice_delete_failed)) }
         }
     }
 
@@ -616,7 +657,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 if (request.context.streamDirectory != null) streamAudio.stop()
                 if (result is InferResult.Error && request.context.cancellationReason == null) {
                     Log.e("VoiceStudio", result.message)
-                    generationError = UiText(if (result.code == "EMPTY_SEMANTIC") R.string.generation_empty else R.string.generation_failed)
+                    when (result.code) {
+                        "MING_CLONE_RESOURCES_REQUIRED" -> {
+                            notify(UiText(R.string.ming_clone_resources_required))
+                            tab = StudioTab.MODELS
+                        }
+                        "EMPTY_SEMANTIC" -> generationError = UiText(R.string.generation_empty)
+                        else -> generationError = UiText(R.string.generation_failed)
+                    }
                 }
             }
         } == true
@@ -866,9 +914,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     fun export(uri: Uri, path: String) = viewModelScope.launch {
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                app.contentResolver.openOutputStream(uri)?.use { destination ->
-                    File(path).inputStream().use { it.copyTo(destination) }
-                } ?: errorUi(UiText(R.string.file_write_failed))
+                File(path).inputStream().use { source ->
+                    app.contentResolver.openOutputStream(uri, "wt")?.use { source.copyTo(it) }
+                        ?: errorUi(UiText(R.string.file_write_failed))
+                }
             }
         }
         notify(if (result.isSuccess) UiText(R.string.audio_saved) else UiText(R.string.audio_save_failed))

@@ -42,6 +42,7 @@
         @string/metadata_truncated,
         @string/metadata_unsupported,
         @string/metadata_unterminated,
+        @string/ming_clone_resources_required,
         @string/ming_generating,
         @string/ming_name,
         @string/ming_not_installed,

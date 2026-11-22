@@ -79,7 +79,12 @@ class StudioStore(context: Context) {
                 .put("audioName", voice.audioName).put("transcript", voice.transcript)
                 .put("duration", voice.durationMs).put("referenceLanguage", voice.referenceLanguage))
         }
-        preferences.edit().putString("voices", array.toString()).apply()
+        val previous = preferences.getString("voices", null)
+        if (!preferences.edit().putString("voices", array.toString()).commit()) {
+            // SharedPreferences updates its in-memory value even when the disk write fails.
+            preferences.edit().putString("voices", previous).apply()
+            error("Could not persist studio voices.")
+        }
     }
 
     var output: StudioOutput?

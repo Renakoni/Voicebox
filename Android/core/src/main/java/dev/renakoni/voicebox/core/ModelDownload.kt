@@ -156,7 +156,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
     }
 }
 
-fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
+private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
     checkCancelled: () -> Unit, progress: (Int) -> Unit) {
     val digest = MessageDigest.getInstance("SHA-256")
     var total = 0L

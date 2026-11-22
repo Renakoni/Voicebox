@@ -31,14 +31,12 @@ class MingModelResources(context: Context) {
     }
 
     companion object {
-        private val htpFiles = listOf("htp/flow.onnx", "htp/flow.data", "htp/time.onnx", "htp/time.data",
+        private val htpFiles = listOf("htp/flow.onnx", "htp/flow.data",
             "models/aggregator-htp.onnx")
         private val requiredFiles = listOf(
             "models/tokenizer.json", "models/llm.onnx", "models/llm.data", "models/embedding.f32",
             "models/flow.onnx", "models/flow.data", "models/aggregator.onnx", "models/aggregator.data",
             "models/audio.onnx", "models/audio.data", "models/time.onnx", "models/time.data", "models/window.f32",
-            "reference/encoder.onnx", "reference/encoder.data", "reference/speaker.onnx", "reference/campplus.onnx",
-            "reference/projection.onnx", "reference/projection.data", "reference/mel.f32", "reference/povey.f32",
         )
     }
 }

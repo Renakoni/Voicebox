@@ -8,6 +8,5 @@ class BackendRegistry(val providers: List<InstalledBackend>) {
     fun provider(id: String) = byId.getValue(id)
     fun provider(model: CharacterModel) = provider(model.ref.backendId)
     fun discoverCharacterModels() = providers.flatMap { it.discoverCharacterModels() }
-    fun inspect(model: CharacterModel) = provider(model).inspect(model)
     fun findReferenceExample(model: CharacterModel) = provider(model).findReferenceExample(model)
 }

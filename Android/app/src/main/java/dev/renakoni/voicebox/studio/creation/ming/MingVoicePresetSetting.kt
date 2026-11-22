@@ -95,7 +95,7 @@ internal fun MingVoicePresetSetting(presets: List<SynthesisVoicePreset>, active:
 }
 
 @Composable
-private fun MingPresetBrowser(presets: List<SynthesisVoicePreset>, active: SynthesisVoicePreset?,
+internal fun MingPresetBrowser(presets: List<SynthesisVoicePreset>, active: SynthesisVoicePreset?,
     onBack: () -> Unit, onSelect: (String?) -> Unit) {
     val resources = LocalResources.current
     val configuration = LocalConfiguration.current

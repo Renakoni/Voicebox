@@ -9,7 +9,6 @@ internal object WorkerProtocol {
     const val GENERATE = 1
     const val WARMUP = 2
     const val TRIM = 3
-    const val CLOSE = 4
     const val EVENT = 5
     const val RESULT = 6
     const val PROBE = 7

@@ -39,7 +39,8 @@ internal class CreationSettings(
     val usesOutputLanguage get() = provider?.usesOutputLanguage(options) ?: true
     val sampleLanguage get() = if (usesOutputLanguage) outputLanguage.ifBlank { preset?.language.orEmpty() } else ""
     val optionControls get() = provider?.controls.orEmpty()
-    val presets get() = presetsByModel[selectedModel()].orEmpty()
+    val presets get() = presetsFor(selectedModel())
+    fun presetsFor(ref: ModelRef?) = presetsByModel[ref].orEmpty()
     val preset get() = presets.firstOrNull { it.id == presetSelections[selectedModel()] }
     val options get() = model.editableOptions(optionsByBackend[selectedModel()?.backendId].orEmpty(), preset)
     val supportsStreaming get() = provider?.supportsStreaming == true

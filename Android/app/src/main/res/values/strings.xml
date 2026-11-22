@@ -2,13 +2,9 @@
 <resources>
     <string name="app_name">VoiceBox</string>
     <string name="prototype_idle_status">Ready</string>
-    <string name="prototype_backend_unavailable">%1$s backend is unavailable.</string>
-    <string name="prototype_generation_busy">Generation is in progress. Please wait.</string>
     <string name="prototype_generation_error">Generation failed: %1$s</string>
     <string name="prototype_service_notification_title">VoiceBox background service</string>
     <string name="prototype_service_notification_description">Keeps speech generation running and shows its status.</string>
-    <string name="prototype_cache_cleared">Cache cleared. Removed %1$d audio files and %2$d runtime cache files.</string>
-    <string name="prototype_cache_clear_failed">Could not clear the cache: %1$s</string>
     <string name="prototype_stage_inspecting_resources">Checking resources.</string>
     <string name="prototype_stage_installing_model">Preparing model.</string>
     <string name="prototype_stage_initializing_backend">Initializing %1$s.</string>
@@ -19,14 +15,11 @@
     <string name="prototype_service_completed">Generation complete. Audio duration: %1$s.</string>
     <string name="prototype_service_completed_rtf">Audio %1$s · Inference RTF %2$.3f</string>
     <string name="inference_rtf">Inference RTF %1$.3f</string>
-    <string name="prototype_service_api_invalid_request">The API request is incomplete or the voice does not exist.</string>
     <string name="download_preparing">Preparing download</string>
     <string name="download_complete">Downloaded</string>
     <string name="download_cancelled">Download cancelled</string>
     <string name="download_failed">Download failed. Check your connection and try again.</string>
     <string name="resource_open_failed">Could not read the resource package. Select the file again.</string>
-    <string name="gpt_open_failed">Could not read the GPT weights. Select the file again.</string>
-    <string name="sovits_open_failed">Could not read the SoVITS weights. Select the file again.</string>
     <string name="resources_importing">Importing resources</string>
     <string name="microphone_permission">Allow microphone access to record, or select an audio file.</string>
     <string name="gallery_unavailable">Could not open the gallery. Check that a gallery app is installed.</string>
@@ -76,7 +69,7 @@
     <string name="checkpoint_config_missing">The model configuration is missing. Select complete weights exported by GPT-SoVITS.</string>
     <string name="v5_variant_unsupported">Only complete V5 Turbo weights are supported. Other diffusion variants and LoRA weights are not supported.</string>
     <string name="v5_variant_ambiguous">These V5 weights lack a Dev/Turbo identifier. Please use standard V5 Turbo weights.</string>
-    <string name="v2_variant_unsupported">Select complete V2 Pro or V2 Pro Plus weights. Standard V2, diffusion models, and LoRA weights are not supported.</string>
+    <string name="v2_variant_unsupported">Select complete V2 Pro or V2 ProPlus weights. Standard V2, diffusion models, and LoRA weights are not supported.</string>
     <string name="checkpoint_truncated">The weight file is truncated.</string>
     <string name="checkpoint_nonfinite">The weights contain NaN or infinite values. Check the model file.</string>
     <string name="checkpoint_fp16_range">The weights exceed the FP16 range supported by this deployment format.</string>
@@ -243,6 +236,8 @@
     <string name="tab_voices">Voices</string>
     <string name="settings">Settings</string>
     <string name="first_voice">Add your first voice</string>
+    <string name="install_first_model">Install a model to get started</string>
+    <string name="go_models">Go to Models</string>
     <string name="go_voices">Go to Voices</string>
     <string name="create_title">Create speech</string>
     <string name="voices_loading">Loading voices…</string>
@@ -410,6 +405,7 @@
     <string name="voice_name_exists">This voice name is already in use. Choose another name.</string>
     <string name="voice_saved">Voice saved. You can now use it to create speech.</string>
     <string name="voice_save_failed">Could not save the voice. Check available storage and try again.</string>
+    <string name="voice_delete_failed">Could not delete the voice. Try again.</string>
     <string name="reference_missing">The reference audio is missing. Select it again in Voices.</string>
     <string name="engine_other_task">The engine is working on another task. Try again later.</string>
     <string name="import_resources_progress">Importing resources. Large files may take a while.</string>
@@ -442,9 +438,9 @@
     <string name="cancel">Cancel</string>
     <string name="preview_audio">Preview</string>
     <string name="record_start">Start recording</string>
-    <string name="official_model_name">Official %1$s</string>
+    <string name="official_model_name">GPT-SoVITS %1$s</string>
     <string name="generation_cancelled">Generation stopped.</string>
-    <string name="model_v2_pro_plus">V2 Pro Plus</string>
+    <string name="model_v2_pro_plus">V2 ProPlus</string>
     <string name="model_v2_pro">V2 Pro</string>
     <string name="model_v2">V2</string>
     <string name="model_v5_turbo">V5 Turbo</string>
@@ -458,9 +454,6 @@
     <string name="model_remaining">%1$s to download</string>
     <string name="model_device_unsupported">Unsupported on this device</string>
     <string name="model_bridge">Inference bridge</string>
-    <string name="model_install">Install</string>
-    <string name="model_update">Update</string>
-    <string name="model_installed_update_available">Installed · Update available</string>
     <string name="model_install_part">Install %1$s</string>
     <string name="model_remove_part">Remove %1$s</string>
     <string name="model_remove_confirmation">Uninstall \"%1$s\"</string>
@@ -468,12 +461,16 @@
     <string name="model_removing">Removing model component</string>
     <string name="model_remove_failed">Could not remove the model component.</string>
     <string name="model_prepare">Prepare</string>
+    <string name="ming_clone_resources">Voice cloning resources</string>
+    <string name="ming_clone_resources_required">Download Ming-TTS voice cloning resources in Models to use this reference audio feature.</string>
+    <string name="ming_htp_resources">Inference acceleration pack</string>
+    <string name="ming_official_weights">Official voice weights</string>
+    <string name="ming_official_weights_download">Official voice weights · %1$s</string>
     <string name="pack_gpt_common">V2 / V5 shared resources</string>
     <string name="pack_gpt_vocoder">V5 Turbo vocoder</string>
     <string name="back_settings">Back to settings</string>
     <string name="ming_name">Ming-TTS 0.5B</string>
     <string name="backend_installed">Installed</string>
-    <string name="ming_downloading">Downloading and verifying Ming-TTS…</string>
     <string name="ming_not_installed">Download Ming-TTS from the Models tab first.</string>
     <string name="ming_preparing">Preparing the Ming-TTS reference…</string>
     <string name="ming_generating">Generating speech with Ming-TTS…</string>

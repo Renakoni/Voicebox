@@ -9,6 +9,7 @@ import dev.renakoni.voicebox.core.i18n.userText
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.Executors
+import kotlin.system.exitProcess
 
 /** Each binding owns one package and native environment until the process exits. */
 class BackendWorkerService : Service() {
@@ -23,11 +24,8 @@ class BackendWorkerService : Service() {
         val session = data.getString("session")
         val what = message.what
         if (session == null || runCatching { UUID.fromString(session).toString() }.getOrNull() != session) return@Handler true
-        if (what == WorkerProtocol.CLOSE || what == WorkerProtocol.CANCEL) {
-            if (owner == session) {
-                if (what == WorkerProtocol.CLOSE) terminate()
-                else operation?.takeIf { it.requestId == data.getString("request") }?.cancel("CANCELLED")
-            }
+        if (what == WorkerProtocol.CANCEL) {
+            if (owner == session) operation?.takeIf { it.requestId == data.getString("request") }?.cancel("CANCELLED")
             return@Handler true
         }
         val reply = message.replyTo ?: return@Handler true
@@ -56,7 +54,7 @@ class BackendWorkerService : Service() {
 
     override fun attachBaseContext(base: android.content.Context) = super.attachBaseContext(dev.renakoni.voicebox.core.i18n.UiLanguageContext(base))
     override fun onBind(intent: Intent): IBinder = messenger.binder
-    override fun onUnbind(intent: Intent): Boolean { terminate(); return false }
+    override fun onUnbind(intent: Intent): Boolean = terminate()
 
     private fun execute(what: Int, data: Bundle, reply: Messenger, active: GenerationContext?) {
         fun send(type: Int, contents: Bundle) {
@@ -65,10 +63,11 @@ class BackendWorkerService : Service() {
         }
         val result = Bundle()
         try {
+            val work = File(cacheDir, "bridge-workers/${data.getString("session")}")
             val backend = provider ?: run {
                 val archive = BridgePackages(this).get(data.getString("backendId")!!)
                 val installed = requireNotNull(archive.active) { "Backend is unavailable" }
-                val work = File(cacheDir, "bridge-workers/${data.getString("session")}").also { it.mkdirs() }
+                work.mkdirs()
                 installed.openProvider(this, work, requireNotNull(data.getBundle("settings"))).also { provider = it }
             }
             val engine by lazy {
@@ -111,14 +110,21 @@ class BackendWorkerService : Service() {
                 WorkerProtocol.WARMUP -> request().let { it.context.run { engine.warmup(it) } }
                 WorkerProtocol.GENERATE -> {
                     val request = request()
-                    val audio = request.context.run { engine.generate(request, object : BackendRuntimeCallbacks {
-                        override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
-                            send(WorkerProtocol.EVENT, Bundle().apply {
-                                putString("stage", stage.name); putString("message", message.take(4096))
-                                progressPercent?.let { putInt("percent", it) }; putString("label", progressLabel?.take(4096))
-                            })
-                        }
-                    }) }
+                    val audio = try {
+                        request.context.run { engine.generate(request, object : BackendRuntimeCallbacks {
+                            override fun onStage(stage: GenerationStage, message: String, progressPercent: Int?, progressLabel: String?) {
+                                send(WorkerProtocol.EVENT, Bundle().apply {
+                                    putString("stage", stage.name); putString("message", message.take(4096))
+                                    progressPercent?.let { putInt("percent", it) }; putString("label", progressLabel?.take(4096))
+                                })
+                            }
+                        }) }
+                    } finally {
+                        // Ming keeps its native runtime alive but uses this directory for request scratch.
+                        if (!backend.supportsWarmup) runCatching {
+                            work.listFiles().orEmpty().forEach(::deleteFileTree)
+                        }.onFailure { Log.w("VoiceBoxWorker", "Could not remove request scratch", it) }
+                    }
                     result.putString("path", audio.file.absolutePath)
                     result.putInt("samples", audio.audioSamples)
                     result.putInt("rate", audio.sampleRate)
@@ -138,5 +144,6 @@ class BackendWorkerService : Service() {
         runCatching { send(WorkerProtocol.RESULT, result) }.onFailure { terminate() }
     }
 
-    private fun terminate() { android.os.Process.killProcess(android.os.Process.myPid()) }
+    // Exit cleanly so Android does not count normal worker turnover as crashes.
+    private fun terminate(): Nothing = exitProcess(0)
 }

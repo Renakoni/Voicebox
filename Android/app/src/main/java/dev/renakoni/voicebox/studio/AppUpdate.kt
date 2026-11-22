@@ -47,11 +47,9 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
                     releaseUrl.removePrefix(prefix)
                 }
             } ?: return null
-            if (tag == "v${BuildConfig.VERSION_NAME}") return null
-            val match = Regex("v([0-9]+)\\.([0-9]+)\\.([0-9]+)").matchEntire(tag) ?: return null
-            val major = match.groupValues[1].toIntOrNull() ?: return null
-            val minor = match.groupValues[2].toIntOrNull() ?: return null
-            if (major == 0 || (major == 1 && minor < 2)) return null
+            val candidate = releaseVersion(tag) ?: return null
+            val installed = checkNotNull(releaseVersion("v${BuildConfig.VERSION_NAME}"))
+            if (compareValuesBy(candidate, installed, { it.first }, { it.second }, { it.third }) <= 0) return null
 
             val versions = get("https://raw.githubusercontent.com/Renakoni/Voicebox/refs/tags/$tag/Android/gradle.properties")
             val properties = Properties().apply { versions.reader().use(::load) }
@@ -78,6 +76,12 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
                 null
             }
             return AppUpdate(version, code, notes, ModelDownload(url, bytes, digest))
+        }
+
+        private fun releaseVersion(tag: String): Triple<Int, Int, Int>? {
+            val parts = Regex("v([0-9]+)\\.([0-9]+)\\.([0-9]+)").matchEntire(tag)?.groupValues ?: return null
+            return Triple(parts[1].toIntOrNull() ?: return null, parts[2].toIntOrNull() ?: return null,
+                parts[3].toIntOrNull() ?: return null)
         }
 
         private fun <T> request(url: String, method: String = "GET", followRedirects: Boolean = true,

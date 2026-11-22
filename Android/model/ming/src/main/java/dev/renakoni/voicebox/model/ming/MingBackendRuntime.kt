@@ -35,7 +35,13 @@ internal class MingBackendRuntime(private val context: Context, override val bac
         if (htp != null) {
             val cached = MingHtp.contextGraph(context, directory, htp, work)
             Files.createSymbolicLink(File(bundle, "flow-context.onnx").toPath(), cached.toPath())
-            Files.createSymbolicLink(File(bundle, "htp").toPath(), htp.toPath())
+            val htpBundle = File(bundle, "htp").also { check(it.mkdir()) }
+            for (name in listOf("flow.onnx", "flow.data")) {
+                Files.createSymbolicLink(File(htpBundle, name).toPath(), File(htp, name).toPath())
+            }
+            for (name in listOf("time.onnx", "time.data")) {
+                Files.createSymbolicLink(File(htpBundle, name).toPath(), File(resources.directory, "models/$name").toPath())
+            }
             usingHtp = true
         }
         val useReference = MingSynthesisOptions.usesReference(request.options)
@@ -67,6 +73,9 @@ internal class MingBackendRuntime(private val context: Context, override val bac
             val arguments = listOf(bundle.absolutePath, input.absolutePath, output.absolutePath, mode, threads)
             entry.invoke(null, (arguments + listOfNotNull(request.context.streamDirectory)).toTypedArray())
         } catch (error: java.lang.reflect.InvocationTargetException) {
+            if (error.targetException.message == "MING_CLONE_RESOURCES_REQUIRED") {
+                throw BackendFailure("MING_CLONE_RESOURCES_REQUIRED", UiText("ming_clone_resources_required").resolve(context.resources))
+            }
             output.walkTopDown().filter { it.isFile && it.extension == "log" }.forEach { log ->
                 java.io.RandomAccessFile(log, "r").use { reader ->
                     reader.seek((reader.length() - 4096).coerceAtLeast(0))

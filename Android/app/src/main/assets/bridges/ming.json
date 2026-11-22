@@ -2,34 +2,34 @@
   "contract": 1,
   "id": "ming",
   "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
+  "minAppVersionCode": 11,
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "5104e04bf0fb46bd2f828843e8d483a84de2821dca1c21a49df04803f942d0e7",
+  "adapterSourceSha256": "8242a7e730bda941a2585649e27cd7be97752e15961145bd249c84904f515b75",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
-  "version": "3",
-  "minAppVersionCode": 11,
-  "revision": "75188775091628211358786b72ba86bc747f37f0e5a16a86d9bf36f843921f5e",
+  "version": "4",
+  "revision": "c6d5899aa380ef759f91a120c7c00e511502164decde438b08a62cc75388a0d8",
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v3/ming-backend-v3-arm64-v8a.zip",
-      "bytes": 86929030,
-      "sha256": "75188775091628211358786b72ba86bc747f37f0e5a16a86d9bf36f843921f5e"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v4/ming-backend-v4-arm64-v8a.zip",
+      "bytes": 86928993,
+      "sha256": "c6d5899aa380ef759f91a120c7c00e511502164decde438b08a62cc75388a0d8"
     }
   ],
   "files": {
     "provider-probe.onnx": 234,
-    "bridge.json": 276,
-    "tasks.jar": 80588,
+    "bridge.json": 301,
+    "tasks.jar": 81560,
     "libonnxruntime.so": 29166016,
-    "libming-synthesize.so": 9334856,
-    "libming-reference.so": 10000240,
-    "libming-ort.so": 2568232,
-    "libming-gpu-probe.so": 2229856,
+    "libming-synthesize.so": 9331760,
+    "libming-reference.so": 10000200,
+    "libming-ort.so": 2568192,
+    "libming-gpu-probe.so": 2229824,
     "libming-mmla-neon.so": 1990168,
     "libming-mmla-bf16.so": 3308488,
-    "libming-htp.so": 794208,
+    "libming-htp.so": 794120,
     "qnn/libonnxruntime-qnn.so": 21105856,
     "licenses/Qualcomm-LICENSE.pdf": 147577,
     "licenses/Qualcomm-NOTICE.txt": 129238,
@@ -52,7 +52,7 @@
     "licenses/ONNXRuntime-NOTICE.txt": 331175,
     "licenses/Khronos-OpenCL-LICENSE.txt": 11358,
     "licenses/Ming-THIRD-PARTY.txt": 2072,
-    "licenses/Voicebox-LICENSE.txt": 34255,
+    "licenses/Voicebox-LICENSE.txt": 34020,
     "licenses/pocketfft-LICENSE.txt": 1974
   }
 }

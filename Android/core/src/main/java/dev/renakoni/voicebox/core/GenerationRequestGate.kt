@@ -26,9 +26,6 @@ class GenerationRequestGate {
     }
 
     @Synchronized
-    fun isClaimed(): Boolean = active != null
-
-    @Synchronized
     fun cancel(requestId: String, reason: String): Boolean {
         if (delivered) return false
         val context = active?.takeIf { it.requestId == requestId } ?: return false
