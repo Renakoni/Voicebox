@@ -92,19 +92,25 @@ internal class StreamingPlayback(
         while (true) {
             var player = track
             val played = player?.playbackHeadPosition?.toLong()?.and(0xffffffffL) ?: 0L
+            val firstAcknowledgement = acknowledged
             while (clipEnds.firstOrNull()?.let { played >= it } == true) {
-                File(directory, "played-${acknowledged++}").createNewFile()
+                acknowledged++
                 clipEnds.removeFirst()
             }
-            val drained = complete && clipEnds.isEmpty()
-            if (clip == null && (!state.paused || drained)) {
-                val part = File(directory, "$next.pcm")
-                if (!part.isFile) {
-                    if (drained) return
-                } else if (!state.paused) {
-                    val bytes = withContext(Dispatchers.IO) { part.readBytes() }
-                    clip = ByteBuffer.wrap(bytes)
+            if (acknowledged > firstAcknowledgement) withContext(Dispatchers.IO) {
+                for (index in firstAcknowledgement until acknowledged) {
+                    File(directory, "played-$index").createNewFile()
                 }
+            }
+            val drained = complete && clipEnds.isEmpty()
+            if (clip == null && !state.paused) {
+                val bytes = withContext(Dispatchers.IO) {
+                    File(directory, "$next.pcm").takeIf(File::isFile)?.readBytes()
+                }
+                if (bytes == null && drained) return
+                clip = bytes?.let(ByteBuffer::wrap)
+            } else if (clip == null && drained && withContext(Dispatchers.IO) { !File(directory, "$next.pcm").isFile }) {
+                return
             }
             val buffer = clip
             if (!state.paused && (buffer != null || played < written)) {

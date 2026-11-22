@@ -17,7 +17,7 @@ final class StreamFragments implements AutoCloseable {
     private Exception failure;
     private volatile boolean nativeFinished;
 
-    StreamFragments(Path directory, List<Path> parts, int startIndex, boolean trim) {
+    StreamFragments(Path directory, List<Path> parts, int startIndex) {
         publisher = new Thread(() -> {
             try {
                 for (int i = 0; i < parts.size(); i++) {
@@ -28,7 +28,7 @@ final class StreamFragments implements AutoCloseable {
                         if (finished) throw new IOException("Missing Ming fragment: " + part.getFileName());
                         Thread.sleep(20);
                     }
-                    publish(part, directory, startIndex + i, trim);
+                    publish(part, directory, startIndex + i);
                 }
             } catch (InterruptedException stop) {
                 Thread.currentThread().interrupt();
@@ -59,8 +59,8 @@ final class StreamFragments implements AutoCloseable {
         return directory.resolve(index + ".pcm");
     }
 
-    private static void publish(Path part, Path directory, int index, boolean trim) throws IOException {
-        if (trim) SilenceTrim.trim(part);
+    private static void publish(Path part, Path directory, int index) throws IOException {
+        SilenceTrim.trim(part);
         byte[] bytes = Files.readAllBytes(part);
         if (bytes.length == 0 || bytes.length % Float.BYTES != 0) throw new IOException("Invalid float PCM");
         ByteBuffer input = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN);

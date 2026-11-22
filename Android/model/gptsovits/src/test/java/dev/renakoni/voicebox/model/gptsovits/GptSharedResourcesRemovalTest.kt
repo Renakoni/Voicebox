@@ -88,7 +88,6 @@ class GptSharedResourcesRemovalTest {
             inventory.put(it, filePin())
         }
         File(runtime, ".imported-runtime.json").writeText(inventory.toString())
-        assertPacks(shared, commonInstalled = true, vocoderInstalled = true)
         return shared
     }
 

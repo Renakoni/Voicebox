@@ -59,11 +59,16 @@ def adapt_synthesis(source):
     old = '        } catch(Throwable error) {error.printStackTrace();System.exit(1);}\n'
     assert source.count(old) == 1
     source = source.replace(old, '').replace('"auto","cpu","webgpu"', '"auto","cpu","webgpu","htp"')
-    source = source.replace('args.length<=5', 'args.length<=6').replace('[THREADS]"', '[THREADS] [STREAM_DIR]"')
+    source = replace_once(source, 'args.length<=5', 'args.length<=6')
+    source = replace_once(source, '[THREADS]"', '[THREADS] [STREAM_DIR]"')
     anchor = '            TaskRequest request=new TaskRequest'
     source = replace_once(source, anchor,
         '            Path stream=args.length==6?new File(args[5]).toPath().toAbsolutePath():null;\n' + anchor)
     source = replace_once(source, 'String threads,int startIndex)', 'String threads,int startIndex,Path stream)')
+    source = replace_once(source, 'JSONArray inputs=new JSONArray();', '')
+    source = replace_once(source,
+        '            inputs.put(new JSONObject().put("text",fragments.get(i)).put("tokens",new JSONArray(ids)));\n', '')
+    source = replace_once(source, 'text(work.resolve("inputs.json"),inputs.toString(2));', '')
     for index in (0, 1):
         source = source.replace(f',mode,threads,{index})', f',mode,threads,{index},stream)')
     source = replace_once(source, '        Files.write(work.resolve("blocks.i64"),blocks.array());',
@@ -85,14 +90,13 @@ def adapt_synthesis(source):
         if (stream==null) {
             process(command,env,log);
         } else {
-            try (StreamFragments publisher=new StreamFragments(stream,outputs,startIndex,request.trimSilence)) {
+            try (StreamFragments publisher=new StreamFragments(stream,outputs,startIndex)) {
                 process(command,env,log);
                 publisher.finish();
             }
         }''')
     anchor = '        return outputs;'
-    assert source.count(anchor) == 1, 'Review changed Ming fragment processing before packaging'
-    source = source.replace(anchor, '        if (stream==null && request.trimSilence) for (Path pcm : outputs) SilenceTrim.trim(pcm);\n' + anchor)
+    source = replace_once(source, anchor, '        if (stream==null) for (Path pcm : outputs) SilenceTrim.trim(pcm);\n' + anchor)
     source = replace_once(source, 'concatenate(outputs,output)', 'stream==null?concatenate(outputs,output):StreamFragments.concatenate(stream,outputs.size(),output)')
     anchor = 'subList(0,1),voice,null,mode,threads,0,stream)'
     assert source.count(anchor) == 1, 'Review changed Ming first-fragment conditioning before packaging'
@@ -128,16 +132,20 @@ def adapt_reference_batch(source):
             }
         }
 ''' + anchor)
-    anchor = '            for(auto item:{std::make_pair(".latent.f32",&s.latent)'
-    return replace_once(source, anchor, '''            if(stream_path) {
-                const std::string pcm=output+".pcm.f32";
+    # The app only consumes float PCM. Keep the atomic rename for concurrent streaming reads.
+    anchor = '''            for(auto item:{std::make_pair(".latent.f32",&s.latent),std::make_pair(".hidden.f32",&s.hidden),
+                std::make_pair(".stop.f32",&s.stop),std::make_pair(".noise.f32",&s.noise),std::make_pair(".pcm.f32",&s.wave)})
+                write_binary(output+item.first,*item.second);
+            wav(output,s.wave);'''
+    return replace_once(source, anchor, '''            const std::string pcm=output+".pcm.f32";
+            if(stream_path) {
                 const std::string partial=pcm+".partial";
                 write_binary(partial,s.wave);
                 if(std::rename(partial.c_str(),pcm.c_str())!=0)
                     throw std::runtime_error("Cannot publish Ming fragment");
-                continue;
-            }
-''' + anchor)
+            } else {
+                write_binary(pcm,s.wave);
+            }''')
 
 
 def adapt_task_request(source):
@@ -150,9 +158,6 @@ def adapt_task_request(source):
         assert source.count(anchor) == 1, 'Review changed Ming BASIC attributes before packaging'
         source = source.replace(anchor, f'{field}=controls.isNull("{field}")?null:choice(controls,"{field}",')
     for anchor, replacement in (
-        ('public final boolean design, zeroSpeaker, acoustic;', 'public final boolean design, zeroSpeaker, acoustic, trimSilence;'),
-        ('"reference_wav","reference_text","voice_cache","seed");', '"reference_wav","reference_text","voice_cache","seed","trim_silence");\n'
-         '        trimSilence=!request.has("trim_silence") || request.getBoolean("trim_silence");'),
         ('zeroSpeaker=design || task.equals("IP");',
          'boolean freeformReference=task.equals("FREEFORM") && (referenceWav!=null || voiceCache!=null);\n'
          '        zeroSpeaker=(design && !freeformReference) || task.equals("IP");'),
@@ -205,7 +210,9 @@ def main():
     shutil.copyfile(args.ort_library, runtime / 'libonnxruntime.so')
     native = build / 'sources'
     native.mkdir(exist_ok=True)
-    shutil.copyfile(source / 'native/main.cpp', native / 'main.cpp')
+    main_source = (source / 'native/main.cpp').read_text(encoding='utf-8')
+    (native / 'main.cpp').write_text(
+        replace_once(main_source, '        write_binary(base_output + ".noise.f32", noise);\n', ''), encoding='utf-8')
     batch = (source / 'native/reference_batch.h').read_text(encoding='utf-8')
     (native / 'reference_batch.h').write_text(adapt_reference_batch(batch), encoding='utf-8')
     options = (source / 'native/htp_options.h').read_text(encoding='utf-8')

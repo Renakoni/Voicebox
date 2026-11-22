@@ -35,7 +35,7 @@ internal class CreationSettings(
             ?: if (automaticLanguage) "" else languages.firstOrNull().orEmpty()
     }
     val usesOutputLanguage get() = provider?.usesOutputLanguage(options) ?: true
-    val sampleLanguage get() = outputLanguage.ifBlank { preset?.language.orEmpty() }
+    val sampleLanguage get() = if (usesOutputLanguage) outputLanguage.ifBlank { preset?.language.orEmpty() } else ""
     val optionControls get() = provider?.controls.orEmpty()
     val presets get() = presetsByModel[selectedModel()].orEmpty()
     val preset get() = presets.firstOrNull { it.id == presetSelections[selectedModel()] }
@@ -43,7 +43,16 @@ internal class CreationSettings(
     val supportsStreaming get() = provider?.supportsStreaming == true
     val streaming get() = supportsStreaming && preferStreaming
 
-    fun requestOptions() = provider?.studioOptions(model.requestOptions(options, preset)).orEmpty()
+    fun requestOptions() = provider?.studioOptions(optionValues()).orEmpty()
+
+    fun defaultOptions(): Map<String, String> {
+        val backend = provider ?: return emptyMap()
+        val values = optionValues()
+        // UI defaults from model-specific controls are validated when the API submits a request.
+        return if (backend.synthesisSettingsLayout != null) values else backend.studioOptions(values)
+    }
+
+    private fun optionValues() = model.requestOptions(options, preset)
 
     fun updatePresets(presets: Map<ModelRef, List<SynthesisVoicePreset>>) {
         presetsByModel = presets
@@ -53,21 +62,22 @@ internal class CreationSettings(
     fun changePreset(id: String?) {
         val ref = selectedModel() ?: return
         if (!canEdit() || id != null && presets.none { it.id == id }) return
-        savePreset(ref, id)
-        onChange(true)
+        if (savePreset(ref, id)) onChange(true)
     }
 
-    fun selectReference(ref: ModelRef) = savePreset(ref, null)
+    fun selectReference(ref: ModelRef) { savePreset(ref, null) }
 
-    private fun savePreset(ref: ModelRef, id: String?) {
-        if (presetSelections[ref] == id) return
+    private fun savePreset(ref: ModelRef, id: String?): Boolean {
+        if (presetSelections[ref] == id) return false
         store.saveVoicePreset(ref, id)
         presetSelections = presetSelections + (ref to id)
+        return true
     }
 
     fun changeLanguage(language: String) {
         val ref = selectedModel() ?: return
-        if (!canEdit() || language !in languages && !(language.isEmpty() && automaticLanguage)) return
+        if (!canEdit() || language == outputLanguage ||
+            language !in languages && !(language.isEmpty() && automaticLanguage)) return
         saveLanguage(ref.backendId, language)
         onChange(true)
     }
@@ -79,27 +89,25 @@ internal class CreationSettings(
 
     fun changeOptions(value: Map<String, String>) {
         if (!canEdit()) return
-        saveOptions(value)
-        onChange(false)
+        if (saveOptions(value)) onChange(false)
     }
 
     fun resetOptionsAndLanguage() {
         val ref = selectedModel() ?: return
         if (!canEdit() || !automaticLanguage) return
-        saveLanguage(ref.backendId, "")
+        if (outputLanguage.isNotEmpty()) saveLanguage(ref.backendId, "")
         saveOptions(emptyMap())
         onChange(true)
     }
 
-    private fun saveOptions(value: Map<String, String>) {
-        val backend = provider ?: return
-        val editable = if (backend.synthesisSettingsLayout != null) value else {
-            val keys = backend.controls.map { it.name }.toSet()
-            value.filterKeys { it in keys }
-        }
-        val saved = model.saveOptions(optionsByBackend[backend.id].orEmpty(), editable, preset)
+    private fun saveOptions(value: Map<String, String>): Boolean {
+        val backend = provider ?: return false
+        val previous = optionsByBackend[backend.id].orEmpty()
+        val saved = model.saveOptions(previous, value, preset)
+        if (saved == previous) return false
         store.saveOptions(backend.id, saved)
         optionsByBackend = optionsByBackend + (backend.id to saved)
+        return true
     }
 
     fun changeStreaming(enabled: Boolean) {

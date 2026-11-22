@@ -1,6 +1,13 @@
 package dev.renakoni.voicebox.studio.creation.ming
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.bridge.SynthesisVoicePreset
 import dev.renakoni.voicebox.studio.creation.AdvancedSettingsPanel
 import dev.renakoni.voicebox.studio.creation.CreationModel
@@ -15,17 +22,20 @@ internal object MingCreation : CreationModel {
 
     @Composable
     override fun Panels(settings: CreationSettings, enabled: Boolean) {
-        if (settings.presets.isNotEmpty()) {
-            MingVoicePresetSetting(settings.presets, settings.preset, enabled, settings::changePreset)
-        }
-        AdvancedSettingsPanel {
-            MingSynthesisSettings(
-                options = settings.options, enabled = enabled, presetActive = settings.preset != null,
-                outputLanguage = settings.outputLanguage,
-                languages = settings.languages.takeIf { settings.usesOutputLanguage }.orEmpty(),
-                onLanguageChange = settings::changeLanguage, onChange = settings::changeOptions,
-                onReset = settings::resetOptionsAndLanguage,
-            )
+        Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 10.dp)) {
+            if (settings.presets.isNotEmpty()) {
+                MingVoicePresetSetting(settings.presets, settings.preset, enabled, settings::changePreset)
+            }
+            AdvancedSettingsPanel {
+                MingSynthesisSettings(
+                    options = settings.options, enabled = enabled, presetActive = settings.preset != null,
+                    outputLanguage = settings.outputLanguage,
+                    languages = settings.languages.takeIf { settings.usesOutputLanguage }.orEmpty(),
+                    onLanguageChange = settings::changeLanguage, onChange = settings::changeOptions,
+                    onReset = settings::resetOptionsAndLanguage,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 

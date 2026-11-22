@@ -110,9 +110,8 @@ internal fun StudioSettingsHeader(title: String, expanded: Boolean, summary: Str
         .semantics { stateDescription = resources.getString(if (expanded) R.string.expanded else R.string.collapsed) },
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
-        if (summary != null) Text(summary, style = MaterialTheme.typography.bodyMedium, maxLines = 1,
-            overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (summary != null) Text(summary, Modifier.widthIn(max = 160.dp), style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Icon(if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }

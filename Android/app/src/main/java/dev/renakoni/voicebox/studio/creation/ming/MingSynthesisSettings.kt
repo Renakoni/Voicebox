@@ -1,5 +1,6 @@
 package dev.renakoni.voicebox.studio.creation.ming
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +17,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -26,7 +26,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -157,6 +156,7 @@ internal fun MingSynthesisSettings(options: Map<String, String>, enabled: Boolea
         if (invalidSeed) Text(seedError, style = MaterialTheme.typography.bodySmall, color = colors.error)
 
         if (!presetActive) {
+            HorizontalDivider(color = colors.outlineVariant)
             val basicConflict = conflict.takeIf { emotion != null || dialect != null || instruction != null }
             MingOptionMenu(R.string.speech_speed, speed, enabled,
                 labels("slow" to R.string.ming_speed_slow, "normal" to R.string.ming_speed_normal, "fast" to R.string.ming_speed_fast),
@@ -187,6 +187,7 @@ internal fun MingSynthesisSettings(options: Map<String, String>, enabled: Boolea
             }
         }
         if (languages.isNotEmpty()) {
+            if (!presetActive) HorizontalDivider(color = colors.outlineVariant)
             val choices = labels("" to R.string.ming_language_from_text) + languages.map { it to languageName(resources, it) }
             MingOptionMenu(R.string.output_language, outputLanguage, enabled, choices) {
                 onLanguageChange(it.orEmpty())
@@ -245,9 +246,20 @@ private fun MingInstructionSetting(value: String?, useReference: Boolean, enable
             Modifier.size(20.dp), tint = colors.onSurfaceVariant)
     }
     if (expanded) {
-        OutlinedTextField(value.orEmpty(), { if (it.length <= 1024) onChange(it, useReference) },
+        val writingStyle = MaterialTheme.typography.bodyMedium
+        BasicTextField(
+            value.orEmpty(), { if (it.length <= 1024) onChange(it, useReference) },
             Modifier.fillMaxWidth().semantics { contentDescription = title }, enabled = enabled,
-            placeholder = { Text(stringResource(R.string.ming_instruction_hint)) }, minLines = 2, maxLines = 4)
+            textStyle = writingStyle.copy(color = if (enabled) colors.onSurface else colors.onSurfaceVariant),
+            cursorBrush = SolidColor(colors.primary), minLines = 2, maxLines = 4,
+            decorationBox = { input ->
+                Box(Modifier.fillMaxWidth().clip(StudioControlShape).background(colors.surfaceVariant).padding(12.dp)) {
+                    if (value.isNullOrEmpty()) Text(stringResource(R.string.ming_instruction_hint),
+                        style = writingStyle, color = colors.onSurfaceVariant)
+                    input()
+                }
+            },
+        )
         if (replacesControl != null) {
             Text(stringResource(R.string.ming_instruction_conflict, stringResource(replacesControl)),
                 Modifier.padding(top = 6.dp), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
@@ -289,7 +301,7 @@ private fun MingOptionMenu(title: Int, value: String?, enabled: Boolean, choices
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(valueName, style = MaterialTheme.typography.bodyMedium,
                     color = if (value.isNullOrEmpty() || !enabled) colors.onSurfaceVariant else colors.onSurface)
-                Icon(Icons.Default.ArrowDropDown, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
+                Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp), tint = colors.onSurfaceVariant)
             }
             DropdownMenu(expanded && enabled, onDismissRequest = { expanded = false }, shape = MaterialTheme.shapes.medium) {
                 if (conflictLabel != null) {

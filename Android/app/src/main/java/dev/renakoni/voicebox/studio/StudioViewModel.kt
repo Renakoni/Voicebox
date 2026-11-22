@@ -577,8 +577,10 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val usesReference = provider.usesReference(options)
+        val language = creationSettings.outputLanguage.takeIf { provider.usesOutputLanguage(options) }.orEmpty()
+        val synthesisText = text.trim()
         val promptLanguage = if (usesReference) ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript) else ""
-        val languageError = provider.languageError(creationSettings.outputLanguage, text)
+        val languageError = provider.languageError(language, synthesisText)
             ?: if (usesReference) provider.languageError(promptLanguage, voice.transcript) else null
         if (languageError != null) { generationError = UiText(languageError); return }
         if (usesReference && !File(voice.audioPath).isFile) {
@@ -587,8 +589,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
         audio.stop()
         generationError = null
-        val request = GenerationRequest(model, creationSettings.outputLanguage.takeIf { creationSettings.usesOutputLanguage }.orEmpty(),
-            promptLanguage = promptLanguage, synthesisText = text.trim(),
+        val request = GenerationRequest(model, language,
+            promptLanguage = promptLanguage, synthesisText = synthesisText,
             referenceAudioPath = voice.audioPath.takeIf { usesReference }.orEmpty(),
             referenceText = voice.transcript.takeIf { usesReference }.orEmpty(),
             auxiliaryReferenceAudioPaths = auxiliaryPaths,
@@ -639,7 +641,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             backendService.setActiveDefaults(null)
             return
         }
-        val options = runCatching { creationSettings.requestOptions() }.getOrElse {
+        val options = runCatching { creationSettings.defaultOptions() }.getOrElse {
             backendService.setActiveDefaults(null)
             return
         }
