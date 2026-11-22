@@ -30,7 +30,9 @@ class LocalHttpApiServer(
         fun referenceExample(model: CharacterModel): dev.renakoni.voicebox.bridge.ReferenceExample?
         fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
             model.maxAuxiliaryReferences > 0
-        fun validateOptions(model: CharacterModel, options: Map<String, String>): Map<String, String>
+        fun resolveSynthesisOptions(model: CharacterModel, defaults: Map<String, String>, overrides: Map<String, String>): Map<String, String>
+        fun usesReference(model: CharacterModel, options: Map<String, String>): Boolean = true
+        fun requiresOutputLanguage(model: CharacterModel, options: Map<String, String>): Boolean = true
         fun activeDefaults(): ActiveDefaults?
         fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult
         fun cancel(requestId: String): Boolean = false
@@ -205,13 +207,17 @@ class LocalHttpApiServer(
         if (matches.isEmpty()) return HttpResponse(400, errorJson("Unknown modelId."))
         val model = matches.singleOrNull() ?: return HttpResponse(400, errorJson("Specify backendId and variant for this modelId."))
         val active = defaults?.takeIf { it.model == model.ref }
+        val options = try { bridge.resolveSynthesisOptions(model, active?.options.orEmpty(), input.options) }
+        catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
+        val requiresLanguage = bridge.requiresOutputLanguage(model, options)
+        val usesReference = bridge.usesReference(model, options)
         val payload = if (useVoiceDefaults) {
-            val reference = if (active == null && (input.referenceAudioPath.isBlank() || input.referenceText.isBlank()))
+            val reference = if (usesReference && active == null && (input.referenceAudioPath.isBlank() || input.referenceText.isBlank()))
                 runCatching { bridge.referenceExample(model) }.getOrNull() else null
             val referenceLanguage = reference?.let {
                 if (it.language == "auto") ReferenceLanguage.resolve(it.language, it.referenceText.orEmpty()) else it.language
             }
-            val language = input.language.ifBlank { active?.language ?: referenceLanguage.orEmpty() }
+            val language = input.language.ifBlank { active?.language ?: referenceLanguage.orEmpty().takeIf { requiresLanguage }.orEmpty() }
             input.copy(
                 backendName = input.backendName.ifBlank { active?.backend?.name.orEmpty() },
                 language = language,
@@ -223,26 +229,20 @@ class LocalHttpApiServer(
         } else input
         val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(payload.backendName.ifBlank { "CPU" }, ignoreCase = true) }
             ?: return HttpResponse(400, errorJson("Unknown backend."))
-        if (
-            payload.language.isBlank() ||
-            payload.text.isBlank() ||
-            payload.referenceAudioPath.isBlank() ||
-            payload.referenceText.isBlank()
-        ) {
-            return HttpResponse(400, errorJson("language, text, referenceAudioPath, and referenceText are required."))
+        val required = buildList {
+            if (requiresLanguage && payload.language.isBlank()) add("language")
+            if (payload.text.isBlank()) add("text")
+            if (usesReference && payload.referenceAudioPath.isBlank()) add("referenceAudioPath")
+            if (usesReference && payload.referenceText.isBlank()) add("referenceText")
         }
-        if (!File(payload.referenceAudioPath).isFile) {
+        if (required.isNotEmpty()) return HttpResponse(400, errorJson("Missing required fields: ${required.joinToString()}"))
+        if (usesReference && !File(payload.referenceAudioPath).isFile) {
             return HttpResponse(400, errorJson("Reference audio not found: ${payload.referenceAudioPath}"))
         }
-        val options = try { bridge.validateOptions(model, active?.options.orEmpty() + payload.options) }
-        catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
-        validateAuxiliaryReferencePaths(
-            paths = payload.auxiliaryReferenceAudioPaths,
-            primaryPath = payload.referenceAudioPath,
-        )?.let { error ->
+        validateAuxiliaryReferenceCapability(model, payload.auxiliaryReferenceAudioPaths)?.let { error ->
             return HttpResponse(400, errorJson(error))
         }
-        validateAuxiliaryReferenceCapability(model, payload.auxiliaryReferenceAudioPaths)?.let { error ->
+        validateAuxiliaryReferencePaths(payload.auxiliaryReferenceAudioPaths, payload.referenceAudioPath)?.let { error ->
             return HttpResponse(400, errorJson(error))
         }
 
@@ -251,10 +251,10 @@ class LocalHttpApiServer(
             request = GenerationRequest(
                 characterModel = model,
                 language = payload.language,
-                promptLanguage = payload.promptLanguage,
+                promptLanguage = payload.promptLanguage.takeIf { usesReference }.orEmpty(),
                 synthesisText = payload.text,
-                referenceAudioPath = payload.referenceAudioPath,
-                referenceText = payload.referenceText,
+                referenceAudioPath = payload.referenceAudioPath.takeIf { usesReference }.orEmpty(),
+                referenceText = payload.referenceText.takeIf { usesReference }.orEmpty(),
                 auxiliaryReferenceAudioPaths = payload.auxiliaryReferenceAudioPaths,
                 options = options,
             ),

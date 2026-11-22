@@ -44,8 +44,14 @@ class StudioStore(context: Context) {
         preferences.edit().putString("language/$backendId", language).apply()
     }
 
+    fun voicePreset(ref: ModelRef): String? = preferences.getString("voice_preset/${ref.backendId}/${ref.variant}/${ref.modelId}", null)
+
+    fun saveVoicePreset(ref: ModelRef, preset: String?) {
+        preferences.edit().putString("voice_preset/${ref.backendId}/${ref.variant}/${ref.modelId}", preset).apply()
+    }
+
     fun options(backendId: String): Map<String, String> {
-        val data = JSONObject(preferences.getString("options/$backendId", "{}")!!)
+        val data = JSONObject(preferences.getString("options/$backendId", null) ?: "{}")
         return data.keys().asSequence().associateWith { data.getString(it) }
     }
 

@@ -129,8 +129,12 @@ class VoiceBoxBackendService : Service() {
                 override fun supportsAuxiliaryReferences(model: CharacterModel): Boolean =
                     modelRepository.provider(model).supportsAuxiliaryReferences(model)
 
-                override fun validateOptions(model: CharacterModel, options: Map<String, String>) =
-                    modelRepository.provider(model).validateOptions(options)
+                override fun resolveSynthesisOptions(model: CharacterModel, defaults: Map<String, String>, overrides: Map<String, String>) =
+                    modelRepository.provider(model).resolveSynthesisOptions(defaults, overrides)
+                override fun usesReference(model: CharacterModel, options: Map<String, String>) =
+                    modelRepository.provider(model).usesReference(options)
+                override fun requiresOutputLanguage(model: CharacterModel, options: Map<String, String>) =
+                    modelRepository.provider(model).let { it.requiresOutputLanguage && it.usesOutputLanguage(options) }
 
                 override fun activeDefaults(): ActiveDefaults? = this@VoiceBoxBackendService.activeDefaults
 
@@ -248,7 +252,10 @@ class VoiceBoxBackendService : Service() {
     fun synthesize(
         backend: ExecutionBackend,
         request: GenerationRequest,
-    ): Boolean = enqueue(backend, request) == null
+        onComplete: (InferResult) -> Unit,
+    ): Boolean = enqueue(backend, request) { result ->
+        mainHandler.post { onComplete(result) }
+    } == null
 
     private fun enqueue(
         backend: ExecutionBackend?,
@@ -482,6 +489,7 @@ class VoiceBoxBackendService : Service() {
             val durationMs = SystemClock.elapsedRealtime() - startedAtMs
             val inferenceRtf = result.inferenceSeconds?.let { it * result.sampleRate / result.audioSamples }
             val outputDuration = formatAudioDuration(result.audioSamples, result.sampleRate)
+            val audioDurationMs = result.audioSamples * 1000L / result.sampleRate
 
             val delivered = generationGate.deliver(context) {
                 // Inference and its cleanup have returned. Ready state and the
@@ -496,6 +504,7 @@ class VoiceBoxBackendService : Service() {
                     runtimeLabel = activeRuntime.runtimeLabel,
                     initializedModelId = request.characterModel.id,
                     latestOutputFilePath = result.file.absolutePath,
+                    latestOutputDurationMs = audioDurationMs,
                     progressPercent = 100,
                     progressLabel = null,
                     generationDurationMs = durationMs,
@@ -504,7 +513,7 @@ class VoiceBoxBackendService : Service() {
                     message = if (inferenceRtf == null) getString(R.string.prototype_service_completed, outputDuration)
                         else getString(R.string.prototype_service_completed_rtf, outputDuration, inferenceRtf),
                 )
-                onComplete?.invoke(InferResult.Success(result.file))
+                onComplete?.invoke(InferResult.Success(result.file, audioDurationMs))
             }
             if (!delivered) {
                 result.file.delete()
@@ -531,7 +540,6 @@ class VoiceBoxBackendService : Service() {
                 progressPercent = null,
                 progressLabel = null,
                 generationDurationMs = SystemClock.elapsedRealtime() - startedAtMs,
-                latestOutputFilePath = null,
                 message = if (cancelled) getString(R.string.generation_cancelled)
                     else error.userMessage(resources) ?: getString(R.string.generation_failed),
             )
@@ -667,6 +675,7 @@ class VoiceBoxBackendService : Service() {
         message: String,
         initializedModelId: String? = state.initializedModelId,
         latestOutputFilePath: String? = state.latestOutputFilePath,
+        latestOutputDurationMs: Long = state.latestOutputDurationMs,
         progressPercent: Int? = null,
         progressLabel: String? = null,
         generationDurationMs: Long? = state.generationDurationMs,
@@ -690,6 +699,7 @@ class VoiceBoxBackendService : Service() {
             runtimeLabel = runtimeLabel,
             initializedModelId = initializedModelId,
             latestOutputFilePath = latestOutputFilePath,
+            latestOutputDurationMs = if (latestOutputFilePath == null) 0 else latestOutputDurationMs,
             progressPercent = progressPercent,
             progressLabel = progressLabel,
             generationDurationMs = generationDurationMs,

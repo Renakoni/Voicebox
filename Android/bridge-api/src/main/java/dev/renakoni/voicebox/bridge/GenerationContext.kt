@@ -9,6 +9,7 @@ open class BackendFailure(val code: String, message: String) : IllegalStateExcep
 /** A request owns its cancellation hooks; removal and termination share one lock. */
 class GenerationContext(val requestId: String = UUID.randomUUID().toString()) {
     var generationEpoch: Long = 0
+    var streamDirectory: String? = null
 
     @Volatile
     var cancellationReason: String? = null

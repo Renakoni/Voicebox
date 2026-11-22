@@ -15,7 +15,6 @@ private val SHA256_PATTERN = Regex("[a-f0-9]{64}")
 
 /** Only catalogs shipped with the application can name executable packages. */
 class BridgePackageSpec(json: JSONObject) {
-    internal val catalog = json.toString()
     val id = json.getString("id")
     val displayName = json.optString("displayName", id)
     val version = json.getInt("version")
@@ -98,7 +97,7 @@ class BridgePackage(
     private val download: (ModelDownload, File, () -> Unit, (Int) -> Unit) -> Unit,
 ) {
     val supported get() = spec.abi == abi
-    val installable get() = compatible(spec)
+    val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
     private val uninstalled = File(root, ".uninstalled")
@@ -106,18 +105,16 @@ class BridgePackage(
     val installed get() = active != null
 
     private fun readActive(): InstalledBridge? {
+        if (!installable || !receipt.isFile) return null
         return runCatching {
             val json = JSONObject(receipt.readText())
-            val candidate = BridgePackageSpec(json)
+            if (json.getString("revision") != spec.revision) return null
             val slot = json.getString("directory")
-            require(compatible(candidate) && '/' !in slot && BridgePackageSpec.safePath(slot))
-            val directory = File(File(root, candidate.revision), slot)
-            InstalledBridge(candidate, directory).takeIf { File(directory, candidate.code).isFile }
+            require('/' !in slot && BridgePackageSpec.safePath(slot))
+            val directory = File(File(root, spec.revision), slot)
+            InstalledBridge(spec, directory).takeIf { File(directory, spec.code).isFile }
         }.getOrNull()
     }
-
-    private fun compatible(candidate: BridgePackageSpec) =
-        candidate.id == spec.id && candidate.abi == abi && candidate.minAppVersionCode <= appVersion
 
     fun install(checkCancelled: () -> Unit, automatic: Boolean = false, progress: (Int) -> Unit): Boolean {
         require(installable) { "Bridge package is incompatible with this app" }
@@ -128,8 +125,7 @@ class BridgePackage(
                 clearUninstalledFiles()
                 if (automatic) return@withInstallLock false
             } else {
-                val previous = readActive()
-                if (previous != null && (automatic || previous.spec.version >= spec.version)) return@withInstallLock false
+                if (readActive() != null) return@withInstallLock false
                 root.listFiles()?.filter { it.name.startsWith(".stage-") || it.name == ".download" }
                     ?.forEach(::deleteFileTree)
             }
@@ -195,7 +191,7 @@ class BridgePackage(
     private fun activate(directory: File) {
         val pending = File(root, ".active")
         try {
-            pending.writeText(JSONObject(spec.catalog).put("directory", directory.name).toString())
+            pending.writeText(JSONObject().put("revision", spec.revision).put("directory", directory.name).toString())
             Files.move(pending.toPath(), receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
             Files.deleteIfExists(uninstalled.toPath())
         } finally {

@@ -17,6 +17,7 @@ object MingModel {
 class MingModelResources(context: Context) {
     val directory = File(context.getExternalFilesDir(null), "CharacterModels/ming/dense-0.5b")
     val available get() = requiredFiles.all { File(directory, it).let { file -> file.isFile && file.length() > 0 } }
+    fun voicePresets() = MingVoiceCatalog.read(File(directory, MingVoiceCatalog.FileName))
     val htp get() = File(directory, "htp").takeIf {
         htpFiles.all { path -> File(directory, path).let { file -> file.isFile && file.length() > 0 } }
     }

@@ -20,6 +20,7 @@ internal object WorkerProtocol {
 internal fun GenerationRequest.encode() = Bundle().apply {
     putString("request", context.requestId)
     putLong("epoch", context.generationEpoch)
+    putString("streamDirectory", context.streamDirectory)
     putString("variant", characterModel.ref.variant)
     putString("model", characterModel.ref.modelId)
     putString("language", language)
@@ -41,7 +42,10 @@ internal fun Bundle.decode(model: CharacterModel): GenerationRequest {
     }
     return GenerationRequest(model, getString("language")!!, getString("promptLanguage")!!, getString("text")!!,
         getString("reference")!!, getString("transcript")!!, getStringArrayList("auxiliary").orEmpty(),
-        GenerationContext(getString("request")!!).apply { generationEpoch = getLong("epoch") }, options)
+        GenerationContext(getString("request")!!).apply {
+            generationEpoch = getLong("epoch")
+            streamDirectory = getString("streamDirectory")
+        }, options)
 }
 
 internal fun UiText.encodeKey(): Bundle? {

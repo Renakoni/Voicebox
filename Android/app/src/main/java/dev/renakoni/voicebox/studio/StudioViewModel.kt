@@ -37,6 +37,7 @@ import dev.renakoni.voicebox.DeviceNpu
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
+import dev.renakoni.voicebox.api.InferResult
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.BackendCapabilities
 import dev.renakoni.voicebox.bridge.ExecutionBackend
@@ -44,7 +45,9 @@ import dev.renakoni.voicebox.bridge.GenerationContext
 import dev.renakoni.voicebox.bridge.GenerationRequest
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.GenerationStage
+import dev.renakoni.voicebox.bridge.SynthesisVoicePreset
 import dev.renakoni.voicebox.core.ReferenceLanguage
+import dev.renakoni.voicebox.studio.creation.CreationSettings
 import dev.renakoni.voicebox.core.DeviceFacts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -95,18 +98,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val importLanguages get() = importProvider?.capabilities?.languages.orEmpty()
     fun languages(ref: ModelRef?) = capabilities[ref?.backendId]?.languages.orEmpty()
     private fun importVariantLabel(variant: String) = UiText(requireNotNull(importProvider).variantLabel(variant))
-    val optionControls get() = selectedVoice?.let { modelsRepository.provider(it.model.backendId).controls }.orEmpty()
-
     private val referenceRoot = File(app.filesDir, "studio_references").apply { mkdirs() }
     private var service: VoiceBoxBackendService? = null
     private var accelerationUpdates: Job? = null
     private var downloadUpdates: Job? = null
     private var resourceUpdates: Job? = null
     private var bound = false
-    private var pendingRequest: GenerationContext? = null
-    private var pendingVoiceName = ""
-    private var pendingText = ""
-    private var handledOutput: String? = null
+    private var pendingRequest by mutableStateOf<GenerationContext?>(null)
     var warmupEnabled = true
 
     internal var tab by mutableStateOf(StudioTab.CREATE)
@@ -114,14 +112,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var voices by mutableStateOf<List<StudioVoice>>(emptyList()); private set
     var selectedId by mutableStateOf(store.selectedId); private set
     var text by mutableStateOf(store.text); private set
-    private var languagesByBackend by mutableStateOf(modelsRepository.providers.associate { it.id to store.outputLanguage(it.id) })
-    val outputLanguage: String get() {
-        val voice = selectedVoice ?: return ""
-        val languages = languages(voice.model)
-        return languagesByBackend[voice.model.backendId]?.takeIf { it in languages } ?: languages.firstOrNull().orEmpty()
+    internal val creationSettings = CreationSettings(
+        store, modelsRepository, selectedModel = { selectedVoice?.model }, languagesFor = ::languages,
+        canEdit = { !busy },
+    ) { clearError ->
+        if (clearError) generationError = null
+        syncDefaults()
     }
-    private var optionsByBackend by mutableStateOf(modelsRepository.providers.associate { it.id to store.options(it.id) })
-    val synthesisOptions get() = optionsByBackend[selectedVoice?.model?.backendId].orEmpty()
     var loading by mutableStateOf(true); private set
     private var readyResources by mutableStateOf(emptySet<ModelRef>())
     fun resourcesReady(ref: ModelRef) = ref in readyResources
@@ -142,9 +139,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var editorError by mutableStateOf<UiText?>(null); private set
     var generationError by mutableStateOf<UiText?>(null); private set
     var cancelling by mutableStateOf(false); private set
-    var submitting by mutableStateOf(false); private set
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
+    internal var streamPreview by mutableStateOf<StreamPlayback?>(null); private set
     private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
         model.executionModes intersect probes[model.ref.backendId].orEmpty()
@@ -173,43 +170,43 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var apiPortError by mutableStateOf<UiText?>(null); private set
 
     val audio = AudioPreview(app, { preview = it }, { notify(UiText(R.string.audio_play_failed)) })
+    private val streamAudio = StreamingPlayback(app, viewModelScope, { streamPreview = it }) { error ->
+        Log.e("VoiceStudio", "Stream playback failed", error)
+        cancel()
+        notify(UiText(R.string.audio_play_failed))
+    }
+    internal fun toggleStreamPause() = streamAudio.togglePause()
+    internal fun stopStream() {
+        cancel()
+        streamAudio.stop()
+    }
     private val recorder = ReferenceRecorder(app, referenceRoot, { recordingMs = it }, ::finishReferenceRecording) {
         cancelReferenceRecording()
         referenceRecordingError(UiText(R.string.recording_interrupted))
     }
     val selectedVoice get() = voices.firstOrNull { it.id == selectedId }
-    val busy get() = state.busy || submitting || importing || officialDownload.running
+    val busy get() = state.busy || pendingRequest != null || importing || officialDownload.running || streamPreview != null
     val backend get() = if (gpuEnabled && ExecutionBackend.WEBGPU in availableBackends) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
     val canGenerate get() = connected && !loading && !busy && !fileBusy && text.isNotBlank() && runtimeReady && availableBackends.isNotEmpty()
 
     private val listener = BackendServiceListener { next ->
         val ownRequest = pendingRequest != null && next.requestId == pendingRequest?.requestId
         state = next
-        if (ownRequest) {
-            submitting = false
-            if (!next.busy) {
-                pendingRequest = null
-                cancelling = false
-                if (next.stage == GenerationStage.ERROR) {
-                    Log.e("VoiceStudio", next.message)
-                    generationError = if (next.errorCode == "EMPTY_SEMANTIC")
-                        UiText(R.string.generation_empty)
-                    else UiText(R.string.generation_failed)
-                }
-            }
+        val idleOrError = next.stage == GenerationStage.IDLE || next.stage == GenerationStage.ERROR
+        val path = next.latestOutputFilePath?.takeUnless { idleOrError && !File(it).isFile }
+        if (path != null && !(ownRequest && next.stage == GenerationStage.COMPLETED)) {
+            saveLatestOutput(path, app.getString(R.string.generate_speech), "", next.latestOutputDurationMs)
+        } else if (idleOrError && output?.let { it.path == next.latestOutputFilePath || !File(it.path).isFile } == true) {
+            audio.stop()
+            output = null
+            store.output = null
         }
-        val path = next.latestOutputFilePath
-        if (next.stage == GenerationStage.COMPLETED && path != null && path != handledOutput) {
-            handledOutput = path
-            val name = if (ownRequest) pendingVoiceName else app.getString(R.string.generate_speech)
-            val sourceText = if (ownRequest) pendingText else ""
-            viewModelScope.launch {
-                val duration = withContext(Dispatchers.IO) { runCatching { duration(path) }.getOrDefault(0) }
-                if (handledOutput != path) return@launch
-                output = StudioOutput(path, name, sourceText, duration)
-                store.output = output
-            }
-        }
+    }
+
+    private fun saveLatestOutput(path: String, name: String, sourceText: String, durationMs: Long) {
+        if (path == output?.path) return
+        output = StudioOutput(path, name, sourceText, durationMs)
+        store.output = output
     }
 
     private val connection = object : ServiceConnection {
@@ -217,7 +214,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             service = (binder as VoiceBoxBackendService.LocalBinder).getService()
             connected = true
             val backendService = service!!
-            handledOutput = output?.path
             backendService.addListener(listener)
             accelerationUpdates?.cancel()
             accelerationUpdates = viewModelScope.launch {
@@ -238,6 +234,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
+            streamAudio.stop()
             accelerationUpdates?.cancel()
             downloadUpdates?.cancel()
             officialDownload = OfficialDownloadState()
@@ -246,7 +243,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             probes = emptyMap()
             pendingRequest = null
             cancelling = false
-            submitting = false
             state = BackendServiceState()
             generationError = UiText(R.string.service_disconnected)
         }
@@ -265,7 +261,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
         val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Map<String, Int>,
-        val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>)
+        val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>,
+        val presets: Map<ModelRef, List<SynthesisVoicePreset>>)
 
     internal fun refreshResources() {
         resourceUpdates?.cancel()
@@ -295,9 +292,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                             durationMs = runCatching { duration(voice.audioPath) }.getOrDefault(0))
                     }
                     val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
-                    ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, installed, providers.associate { it.id to it.capabilities }, packs)
+                    val presets = discovered.associate { it.ref to modelsRepository.provider(it).voicePresets(it) }
+                    ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, installed,
+                        providers.associate { it.id to it.capabilities }, packs, presets)
                 }
                 models = data.models
+                creationSettings.updatePresets(data.presets)
                 voices = data.voices.map { it.copy(avatarPath = avatars.path(it.id)) }
                 readyResources = data.ready
                 officialModels = data.catalog
@@ -320,16 +320,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun changeOutputLanguage(language: String) {
-        if (busy) return
-        val ref = selectedVoice?.model ?: return
-        if (language !in languages(ref)) return
-        languagesByBackend = languagesByBackend + (ref.backendId to language)
-        store.saveLanguage(ref.backendId, language)
-        generationError = null
-        syncDefaults()
-    }
-
     fun editCheckpointLanguage(language: String) {
         if (!importing) checkpointDraft = checkpointDraft?.copy(referenceLanguage = language)
     }
@@ -339,6 +329,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy) return
         selectedId = voice.id
         store.selectedId = voice.id
+        creationSettings.selectReference(voice.model)
         generationError = null
         audio.stop()
         syncDefaults()
@@ -572,40 +563,63 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun changeSynthesisOptions(value: Map<String, String>) {
-        if (busy) return
-        val id = selectedVoice?.model?.backendId ?: return
-        val library = modelsRepository.provider(id)
-        val validated = library.studioOptions(value).filterKeys { key -> library.controls.any { it.name == key } && key in value }
-        store.saveOptions(id, validated)
-        optionsByBackend = optionsByBackend + (id to validated)
-        syncDefaults()
-    }
-
     fun generate() {
         if (!canGenerate) return
         val voice = selectedVoice ?: return
         val model = modelFor(voice) ?: return
-        val promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript)
         val provider = modelsRepository.provider(model)
-        val languageError = provider.languageError(outputLanguage, text) ?: provider.languageError(promptLanguage, voice.transcript)
+        val options = try {
+            creationSettings.requestOptions()
+        } catch (error: IllegalArgumentException) {
+            Log.w("VoiceStudio", "Synthesis options are unavailable", error)
+            generationError = UiText(R.string.generation_failed)
+            refreshResources()
+            return
+        }
+        val usesReference = provider.usesReference(options)
+        val promptLanguage = if (usesReference) ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript) else ""
+        val languageError = provider.languageError(creationSettings.outputLanguage, text)
+            ?: if (usesReference) provider.languageError(promptLanguage, voice.transcript) else null
         if (languageError != null) { generationError = UiText(languageError); return }
-        if (!File(voice.audioPath).isFile) {
+        if (usesReference && !File(voice.audioPath).isFile) {
             generationError = UiText(R.string.reference_missing)
             return
         }
         audio.stop()
         generationError = null
-        val request = GenerationRequest(model, outputLanguage,
+        val request = GenerationRequest(model, creationSettings.outputLanguage.takeIf { creationSettings.usesOutputLanguage }.orEmpty(),
             promptLanguage = promptLanguage, synthesisText = text.trim(),
-            referenceAudioPath = voice.audioPath, referenceText = voice.transcript, auxiliaryReferenceAudioPaths = auxiliaryPaths,
-            options = provider.studioOptions(synthesisOptions))
+            referenceAudioPath = voice.audioPath.takeIf { usesReference }.orEmpty(),
+            referenceText = voice.transcript.takeIf { usesReference }.orEmpty(),
+            auxiliaryReferenceAudioPaths = auxiliaryPaths,
+            options = options)
+        if (creationSettings.streaming) {
+            val directory = File(app.cacheDir, "synthesis-streams/${request.context.requestId}")
+            if (runCatching { streamAudio.start(directory) }.isFailure) {
+                generationError = UiText(R.string.generation_failed)
+                return
+            }
+            request.context.streamDirectory = directory.absolutePath
+        }
         pendingRequest = request.context
-        pendingVoiceName = voiceName(voice, app.resources)
-        pendingText = text.trim()
-        submitting = true
-        if (service?.synthesize(backend, request) != true) {
-            submitting = false
+        val name = creationSettings.preset?.id ?: voiceName(voice, app.resources)
+        val accepted = service?.synthesize(backend, request) { result ->
+            if (pendingRequest !== request.context) return@synthesize
+            pendingRequest = null
+            cancelling = false
+            if (result is InferResult.Success) {
+                if (request.context.streamDirectory != null) streamAudio.finishSynthesis()
+                saveLatestOutput(result.outputFile.absolutePath, name, request.synthesisText, result.audioDurationMs)
+            } else {
+                if (request.context.streamDirectory != null) streamAudio.stop()
+                if (result is InferResult.Error && request.context.cancellationReason == null) {
+                    Log.e("VoiceStudio", result.message)
+                    generationError = UiText(if (result.code == "EMPTY_SEMANTIC") R.string.generation_empty else R.string.generation_failed)
+                }
+            }
+        } == true
+        if (!accepted) {
+            streamAudio.stop()
             pendingRequest = null
             generationError = UiText(R.string.engine_other_task)
         }
@@ -618,15 +632,20 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun syncDefaults() {
         if (busy) return
+        val backendService = service ?: return
         val voice = selectedVoice
         val model = voice?.let(::modelFor)
         if (!runtimeReady || voice == null || model == null || availableBackends.isEmpty()) {
-            service?.setActiveDefaults(null)
+            backendService.setActiveDefaults(null)
             return
         }
-        service?.setActiveDefaults(ActiveDefaults(backend, model.ref, outputLanguage, voice.audioPath,
+        val options = runCatching { creationSettings.requestOptions() }.getOrElse {
+            backendService.setActiveDefaults(null)
+            return
+        }
+        backendService.setActiveDefaults(ActiveDefaults(backend, model.ref, creationSettings.outputLanguage.takeIf { creationSettings.usesOutputLanguage }.orEmpty(), voice.audioPath,
             voice.transcript, promptLanguage = ReferenceLanguage.resolve(voice.referenceLanguage, voice.transcript),
-            options = modelsRepository.provider(model).studioOptions(synthesisOptions), auxiliaryReferenceAudioPaths = auxiliaryPaths), warmupEnabled)
+            options = options, auxiliaryReferenceAudioPaths = auxiliaryPaths), warmupEnabled)
     }
 
     fun importRuntimePackage(uri: Uri) {
@@ -869,6 +888,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             ?: errorUi(UiText(R.string.audio_duration_failed))
     }
     override fun onCleared() {
+        if (pendingRequest?.streamDirectory != null) cancel()
+        pendingRequest = null
+        streamAudio.close()
         draft?.avatarPath?.let(avatars::discard)
         checkpointDraft?.avatarPath?.let(avatars::discard)
         recorder.close()

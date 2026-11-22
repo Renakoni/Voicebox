@@ -43,6 +43,20 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun resourceHint(variant: String) = library()?.resourceHint(variant)
     override val controls get() = library()?.controls.orEmpty()
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
+    val synthesisSettingsLayout get() = (metadata() as? SynthesisSettingsProvider)?.synthesisSettingsLayout
+    val supportsStreaming get() = metadata() is StreamingSynthesisProvider
+    val requiresOutputLanguage get() = (metadata() as? SynthesisSettingsProvider)?.requiresOutputLanguage ?: true
+
+    fun voicePresets(model: CharacterModel) = (metadata() as? VoicePresetProvider)?.voicePresets(model).orEmpty()
+
+    fun usesReference(options: Map<String, String>) = (metadata() as? SynthesisSettingsProvider)?.usesReference(options) ?: true
+
+    fun usesOutputLanguage(options: Map<String, String>) = (metadata() as? SynthesisSettingsProvider)?.usesOutputLanguage(options) ?: true
+
+    fun resolveSynthesisOptions(defaults: Map<String, String>, overrides: Map<String, String>): Map<String, String> =
+        validateOptions((metadata() as? SynthesisSettingsProvider)?.mergeSynthesisOptions(defaults, overrides)
+            ?: (defaults + overrides))
+
     private var npuAvailable = false
     override fun executionModes(): Set<ExecutionBackend> {
         if (!archive.installed) {
