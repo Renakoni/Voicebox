@@ -24,16 +24,6 @@ object ChineseTextNormalizer {
         '+' to "加", '-' to "减", '×' to "乘", '÷' to "除", '=' to "等于",
     )
 
-    private val fullwidthDigitMap: Map<Char, Char> = (0xFF10..0xFF19).mapIndexed { i, code ->
-        code.toChar() to ('0' + i).toChar()
-    }.toMap()
-
-    private val fullwidthLetterMap: Map<Char, Char> =
-        ((0xFF21..0xFF3A).mapIndexed { i, code -> code.toChar() to ('A' + i).toChar() } +
-            (0xFF41..0xFF5A).mapIndexed { i, code -> code.toChar() to ('a' + i).toChar() }).toMap()
-
-    private val fullwidthSpace = '\u3000' to ' '
-
     private val specialCharFilter = Regex("[——《》【】<>{}()（）#&@“”^_|\\\\]")
     private val sentenceSplitRegex = Regex("([：、，；。？！,;?!][”’]?)")
 
@@ -92,6 +82,8 @@ object ChineseTextNormalizer {
         "m2" to "平方米", "m²" to "平方米", "m³" to "立方米", "m3" to "立方米",
         "ml" to "毫升", "m" to "米", "mm" to "毫米", "s" to "秒",
     )
+
+    internal fun isMeasure(word: String) = word in measureMap
 
     fun normalize(text: String, traditionalToSimplified: Map<Char, String> = emptyMap()): String {
         val filtered = specialCharFilter.replace(text.replace(" ", ""), "")
@@ -230,15 +222,20 @@ object ChineseTextNormalizer {
         for (char in text) append(mapping[char] ?: char)
     }
 
-    private fun convertFullwidthToHalfwidth(text: String): String = buildString(text.length) {
-        for (char in text) {
-            when {
-                char == fullwidthSpace.first -> append(fullwidthSpace.second)
-                fullwidthDigitMap.containsKey(char) -> append(fullwidthDigitMap.getValue(char))
-                fullwidthLetterMap.containsKey(char) -> append(fullwidthLetterMap.getValue(char))
-                else -> append(char)
+    internal fun convertFullwidthToHalfwidth(text: String): String {
+        var result: StringBuilder? = null
+        for ((index, char) in text.withIndex()) {
+            val converted = when (char) {
+                '\u3000' -> ' '
+                in '０'..'９', in 'Ａ'..'Ｚ', in 'ａ'..'ｚ' -> char - 0xFEE0
+                else -> char
             }
+            if (converted != char && result == null) {
+                result = StringBuilder(text.length).append(text, 0, index)
+            }
+            result?.append(converted)
         }
+        return result?.toString() ?: text
     }
 
     private fun convertNumber(number: String, useSpokenOne: Boolean): String {

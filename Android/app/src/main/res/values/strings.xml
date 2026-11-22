@@ -330,6 +330,7 @@
     <string name="language_japanese">Japanese</string>
     <string name="language_english">English</string>
     <string name="language_chinese">Chinese</string>
+    <string name="language_auto_detect">Auto-detect</string>
     <string name="language_auto">Auto · %1$s</string>
     <string name="language_from_transcript">Detect from transcript</string>
     <string name="language_selection_description">%1$s: %2$s</string>

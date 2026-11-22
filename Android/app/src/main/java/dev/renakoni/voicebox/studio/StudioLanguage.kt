@@ -22,6 +22,7 @@ internal fun languageName(resources: Resources, value: String) = when (LanguageT
     "japanese" -> resources.getString(R.string.language_japanese)
     "english" -> resources.getString(R.string.language_english)
     "chinese" -> resources.getString(R.string.language_chinese)
+    "auto" -> resources.getString(R.string.language_auto_detect)
     else -> value
 }
 
@@ -41,8 +42,12 @@ internal fun LanguageMenu(title: String, value: String, enabled: Boolean,
     languages: List<String>, autoText: String? = null, onSelect: (String) -> Unit) {
     val resources = LocalResources.current
     var expanded by remember { mutableStateOf(false) }
-    val label = if (value == "auto") resources.getString(R.string.language_auto, languageName(resources, ReferenceLanguage.resolve(value, autoText.orEmpty())))
-        else if (value.isBlank()) title else languageName(resources, value)
+    val label = when {
+        value == "auto" && autoText != null -> resources.getString(R.string.language_auto,
+            languageName(resources, ReferenceLanguage.resolve(value, autoText)))
+        value.isBlank() -> title
+        else -> languageName(resources, value)
+    }
     Box {
         StudioButton(onClick = { expanded = true }, enabled = enabled, style = StudioButtonStyle.Quiet,
             modifier = Modifier.semantics { contentDescription = resources.getString(R.string.language_selection_description, title, label) }) {

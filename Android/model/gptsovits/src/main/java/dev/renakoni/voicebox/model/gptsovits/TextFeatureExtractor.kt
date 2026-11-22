@@ -1,9 +1,5 @@
 package dev.renakoni.voicebox.model.gptsovits
 
-import dev.renakoni.voicebox.core.LanguageTags
-
-import dev.renakoni.voicebox.core.i18n.requireUi
-
 import android.content.Context
 
 interface TextFeatureExtractor : AutoCloseable {
@@ -20,17 +16,14 @@ class DefaultTextFeatureExtractor(
 ) : TextFeatureExtractor {
     override fun close() { japanese.close(); english.close(); korean.close(); fallback.close() }
     override fun extract(language: String, text: String): TextFeatures {
-        val normalized = LanguageTags.normalize(language)
-        LanguageNormalizer.scriptError(normalized, text)?.let { message -> requireUi(false) { message } }
-        return when {
-            LanguageNormalizer.isHybridChineseEnglish(normalized) ||
-                LanguageNormalizer.shouldAutoDetectHybrid(normalized, text) ->
-                hybrid.extract("hybrid-chinese-english", text)
-            LanguageNormalizer.isChinese(normalized) -> chinese.extract(text)
-            LanguageNormalizer.isJapanese(normalized) -> japanese.extract(language, text)
-            LanguageNormalizer.isEnglish(normalized) -> english.extract(language, text)
-            LanguageNormalizer.isKorean(normalized) -> korean.extract(language, text)
-            else -> fallback.extract(language, text)
+        val input = ChineseTextNormalizer.convertFullwidthToHalfwidth(text)
+        val selected = LanguageNormalizer.resolve(language, input)
+        return when (selected) {
+            "chinese", "hybrid-chinese-english" -> hybrid.extract(selected, input)
+            "japanese" -> japanese.extract(selected, input)
+            "english" -> english.extract(selected, input)
+            "korean" -> korean.extract(selected, input)
+            else -> fallback.extract(selected, input)
         }
     }
 
@@ -59,21 +52,23 @@ class HybridTextFeatureExtractor(
     private val chinese: ChineseTextFeatureExtractor,
     private val english: TextFeatureExtractor,
 ) : TextFeatureExtractor {
-    private val englishRun = Regex("[A-Za-z]+")
-
     override fun extract(language: String, text: String): TextFeatures {
         val chunks = mutableListOf<TextFeatures>()
-        var cursor = 0
-        englishRun.findAll(text).forEach { match ->
-            appendChineseChunk(chunks, text.substring(cursor, match.range.first))
-            chunks += english.extract("english", match.value)
-            cursor = match.range.last + 1
+        var englishStart = -1
+        var englishEnd = 0
+        for (word in LanguageNormalizer.englishWords(text)) {
+            val start = word.range.first
+            val between = text.substring(englishEnd, start)
+            if (englishStart < 0 || between.any { !it.isWhitespace() }) {
+                if (englishStart >= 0) chunks += english.extract("english", text.substring(englishStart, englishEnd))
+                appendChineseChunk(chunks, between)
+                englishStart = start
+            }
+            englishEnd = word.range.last + 1
         }
-        appendChineseChunk(chunks, text.substring(cursor))
-
-        if (chunks.isEmpty()) {
-            return chinese.extract(text)
-        }
+        if (englishStart < 0) return chinese.extract(text)
+        chunks += english.extract("english", text.substring(englishStart, englishEnd))
+        appendChineseChunk(chunks, text.substring(englishEnd))
 
         val symbols = chunks.flatMap(TextFeatures::symbols)
         val phoneValues = LongArray(symbols.size)
@@ -105,9 +100,9 @@ class HybridTextFeatureExtractor(
     }
 
     private fun appendChineseChunk(chunks: MutableList<TextFeatures>, chunk: String) {
-        if (chunk.isNotBlank()) {
-            chunks += chinese.extract(chunk)
-        }
+        if (chunk.isBlank()) return
+        val features = chinese.extract(chunk)
+        if (features.normalizedText.isNotEmpty()) chunks += features
     }
 }
 
@@ -121,7 +116,7 @@ class UnsupportedLanguageTextFeatureExtractor : TextFeatureExtractor {
 }
 
 object GenieTextConventions {
-    fun prepareSynthesisText(language: String, text: String): String {
+    fun prepareSynthesisText(text: String): String {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) {
             return trimmed

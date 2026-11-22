@@ -8,8 +8,10 @@ import dev.renakoni.voicebox.studio.creation.gptsovits.GptSovitsCreation
 import dev.renakoni.voicebox.studio.creation.ming.MingCreation
 
 internal interface CreationModel {
+    val automaticOutputLanguage: String? get() = null
+
     @Composable
-    fun Toolbar(settings: CreationSettings, enabled: Boolean)
+    fun Toolbar(settings: CreationSettings, enabled: Boolean) = Unit
 
     @Composable
     fun Panels(settings: CreationSettings, enabled: Boolean)
@@ -36,6 +38,10 @@ private object DefaultCreation : CreationModel {
 
     @Composable
     override fun Panels(settings: CreationSettings, enabled: Boolean) {
-        NumericSynthesisSettings(settings.optionControls, settings.options, enabled, settings::changeOptions)
+        val controls = settings.optionControls
+        if (controls.isEmpty()) return
+        AdvancedSettingsPanel { expanded ->
+            NumericSynthesisSettings(controls, settings.options, enabled, expanded, settings::changeOptions)
+        }
     }
 }

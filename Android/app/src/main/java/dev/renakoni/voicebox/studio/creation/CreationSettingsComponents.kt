@@ -57,10 +57,12 @@ private fun CreationToolbarMenu(content: @Composable () -> Unit) {
 }
 
 @Composable
-internal fun AdvancedSettingsPanel(content: @Composable ColumnScope.(expanded: Boolean) -> Unit) {
+internal fun AdvancedSettingsPanel(summary: String? = null, content: @Composable ColumnScope.(expanded: Boolean) -> Unit) {
     val resources = LocalResources.current
     var expanded by rememberSaveable { mutableStateOf(false) }
-    StudioSettingsHeader(resources.getString(R.string.advanced_settings), expanded) { expanded = !expanded }
+    StudioSettingsHeader(resources.getString(R.string.advanced_settings), expanded, summary.takeUnless { expanded }) {
+        expanded = !expanded
+    }
     val drawingInset = 24.dp
     AnimatedVisibility(expanded, enter = expandVertically(tween(180)) + fadeIn(tween(150)),
         exit = shrinkVertically(tween(180)) + fadeOut(tween(150)),
@@ -77,28 +79,28 @@ internal fun AdvancedSettingsPanel(content: @Composable ColumnScope.(expanded: B
 }
 
 @Composable
-internal fun NumericSynthesisSettings(controls: List<OptionControl>, options: Map<String, String>, enabled: Boolean,
-    onChange: (Map<String, String>) -> Unit) {
-    if (controls.isEmpty()) return
+internal fun ColumnScope.NumericSynthesisSettings(controls: List<OptionControl>, options: Map<String, String>,
+    enabled: Boolean, expanded: Boolean, onChange: (Map<String, String>) -> Unit,
+    hasOtherOverrides: Boolean = false, onReset: () -> Unit = { onChange(emptyMap()) }) {
     val resources = LocalResources.current
-    AdvancedSettingsPanel { expanded ->
-        // Keep drag previews out of requests and restore committed values on collapse.
-        var draft by remember(options, enabled, expanded) { mutableStateOf(options) }
-        for (control in controls) {
-            val current = (draft[control.name] ?: control.defaultValue).toFloat()
-            val label = UiText(control.label).resolve(resources)
-            val display = if (control.integral) current.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", current)
-            SynthesisSlider(label, display + control.unit, current, control.min..control.max, control.increments - 1,
-                enabled, onChange = { changed ->
-                    val value = if (control.integral) changed.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", changed)
-                    draft = draft + (control.name to value)
-                }, onFinished = { onChange(draft) })
-        }
-        StudioButton(onClick = { draft = emptyMap(); onChange(draft) }, enabled = enabled && controls.any {
-            draft[it.name]?.toFloat()?.let { value -> value != it.defaultValue.toFloat() } == true
-        }, style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End)) {
-            Text(resources.getString(R.string.reset_defaults))
-        }
+    // Keep drag previews out of requests and restore committed values on collapse.
+    var draft by remember(options, enabled, expanded) { mutableStateOf(options) }
+    for (control in controls) {
+        val current = (draft[control.name] ?: control.defaultValue).toFloat()
+        val label = UiText(control.label).resolve(resources)
+        val display = if (control.integral) current.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", current)
+        SynthesisSlider(label, display + control.unit, current, control.min..control.max, control.increments - 1,
+            enabled, onChange = { changed ->
+                val value = if (control.integral) changed.roundToInt().toString() else String.format(Locale.ROOT, "%.2f", changed)
+                draft = draft + (control.name to value)
+            }, onFinished = { onChange(draft) })
+    }
+    val changed = hasOtherOverrides || controls.any {
+        draft[it.name]?.toFloat()?.let { value -> value != it.defaultValue.toFloat() } == true
+    }
+    StudioButton(onClick = { draft = emptyMap(); onReset() }, enabled = enabled && changed,
+        style = StudioButtonStyle.Quiet, modifier = Modifier.align(Alignment.End)) {
+        Text(resources.getString(R.string.reset_defaults))
     }
 }
 

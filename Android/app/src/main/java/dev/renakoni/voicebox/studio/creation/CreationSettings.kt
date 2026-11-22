@@ -28,11 +28,13 @@ internal class CreationSettings(
 
     val hasModel get() = selectedModel() != null
     val languages get() = selectedModel()?.let(languagesFor).orEmpty()
-    private val automaticLanguage get() = provider?.requiresOutputLanguage == false
+    private val automaticLanguage get() = model.automaticOutputLanguage
+        ?: "".takeIf { provider?.requiresOutputLanguage == false }
     val outputLanguage: String get() {
         val ref = selectedModel() ?: return ""
-        return languagesByBackend[ref.backendId]?.takeIf { it in languages }
-            ?: if (automaticLanguage) "" else languages.firstOrNull().orEmpty()
+        val automatic = automaticLanguage
+        return languagesByBackend[ref.backendId]?.takeIf { it == automatic || it in languages }
+            ?: automatic ?: languages.firstOrNull().orEmpty()
     }
     val usesOutputLanguage get() = provider?.usesOutputLanguage(options) ?: true
     val sampleLanguage get() = if (usesOutputLanguage) outputLanguage.ifBlank { preset?.language.orEmpty() } else ""
@@ -77,7 +79,7 @@ internal class CreationSettings(
     fun changeLanguage(language: String) {
         val ref = selectedModel() ?: return
         if (!canEdit() || language == outputLanguage ||
-            language !in languages && !(language.isEmpty() && automaticLanguage)) return
+            language !in languages && language != automaticLanguage) return
         saveLanguage(ref.backendId, language)
         onChange(true)
     }
@@ -94,8 +96,9 @@ internal class CreationSettings(
 
     fun resetOptionsAndLanguage() {
         val ref = selectedModel() ?: return
-        if (!canEdit() || !automaticLanguage) return
-        if (outputLanguage.isNotEmpty()) saveLanguage(ref.backendId, "")
+        val automatic = automaticLanguage ?: return
+        if (!canEdit()) return
+        if (outputLanguage != automatic) saveLanguage(ref.backendId, automatic)
         saveOptions(emptyMap())
         onChange(true)
     }
