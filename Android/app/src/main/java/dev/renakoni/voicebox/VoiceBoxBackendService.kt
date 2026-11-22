@@ -1,11 +1,10 @@
 package dev.renakoni.voicebox
 
 import dev.renakoni.voicebox.core.InstalledBackend
-import dev.renakoni.voicebox.bridge.BackendApiContract
 import dev.renakoni.voicebox.core.GenerationRequestGate
 
 import dev.renakoni.voicebox.core.OfficialDownloadState
-import dev.renakoni.voicebox.core.OutputStorage
+import dev.renakoni.voicebox.core.deleteFileTree
 import dev.renakoni.voicebox.bridge.LibraryAction
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.OfficialVoice
@@ -31,8 +30,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.Message
-import android.os.Messenger
 import android.os.PowerManager
 import android.os.Process
 import android.os.SystemClock
@@ -52,7 +49,9 @@ import dev.renakoni.voicebox.bridge.GenerationCancelledException
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
+import dev.renakoni.voicebox.core.PinnedModelFiles
 import java.io.File
+import java.nio.file.Files
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,10 +61,8 @@ class VoiceBoxBackendService : Service() {
     override fun attachBaseContext(base: Context) = super.attachBaseContext(UiLanguageContext(base))
 
     private val binder = LocalBinder()
-    private val apiClients = linkedSetOf<Messenger>()
     private val listeners = linkedSetOf<BackendServiceListener>()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val apiMessenger = Messenger(ApiHandler())
     private val generationGate = GenerationRequestGate()
     private val officialDownloadState = MutableStateFlow(OfficialDownloadState())
     val officialDownload = officialDownloadState.asStateFlow()
@@ -99,15 +96,6 @@ class VoiceBoxBackendService : Service() {
     internal val backendCapabilities = enabledBackends.asStateFlow()
 
     @Volatile
-    private var resourceReloadPending = false
-
-    @Volatile
-    private var cacheClearPending = false
-
-    @Volatile
-    private var cacheClearScheduled = false
-
-    @Volatile
     private var activeDefaults: ActiveDefaults? = null
 
     @Volatile
@@ -122,7 +110,10 @@ class VoiceBoxBackendService : Service() {
             object : LocalHttpApiServer.Bridge {
                 override fun currentState(): BackendServiceState = this@VoiceBoxBackendService.currentState()
 
-                override fun availableModels(): List<CharacterModel> = modelRepository.discoverCharacterModels()
+                override fun availableModels(): List<CharacterModel> {
+                    val enabled = enabledBackends.value
+                    return app.completeModels(modelRepository.providers.filter { enabled[it.id].orEmpty().isNotEmpty() })
+                }
 
                 override fun referenceExample(model: CharacterModel) = modelRepository.findReferenceExample(model)
 
@@ -145,7 +136,6 @@ class VoiceBoxBackendService : Service() {
             },
         )
         worker.execute {
-            runCatching { app.bridgePackages.installBundled() }.onFailure { Log.e("VoiceBoxWorker", "Cannot preinstall backend", it) }
             modelRepository.providers.forEach { provider ->
                 runCatching { provider.recoverInstallations() }.onFailure { Log.e("VoiceBoxWorker", "Cannot recover ${provider.id}", it) }
             }
@@ -158,11 +148,7 @@ class VoiceBoxBackendService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_RELOAD_RESOURCES -> requestResourceReload()
-            ACTION_RELOAD_INFERENCE_SETTINGS -> requestResourceReload()
-            ACTION_CLEAR_CACHE -> requestCacheClear()
-        }
+        if (intent?.action == ACTION_RELOAD_INFERENCE_SETTINGS) requestResourceReload()
         syncLocalHttpApiServer()
         updateNotification(state)
         return START_STICKY
@@ -176,18 +162,13 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
-    override fun onBind(intent: Intent?): IBinder =
-        if (intent?.action == BackendApiContract.ACTION_BIND_API) {
-            apiMessenger.binder
-        } else {
-            binder
-        }
+    override fun onBind(intent: Intent?): IBinder = binder
 
     override fun onDestroy() {
         destroyed = true
         generationGate.stop()
         warmupContext?.cancel("SERVICE_DESTROYED")
-        localHttpApiServer.close()
+        localHttpApiServer.stop()
         // Session ownership never leaves the worker, including during teardown.
         worker.execute {
             closeWorkerRuntime()
@@ -308,26 +289,54 @@ class VoiceBoxBackendService : Service() {
         library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id); putString("variant", voice.ref.variant) }, context) { label, percent ->
             officialDownloadState.value = OfficialDownloadState(voice.ref, UiText.literal(label), percent, running = true)
         }
+        if (voice.ref.backendId == "gptsovits") {
+            // The shipped GPT v3 bridge only removes the SoVITS source after conversion.
+            val root = requireNotNull(getExternalFilesDir(null)).canonicalFile
+            val sources = File(root, ".gpt-packages/voices")
+            val receipts = PinnedModelFiles(root, File(root, ".gpt-packages/receipts"))
+            val downloads = listOf(File(sources, "s1v3.ckpt"), File(sources, "${voice.id}.pth"))
+            val leftovers = downloads + downloads.map(receipts::receipt)
+            check(leftovers.map { it.parentFile!! }.distinct().all { it.canonicalFile == it })
+            leftovers.forEach { Files.deleteIfExists(it.toPath()) }
+        }
     }
+
+    internal fun removeOfficialWeights(voice: OfficialVoice, onComplete: (Result<Unit>) -> Unit): Boolean =
+        removeOnWorker(OfficialDownloadState(voice = voice.ref), onComplete) {
+            val ref = voice.ref
+            require(ref.backendId == "gptsovits")
+            val provider = modelRepository.provider(ref.backendId)
+            require(provider.officialVoices().any { it.ref == ref })
+            val root = requireNotNull(getExternalFilesDir(null)).canonicalFile
+            val weights = File(root, "CharacterModels/${ref.variant}/${ref.modelId}/tts_models")
+            require(weights.parentFile!!.canonicalFile == weights.parentFile)
+            deleteFileTree(weights)
+        }
 
     /** A null part installs the complete family. The bridge can also be installed independently. */
     fun installModelParts(id: String, part: String?): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        val needsBridge = part == BRIDGE_PART || !archive.installed
-        if (needsBridge && !archive.installable) return false
+        if (!archive.installable) return false
         val target = OfficialDownloadState(packageId = id)
         return downloadOnWorker(target) { context ->
             val provider = modelRepository.provider(id)
-            if (needsBridge) {
-                val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
-                    officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
-                }
-                if (bridgeInstalled) {
-                    provider.invalidateMetadata()
-                    refreshBackendModes(provider)
-                }
+            val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
+                officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
             }
-            if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
+            if (bridgeInstalled) {
+                provider.invalidateMetadata()
+                refreshBackendModes(provider)
+            }
+            if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
+                val model = app.mingModelPackage
+                val parts = part?.let(::listOf) ?: model.modelParts
+                parts.forEach { component ->
+                    val label = UiText(MingModelPackage.partTitle(component))
+                    model.install(component, context::checkCancelled) { percent ->
+                        officialDownloadState.value = target.copy(label = label, percent = percent, running = true)
+                    }
+                }
+            } else if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
                 provider.perform(LibraryAction.INSTALL_RESOURCES, Bundle().apply { putString("pack", part) }, context) { label, percent ->
                     officialDownloadState.value = target.copy(label = UiText.literal(label), percent = percent, running = true)
                 }
@@ -337,7 +346,10 @@ class VoiceBoxBackendService : Service() {
 
     fun removeModelPart(id: String, part: String, onComplete: (Result<Unit>) -> Unit): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        return importOnWorker(onComplete, message = R.string.model_removing) { context, _ ->
+        val target = if (id == MingModelPackage.BACKEND && part == MingModelPackage.OFFICIAL) {
+            OfficialDownloadState(voice = MingModelPackage.modelRef)
+        } else OfficialDownloadState(packageId = id)
+        return removeOnWorker(target, onComplete) { context ->
             val provider = modelRepository.provider(id)
             if (part == BRIDGE_PART) {
                 try {
@@ -346,9 +358,31 @@ class VoiceBoxBackendService : Service() {
                     provider.invalidateMetadata()
                     refreshBackendModes(provider)
                 }
+            } else if (id == MingModelPackage.BACKEND) {
+                app.mingModelPackage.uninstall(part)
             } else {
                 provider.perform(LibraryAction.REMOVE_RESOURCES, Bundle().apply { putString("pack", part) },
                     context) { _, _ -> }
+            }
+        }
+    }
+
+    private fun removeOnWorker(target: OfficialDownloadState, onComplete: (Result<Unit>) -> Unit,
+        remove: (GenerationContext) -> Unit): Boolean = importOnWorker(onComplete = { result ->
+        val download = officialDownloadState.value
+        if (result.isSuccess && !download.running && download.voice == target.voice && download.packageId == target.packageId) {
+            officialDownloadState.value = OfficialDownloadState()
+        }
+        onComplete(result)
+    }, message = R.string.model_removing) { context, _ -> remove(context) }
+
+    fun downloadMingVoices(): Boolean {
+        val archive = app.bridgePackages.get(MingModelPackage.BACKEND)
+        if (!archive.installed) return false
+        val target = OfficialDownloadState(voice = MingModelPackage.modelRef)
+        return downloadOnWorker(target) { context ->
+            app.mingModelPackage.install(MingModelPackage.OFFICIAL, context::checkCancelled) { percent ->
+                officialDownloadState.value = target.copy(label = UiText(R.string.ming_official_weights), percent = percent, running = true)
             }
         }
     }
@@ -376,7 +410,6 @@ class VoiceBoxBackendService : Service() {
     ): Boolean = importOnWorker(onComplete) { context, _ ->
         modelRepository.provider(backendId).perform(LibraryAction.IMPORT_ARCHIVE,
             Bundle().apply { putString("uri", uri.toString()) }, context) { _, _ -> }
-        Unit
     }
 
     /** The caller waits off the main thread while the inference owner switches to the import worker. */
@@ -429,14 +462,12 @@ class VoiceBoxBackendService : Service() {
             val result = runCatching {
                 context.checkCancelled()
                 closeWorkerRuntime()
-                synchronized(warmupLock) { completedWarmupKey = null; queuedWarmupKey = null }
                 operation(context) { message -> mainHandler.post { onProgress(message) } }
             }
             generationGate.release(context)
             publishState(GenerationStage.IDLE, false, state.requestedBackend,
                 state.resolvedBackend, state.runtimeLabel, "", initializedModelId = null)
             mainHandler.post { onComplete(result) }
-            finishPendingMaintenance()
         }
         return true
     }
@@ -546,116 +577,16 @@ class VoiceBoxBackendService : Service() {
             onComplete?.invoke(InferResult.Error(error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName, errorCode))
         } finally {
             Log.i(TIMING_LOG_TAG, "request_total_ms=${SystemClock.elapsedRealtime() - startedAtMs} ms")
-            finishPendingMaintenance()
-        }
-    }
-
-    private fun finishPendingMaintenance() {
-        if (destroyed) return
-        if (resourceReloadPending) reloadInferenceResources()
-        if (cacheClearPending) {
-            cacheClearPending = false
-            performCacheClear()
         }
     }
 
     private fun requestResourceReload() {
-        if (destroyed) return
         generationGate.invalidate("RESOURCES_CHANGED")
         warmupContext?.cancel("RESOURCES_CHANGED")
-        if (state.busy || generationGate.isClaimed()) {
-            resourceReloadPending = true
-        } else {
-            // Resource/session teardown must share the inference worker with
-            // warmup and generation; doing it on the service main thread can
-            // race the queued warmup and close an ORT session underneath it.
-            worker.execute(::reloadInferenceResources)
-        }
-    }
-
-    private fun reloadInferenceResources() {
-        if (generationGate.isClaimed()) {
-            resourceReloadPending = true
-            return
-        }
-        closeWorkerRuntime()
-        resourceReloadPending = false
-        synchronized(warmupLock) {
-            completedWarmupKey = null
-            queuedWarmupKey = null
-        }
-        activeDefaults?.let(::scheduleWarmup)
-    }
-
-    private fun requestCacheClear() {
-        if (destroyed) return
-        generationGate.invalidate("CACHE_CLEARED")
-        warmupContext?.cancel("CACHE_CLEARED")
-        if (cacheClearPending || cacheClearScheduled) return
-        if (state.busy || generationGate.isClaimed()) {
-            cacheClearPending = true
-            return
-        }
-        cacheClearScheduled = true
         worker.execute {
-            try {
-                performCacheClear()
-            } finally {
-                cacheClearScheduled = false
-            }
-        }
-    }
-
-    private fun performCacheClear() {
-        if (generationGate.isClaimed()) {
-            cacheClearPending = true
-            return
-        }
-        try {
-            // Closing the runtime releases ORT sessions and all conditioning
-            // caches before deleting files that can be regenerated.
+            if (destroyed) return@execute
             closeWorkerRuntime()
-            synchronized(warmupLock) {
-                completedWarmupKey = null
-                queuedWarmupKey = null
-            }
-            val generated = OutputStorage(requireNotNull(getExternalFilesDir(null))).clearGeneratedAudio()
-            val derived = modelRepository.providers.filter { it.capabilities.imports.isNotEmpty() }.sumOf {
-                it.perform(LibraryAction.CLEAR_CACHE, Bundle(), GenerationContext()) { _, _ -> }.getInt("derived")
-            }
-            publishState(
-                stage = GenerationStage.IDLE,
-                busy = false,
-                requestedBackend = state.requestedBackend,
-                resolvedBackend = state.resolvedBackend,
-                runtimeLabel = state.runtimeLabel,
-                initializedModelId = null,
-                latestOutputFilePath = null,
-                progressPercent = null,
-                progressLabel = null,
-                generationDurationMs = null,
-                lastCompletedAtMs = null,
-                message = getString(
-                    R.string.prototype_cache_cleared,
-                    generated,
-                    derived,
-                ),
-            )
-        } catch (error: Throwable) {
-            publishState(
-                stage = GenerationStage.ERROR,
-                busy = false,
-                requestedBackend = state.requestedBackend,
-                resolvedBackend = state.resolvedBackend,
-                runtimeLabel = state.runtimeLabel,
-                progressPercent = null,
-                progressLabel = null,
-                generationDurationMs = null,
-                message = getString(
-                    R.string.prototype_cache_clear_failed,
-                    error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName,
-                ),
-            )
+            activeDefaults?.let(::scheduleWarmup)
         }
     }
 
@@ -711,17 +642,6 @@ class VoiceBoxBackendService : Service() {
         mainHandler.post {
             if (destroyed || state !== snapshot || (context != null && !generationGate.isCurrent(context))) return@post
             listeners.toList().forEach { it.onStateChanged(snapshot) }
-            apiClients.toList().forEach { client ->
-                runCatching {
-                    client.send(
-                        Message.obtain(null, BackendApiContract.MSG_STATE_CHANGED).apply {
-                            data = snapshot.toBundle()
-                        },
-                    )
-                }.onFailure {
-                    apiClients -= client
-                }
-            }
         }
     }
 
@@ -925,147 +845,16 @@ class VoiceBoxBackendService : Service() {
         // A restarted service shares the queue with the previous instance until its native worker has exited.
         private val worker = java.util.concurrent.ThreadPoolExecutor(0, 1, 30, java.util.concurrent.TimeUnit.SECONDS,
             java.util.concurrent.LinkedBlockingQueue<Runnable>())
-        private val COMMON_REQUEST_KEYS = with(BackendApiContract) { setOf(KEY_MODEL_ID, KEY_BACKEND_ID, KEY_VARIANT, KEY_LANGUAGE,
-            KEY_PROMPT_LANGUAGE, KEY_SYNTHESIS_TEXT, KEY_REFERENCE_AUDIO_PATH, KEY_REFERENCE_TEXT,
-            KEY_AUXILIARY_REFERENCE_AUDIO_PATHS, KEY_BACKEND) }
         private const val NOTIFICATION_CHANNEL_ID = "voicebox_backend_service"
         private const val NOTIFICATION_ID = 2001
         private const val TIMING_LOG_TAG = "VoiceBoxTiming"
         private const val GENERATION_WAKE_LOCK_TIMEOUT_MS = 30L * 60L * 1_000L
-        private const val KEY_PROGRESS_PERCENT = "progress_percent"
-        private const val KEY_PROGRESS_LABEL = "progress_label"
-        private const val KEY_GENERATION_DURATION_MS = "generation_duration_ms"
-        private const val KEY_INFERENCE_RTF = "inference_rtf"
-        private const val KEY_LAST_COMPLETED_AT_MS = "last_completed_at_ms"
-        private const val ACTION_RELOAD_RESOURCES = "dev.renakoni.voicebox.action.RELOAD_RESOURCES"
         internal const val ACTION_RELOAD_INFERENCE_SETTINGS =
             "dev.renakoni.voicebox.action.RELOAD_INFERENCE_SETTINGS"
-        private const val ACTION_CLEAR_CACHE = "dev.renakoni.voicebox.action.CLEAR_CACHE"
 
         fun serviceIntent(context: android.content.Context): Intent =
             Intent(context, VoiceBoxBackendService::class.java)
     }
-
-    private inner class ApiHandler : Handler(Looper.getMainLooper()) {
-        override fun handleMessage(message: Message) {
-            when (message.what) {
-                BackendApiContract.MSG_REGISTER_CLIENT -> {
-                    message.replyTo?.let(apiClients::add)
-                    sendStateTo(message.replyTo)
-                }
-                BackendApiContract.MSG_UNREGISTER_CLIENT -> {
-                    message.replyTo?.let(apiClients::remove)
-                }
-                BackendApiContract.MSG_GET_STATUS -> {
-                    sendStateTo(message.replyTo)
-                }
-                BackendApiContract.MSG_SYNTHESIZE -> {
-                    if (destroyed) return
-                    if (!catalogReady.isCompleted) {
-                        val pending = Message.obtain(message)
-                        worker.execute { post { if (destroyed) pending.recycle() else sendMessage(pending) } }
-                        return
-                    }
-                    val request = try { message.data.toGenerationRequest() } catch (error: IllegalArgumentException) {
-                        sendErrorTo(message.replyTo, error.userMessage(resources) ?: error.message ?: getString(R.string.prototype_service_api_invalid_request))
-                        return
-                    } ?: run {
-                        sendErrorTo(message.replyTo, getString(R.string.prototype_service_api_invalid_request))
-                        return
-                    }
-                    val requested = message.data.getString(BackendApiContract.KEY_BACKEND) ?: ExecutionBackend.CPU.name
-                    val backend = ExecutionBackend.entries.firstOrNull { it.name.equals(requested, ignoreCase = true) }
-                    when (enqueue(backend, request)) {
-                        InferResult.BackendUnavailable -> sendErrorTo(message.replyTo, getString(R.string.prototype_backend_unavailable, requested))
-                        InferResult.Busy -> sendErrorTo(message.replyTo, getString(R.string.prototype_generation_busy))
-                        null -> Unit
-                    }
-                }
-                else -> super.handleMessage(message)
-            }
-        }
-    }
-
-    private fun sendStateTo(target: Messenger?) {
-        if (target == null) {
-            return
-        }
-        runCatching {
-            target.send(
-                Message.obtain(null, BackendApiContract.MSG_STATE_CHANGED).apply {
-                    data = state.toBundle()
-                },
-            )
-        }
-    }
-
-    private fun sendErrorTo(target: Messenger?, message: String) {
-        if (target == null) {
-            return
-        }
-        runCatching {
-            target.send(
-                Message.obtain(null, BackendApiContract.MSG_STATE_CHANGED).apply {
-                    data = state.copy(
-                        stage = GenerationStage.ERROR,
-                        message = message,
-                        busy = false,
-                    ).toBundle()
-                },
-            )
-        }
-    }
-
-    private fun Bundle.toGenerationRequest(): GenerationRequest? {
-        val modelId = getString(BackendApiContract.KEY_MODEL_ID) ?: return null
-        val backendId = getString(BackendApiContract.KEY_BACKEND_ID)
-        val variant = getString(BackendApiContract.KEY_VARIANT)
-        val characterModel = modelRepository.discoverCharacterModels()
-            .singleOrNull { it.id == modelId && (backendId == null || it.ref.backendId == backendId) &&
-                (variant == null || it.ref.variant == variant) }
-            ?: return null
-        return GenerationRequest(
-            characterModel = characterModel,
-            options = modelRepository.provider(characterModel).validateOptions(buildMap {
-                for (key in keySet() - COMMON_REQUEST_KEYS) {
-                    @Suppress("DEPRECATION")
-                    val value = this@toGenerationRequest.get(key)
-                    require(value is Number || value is String) { "$key must be a scalar." }
-                    put(key, value.toString())
-                }
-            }),
-            language = getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),
-            promptLanguage = getString(BackendApiContract.KEY_PROMPT_LANGUAGE)
-                ?.takeIf(String::isNotBlank)
-                ?: getString(BackendApiContract.KEY_LANGUAGE).orEmpty(),
-            synthesisText = getString(BackendApiContract.KEY_SYNTHESIS_TEXT).orEmpty(),
-            referenceAudioPath = getString(BackendApiContract.KEY_REFERENCE_AUDIO_PATH).orEmpty(),
-            referenceText = getString(BackendApiContract.KEY_REFERENCE_TEXT).orEmpty(),
-            auxiliaryReferenceAudioPaths = getStringArrayList(
-                BackendApiContract.KEY_AUXILIARY_REFERENCE_AUDIO_PATHS,
-            )?.toList().orEmpty(),
-        )
-    }
-
-    private fun BackendServiceState.toBundle(): Bundle =
-        Bundle().apply {
-            putString("request_id", requestId)
-            putLong("generation_epoch", generationEpoch)
-            putString("error_code", errorCode)
-            putString(BackendApiContract.KEY_STAGE, stage.name)
-            putString(BackendApiContract.KEY_MESSAGE, message)
-            putBoolean(BackendApiContract.KEY_BUSY, busy)
-            putString(BackendApiContract.KEY_REQUESTED_BACKEND, requestedBackend.name)
-            putString(BackendApiContract.KEY_RESOLVED_BACKEND, resolvedBackend.name)
-            putString(BackendApiContract.KEY_RUNTIME_LABEL, runtimeLabel)
-            putString(BackendApiContract.KEY_INITIALIZED_MODEL_ID, initializedModelId)
-            putString(BackendApiContract.KEY_LATEST_OUTPUT_FILE_PATH, latestOutputFilePath)
-            progressPercent?.let { putInt(KEY_PROGRESS_PERCENT, it) }
-            putString(KEY_PROGRESS_LABEL, progressLabel)
-            generationDurationMs?.let { putLong(KEY_GENERATION_DURATION_MS, it) }
-            inferenceRtf?.let { putDouble(KEY_INFERENCE_RTF, it) }
-            lastCompletedAtMs?.let { putLong(KEY_LAST_COMPLETED_AT_MS, it) }
-        }
 }
 
 data class ImportedVoice(val ref: ModelRef, val displayName: String)

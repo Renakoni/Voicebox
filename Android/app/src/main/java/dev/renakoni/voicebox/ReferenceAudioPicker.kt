@@ -18,8 +18,10 @@ class ReferenceAudioPicker(
 
     fun copyToAppCache(uri: Uri): PickedReferenceAudio {
         val displayName = resolveDisplayName(uri)
+        val extension = displayName.substringAfterLast('.', "")
+            .takeIf { it.matches(Regex("[A-Za-z0-9]{1,8}")) } ?: "audio"
         val cacheDirectory = File(context.cacheDir, "reference_audio").apply { mkdirs() }
-        val outputFile = File(cacheDirectory, "${System.currentTimeMillis()}-$displayName")
+        val outputFile = File.createTempFile("reference-", ".$extension", cacheDirectory)
         try {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 outputFile.outputStream().use { output ->
@@ -52,14 +54,11 @@ class ReferenceAudioPicker(
                     if (index >= 0) {
                         val value = cursor.getString(index)?.trim().orEmpty()
                         if (value.isNotBlank()) {
-                            return sanitizeFilename(value)
+                            return value
                         }
                     }
                 }
             }
-        return sanitizeFilename(uri.lastPathSegment?.substringAfterLast('/') ?: "reference.wav")
+        return uri.lastPathSegment?.substringAfterLast('/') ?: "reference"
     }
-
-    private fun sanitizeFilename(name: String): String =
-        name.replace(Regex("""[\\/:*?"<>|]"""), "_")
 }

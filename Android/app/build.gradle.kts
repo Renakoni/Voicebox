@@ -67,6 +67,7 @@ android {
         targetSdk = 36
         versionCode = providers.gradleProperty("voiceboxVersionCode").get().toInt()
         versionName = providers.gradleProperty("voiceboxVersionName").get()
+        buildConfigField("boolean", "MODEL_PREVIEW", "false")
 
         externalNativeBuild {
             cmake {
@@ -98,6 +99,8 @@ android {
         debug {
             // MuMu functional checks use x86_64; the release ABI is fixed below.
             ndk { abiFilters += providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") }
+            buildConfigField("boolean", "MODEL_PREVIEW",
+                (providers.gradleProperty("voiceboxModelPreview").orNull == "true").toString())
         }
         release {
             ndk { abiFilters += "arm64-v8a" }
@@ -111,12 +114,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-}
-
-androidComponents.onVariants { variant ->
-    val name = variant.name.replaceFirstChar(Char::uppercaseChar)
-    android.sourceSets.getByName(variant.name).assets.srcDir(rootProject.file("model/gptsovits/build/outputs/bridge/${variant.name}"))
-    tasks.matching { it.name == "pre${name}Build" || it.name == "merge${name}Assets" }.configureEach { dependsOn(":model:gptsovits:bundle${name}Bridge") }
 }
 
 val syncLicenseAssets = tasks.register<Sync>("syncLicenseAssets") {

@@ -82,5 +82,5 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun createRuntime(execution: ExecutionBackend): BackendRuntime =
         WorkerRuntime(context, id, execution, settings().apply {
             putBoolean("allowNpu", getBoolean("allowNpu") && npuAvailable)
-        }, supportsWarmup)
+        }, retain = true)
 }

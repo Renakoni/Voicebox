@@ -125,24 +125,23 @@ def main():
         native = {Path(n).name for n in app.namelist() if n.startswith("lib/")}
         require(not (native & (GPT_LIBS - {"libc++_shared.so"}) or any(n.startswith("libming-") for n in native)),
                 "Host includes backend native code")
+        require(not any(entry.filename.startswith("assets/backend-packages/") for entry in members),
+                "Host bundles bridge packages")
+        host_abis = {n.split("/")[1] for n in app.namelist() if n.startswith("lib/") and n.endswith(".so")}
         report = {"host_classes": len(host)}
         for backend, path in (("gptsovits", args.gpt), ("ming", args.ming)):
             spec = json.loads(app.read(f"assets/bridges/{backend}.json"))
             require(spec["id"] == backend, "Backend catalog misidentified")
             data = path.read_bytes()
-            url = spec["parts"][0]["url"]
-            if backend == "gptsovits":
-                require(url.startswith("asset://"), "GPT is not bundled")
-                host_abis = {n.split("/")[1] for n in app.namelist() if n.startswith("lib/") and n.endswith(".so")}
-                require(host_abis == {spec["abi"]}, "Host and bundled GPT native ABIs differ")
-                bundled = [n for n in app.namelist() if n.startswith("assets/backend-packages/")]
-                require(bundled == ["assets/" + url.removeprefix("asset://")] and app.read(bundled[0]) == data,
-                        "Bundled and standalone GPT candidates differ")
-            else:
-                require(url.startswith("https://") and url.rsplit("/", 1)[-1] == path.name, "Ming catalog URL differs")
-                require(not any(Path(entry.filename).name == path.name or
-                                (entry.file_size == len(data) and app.read(entry) == data) for entry in members),
-                        "Downloadable Ming package is bundled in the APK")
+            parts = spec["parts"]
+            require(len(parts) == 1 and parts[0]["bytes"] == len(data), f"{backend}: catalog package size differs")
+            url = parts[0]["url"]
+            require(url.startswith("https://") and url.rsplit("/", 1)[-1] == path.name,
+                    f"{backend}: catalog URL differs")
+            require(host_abis == {spec["abi"]}, f"{backend}: APK and bridge ABIs differ")
+            require(not any(Path(entry.filename).name == path.name or
+                            (entry.file_size == len(data) and app.read(entry) == data) for entry in members),
+                    f"{backend}: downloadable package is bundled in the APK")
             report[backend] = verify_package(spec, data)
     print(json.dumps(report, indent=2))
 

@@ -1,0 +1,161 @@
+{
+  "baseUrl": "https://github.com/Renakoni/Voicebox/releases/download/ming-models-v4",
+  "packs": {
+    "ming-clone": {
+      "reference/encoder.onnx": {
+        "asset": "reference-encoder.onnx",
+        "bytes": 1387096,
+        "sha256": "efab3b0b1d65d5dbd448640edd44fbd9e81e2d086c517c6b02054ebc82aafaca"
+      },
+      "reference/encoder.data": {
+        "asset": "reference-encoder.data",
+        "bytes": 1677003776,
+        "sha256": "1237c2ffe6559ca136713e14562240eacd64ac2247573e226d9fcbb5b3b64191"
+      },
+      "reference/speaker.onnx": {
+        "asset": "reference-speaker.onnx",
+        "bytes": 691946,
+        "sha256": "9ebc1c1b375f24ed2e16eb46f3f4e45ec391291536ae0bed8c61c54f855dc2b4"
+      },
+      "reference/campplus.onnx": {
+        "asset": "reference-campplus.onnx",
+        "bytes": 28303423,
+        "sha256": "a6ac6a63997761ae2997373e2ee1c47040854b4b759ea41ec48e4e42df0f4d73"
+      },
+      "reference/projection.onnx": {
+        "asset": "reference-projection.onnx",
+        "bytes": 327542,
+        "sha256": "ce2652208194107c478bf3aacce8888de09f8ab02a53ffd57cad2bc6257b87ec"
+      },
+      "reference/projection.data": {
+        "asset": "reference-projection.data",
+        "bytes": 406961664,
+        "sha256": "eb7217e85dba657d117391225876c50e1b27a3e7cfe0f3bc6f933e78f1aa0d07"
+      },
+      "reference/mel.f32": {
+        "asset": "reference-mel.f32",
+        "bytes": 82240,
+        "sha256": "4696fcf5cd78c83eddf9e6c2300eaf6fcee0d2a1bef3d079b8749a17ee8d777a"
+      },
+      "reference/povey.f32": {
+        "asset": "reference-povey.f32",
+        "bytes": 1600,
+        "sha256": "890e57612b554cb18fb1d681c902fbf05faccc07d9dd7fd0fac9c14fb8277ec9"
+      }
+    },
+    "ming-htp": {
+      "htp/flow.onnx": {
+        "asset": "htp-flow.onnx",
+        "bytes": 421407,
+        "sha256": "b8e2c5691ae7ccfaecf2f67122b121faa7eaffc62f5d412c0e6c1b2b80da09ca"
+      },
+      "htp/flow.data": {
+        "asset": "htp-flow.data",
+        "bytes": 407482368,
+        "sha256": "17c3f056c58bfcff243b34ee3863b3b3eafc4eab94b2156f7ec7634156dec948"
+      },
+      "models/aggregator-htp.onnx": {
+        "asset": "models-aggregator-htp.onnx",
+        "bytes": 321696,
+        "sha256": "3a37909fed6fbb30021e6b7bd1c111ed0717ba1e68657c85f7d75d6233659521"
+      }
+    },
+    "ming-official": {
+      "models/tokenizer.json": {
+        "asset": "models-tokenizer.json",
+        "bytes": 11431389,
+        "sha256": "87d54ca3b44ea2f822ba39a0a45cb1b61644bd6606d9d3536dea75367bffb06d"
+      },
+      "models/llm.onnx": {
+        "asset": "models-llm.onnx",
+        "bytes": 1104583,
+        "sha256": "978b6b7a6ed6d7fb1ece2645dc6b3b736cc327c65a9a810b38c8c313b65b5618"
+      },
+      "models/flow.onnx": {
+        "asset": "models-flow.onnx",
+        "bytes": 517878,
+        "sha256": "0cb89b7e3e8b16c398bff71754fd022c34e1d7e568794fd78647df650291f5d8"
+      },
+      "models/aggregator.onnx": {
+        "asset": "models-aggregator.onnx",
+        "bytes": 401442,
+        "sha256": "1e9ad1d4b9da03077a90b4f8089e6867629c6637d6298b1330b78c467d9f1efa"
+      },
+      "models/audio.onnx": {
+        "asset": "models-audio.onnx",
+        "bytes": 1223247,
+        "sha256": "af3ad11a694681ff3703fd68468778b65cea323069a4fbaa7e075774e7b6e50b"
+      },
+      "models/time.onnx": {
+        "asset": "models-time.onnx",
+        "bytes": 3285,
+        "sha256": "3e8252d12cc20a2477a3c21d5a80d5275bffcfb2aac3d5411eca7c13ada7eba7"
+      },
+      "models/window.f32": {
+        "asset": "models-window.f32",
+        "bytes": 14112,
+        "sha256": "1e1daeb1138f1ff220fc6f1e1e45c377a3ef7de4458105e32934c29ba2b8d5f9"
+      },
+      "models/llm.data": {
+        "asset": "models-llm.data",
+        "bytes": 715921920,
+        "sha256": "46806768ae0a48f3e0b8c35036974c43e9dd5cd131cacf9de24d2162ff50c8c8"
+      },
+      "models/embedding.f32": {
+        "asset": "models-embedding.f32",
+        "bytes": 544538624,
+        "sha256": "8de35b8460ad5a636bdf6df85f191db197f7a557d4f4b307baf9104c1b625ec3"
+      },
+      "models/flow.data": {
+        "asset": "models-flow.data",
+        "bytes": 203927552,
+        "sha256": "ec317da72e176761081f702fb5be0059419755f41ddeabaff17d64f64649a5d5"
+      },
+      "models/aggregator.data": {
+        "asset": "models-aggregator.data",
+        "bytes": 203668992,
+        "sha256": "a56a9fbd065dcd7ac92c33430acfffbba625596e6b5f2efbce8861e2614012db"
+      },
+      "models/audio.data": {
+        "asset": "models-audio.data",
+        "bytes": 1444466472,
+        "sha256": "c5bff4b8672b3d91ffddf195c22db944ae842890a640b7086fa6efed4b77c5f0"
+      },
+      "models/time.data": {
+        "asset": "models-time.data",
+        "bytes": 5251072,
+        "sha256": "621e42078d07a5ade9b30accb4b4d794db2ee86c8388a156bfd34578d21d6c36"
+      },
+      "voice/manifest.json": {
+        "asset": "voice-manifest.json",
+        "bytes": 7286,
+        "sha256": "9a5d0cb164bf06feb0ed095ab0b15500a04c7cb39f1e1b81c820fbb7ca7caeb2"
+      },
+      "voice/speaker.f32": {
+        "asset": "voice-speaker.f32",
+        "bytes": 3584,
+        "sha256": "ab08926e4d60823fd47c7805a25dfb69e4c0efd28df4d5f91fe4b5aef4a08cdb"
+      },
+      "voice/prompt.f32": {
+        "asset": "voice-prompt.f32",
+        "bytes": 150528,
+        "sha256": "7cb33e4f8e5dd52dd80fe4c283fc40aa3472a2b507b0a7881d78842f13a96cbc"
+      },
+      "voice/history.f32": {
+        "asset": "voice-history.f32",
+        "bytes": 256,
+        "sha256": "90adc777d89dc4d2ba18e6809daa60acf465f4650ce068b7ad97c747657883bf"
+      },
+      "examples/reference.wav": {
+        "asset": "examples-reference.wav",
+        "bytes": 321690,
+        "sha256": "c1e7e796f9e7798db98de29625cf1ae8acb5eaa271171f52223e47ea777b2802"
+      },
+      "voice-presets.json": {
+        "asset": "voice-presets.json",
+        "bytes": 9075,
+        "sha256": "8f92f1132de0f87e80937b5a291c5c1ab1f619f4f4feab9308e27ad1ca1a7a12"
+      }
+    }
+  }
+}

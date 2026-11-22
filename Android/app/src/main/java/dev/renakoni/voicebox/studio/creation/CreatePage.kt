@@ -55,9 +55,12 @@ private val ComposerShape = RoundedCornerShape(StudioCardRadius)
 internal fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share: (StudioOutput) -> Unit,
     sendQq: (StudioOutput) -> Unit, pickRuntime: () -> Unit, modifier: Modifier) {
     val resources = LocalResources.current
-    if (vm.voices.isEmpty()) {
+    if (vm.selectedVoice?.let(vm::modelFor) == null) {
         Box(modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
-            if (!vm.loading) EmptyStudio(onStart = { vm.tab = StudioTab.VOICES })
+            if (!vm.loading) {
+                if (vm.needsModel) EmptyStudio(R.string.install_first_model, R.string.go_models) { vm.tab = StudioTab.MODELS }
+                else EmptyStudio(R.string.first_voice, R.string.go_voices) { vm.tab = StudioTab.VOICES }
+            }
         }
         return
     }
@@ -368,11 +371,11 @@ private fun QuietWave() {
 }
 
 @Composable
-private fun EmptyStudio(onStart: () -> Unit) {
+internal fun EmptyStudio(message: Int, action: Int, onStart: () -> Unit) {
     val resources = LocalResources.current
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
         QuietWave()
-        Text(resources.getString(R.string.first_voice), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-        StudioButton(onClick = onStart) { Text(resources.getString(R.string.go_voices)) }
+        Text(resources.getString(message), style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+        StudioButton(onClick = onStart) { Text(resources.getString(action)) }
     }
 }

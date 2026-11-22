@@ -14,7 +14,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '3'
+VERSION = '4'
 ABI = 'arm64-v8a'
 PROBE = ROOT.parent / 'gptsovits/src/main/assets/device-acceleration/probe.onnx'
 QNN_LIBRARIES = ('libQnnHtp.so', 'libQnnHtpPrepare.so', 'libQnnSystem.so')
@@ -258,7 +258,7 @@ def main():
         with zipfile.ZipFile(runtime / 'tasks.jar', 'w') as archive:
             add_file(archive, dex / 'classes.dex', 'classes.dex')
     # The package carries runtime code, a provider probe and third-party notices.
-    manifest = {'contract': 1, 'id': 'ming', 'entry': 'dev.renakoni.voicebox.model.ming.MingEntry',
+    manifest = {'contract': 1, 'id': 'ming', 'entry': 'dev.renakoni.voicebox.model.ming.MingEntry', 'minAppVersionCode': 11,
                 'code': 'tasks.jar', 'abi': ABI, 'adapterSourceSha256': adapter_source_hash(), 'sourceCommit': subprocess.check_output(
                     ['git', '-C', str(source), 'rev-parse', 'HEAD'], text=True).strip()}
     (runtime / 'bridge.json').write_text(json.dumps(manifest), encoding='utf-8')

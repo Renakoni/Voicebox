@@ -49,12 +49,8 @@
 
         <service
             android:name=".VoiceBoxBackendService"
-            android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             android:foregroundServiceType="specialUse">
-            <intent-filter>
-                <action android:name="dev.renakoni.voicebox.action.BIND_BACKEND_API" />
-            </intent-filter>
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Local TTS inference and loopback HTTP API server" />

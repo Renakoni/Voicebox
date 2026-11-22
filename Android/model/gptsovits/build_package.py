@@ -1,4 +1,4 @@
-"""Create the built-in GPT bridge and its pinned application catalog from a variant AAR."""
+"""Build the downloadable GPT bridge and its pinned application catalog from a variant AAR."""
 import argparse
 import hashlib
 import json
@@ -29,7 +29,10 @@ def main():
     parser.add_argument('--build-tools', required=True)
     parser.add_argument('--abi', required=True, choices=('arm64-v8a', 'x86_64'))
     parser.add_argument('--commit', required=True)
+    parser.add_argument('--release-url', required=True)
     args = parser.parse_args()
+    if not args.release_url.startswith('https://'):
+        parser.error('The release URL must use HTTPS')
     root = args.output
     catalog_dir, archive_dir = root / 'bridges', root / 'backend-packages'
     for folder in (catalog_dir, archive_dir):
@@ -38,6 +41,12 @@ def main():
     with tempfile.TemporaryDirectory(dir=root.parent) as tmp:
         work = Path(tmp)
         with zipfile.ZipFile(args.aar) as model, zipfile.ZipFile(args.runtime) as ort:
+            official = json.loads(model.read('assets/official-models.json'))
+            common_bytes = sum(item['bytes'] for item in official['runtime'] + official['languageFrontends'])
+            resource_packs = [
+                dict(id='common', titleKey='pack_gpt_common', bytes=common_bytes),
+                dict(id='v5-vocoder', titleKey='pack_gpt_vocoder', bytes=official['vocoder']['bytes']),
+            ]
             jars = []
             for name, library in (('provider', model), ('ort', ort)):
                 jar = work / (name + '.jar')
@@ -77,8 +86,9 @@ def main():
                         archive_file(archive, name, stream)
                 files = {entry.filename: entry.file_size for entry in archive.infolist()}
         sha = digest(package)
-        catalog = dict(manifest, format=2, displayName='GPT-SoVITS', revision=sha, version='3', files=files, parts=[
-            dict(url='asset://backend-packages/' + package.name, bytes=package.stat().st_size, sha256=sha)])
+        catalog = dict(manifest, format=2, displayName='GPT-SoVITS', initialResourcePacks=resource_packs,
+                       revision=sha, version='3', files=files, parts=[
+            dict(url=args.release_url.rstrip('/') + '/' + package.name, bytes=package.stat().st_size, sha256=sha)])
         catalog_file = work / 'gptsovits.json'
         catalog_file.write_text(json.dumps(catalog, indent=2) + '\n', encoding='utf-8')
         package.replace(archive_dir / package.name)

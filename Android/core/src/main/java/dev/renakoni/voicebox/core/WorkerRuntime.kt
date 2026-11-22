@@ -143,12 +143,10 @@ private class WorkerBinding(private val context: Context) : AutoCloseable {
     }
 
     override fun close() {
-        val messenger = remote
-        runCatching { messenger?.send(Message.obtain(null, WorkerProtocol.CLOSE).apply {
-            data = Bundle().apply { putString("session", id) }
-        }) }
+        // Remove Android's service connection before the worker exits in onUnbind.
+        val bound = remote != null
         context.unbindService(connection)
-        if (messenger == null || stopped.await(10, TimeUnit.SECONDS)) {
+        if (!bound || stopped.await(10, TimeUnit.SECONDS)) {
             val work = File(context.cacheDir, "bridge-workers/$id")
             deleteFileTree(work)
         } else error("Backend worker did not exit")

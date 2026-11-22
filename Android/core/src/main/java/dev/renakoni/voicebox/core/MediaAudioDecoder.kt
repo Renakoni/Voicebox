@@ -4,6 +4,9 @@ import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
+import android.os.SystemClock
+import dev.renakoni.voicebox.bridge.GenerationCancelledException
+import dev.renakoni.voicebox.bridge.GenerationContext
 import java.io.File
 import java.nio.ByteBuffer
 
@@ -50,27 +53,15 @@ object MediaAudioDecoder {
             val audioTrackIndex = findAudioTrack(extractor) ?: return null
             extractor.selectTrack(audioTrackIndex)
             val format = extractor.getTrackFormat(audioTrackIndex)
-            val sampleRate = readIntOrDefault(format, MediaFormat.KEY_SAMPLE_RATE, 0)
-            var channels = readIntOrDefault(format, MediaFormat.KEY_CHANNEL_COUNT, 0)
-            require(sampleRate > 0 && channels > 0) { "Invalid decoded audio format." }
-            var encoding = PcmSampleEncoding.fromMediaFormat(format)
             val mime = format.getString(MediaFormat.KEY_MIME) ?: return null
 
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
             codec.start()
 
-            val samples = decodeToMonoFloat(
-                extractor = extractor,
-                codec = codec,
-                initialChannels = channels,
-                initialEncoding = encoding,
-                onOutputFormatChanged = { outputFormat ->
-                    channels = readIntOrDefault(outputFormat, MediaFormat.KEY_CHANNEL_COUNT, channels)
-                    encoding = PcmSampleEncoding.fromMediaFormat(outputFormat)
-                },
-            )
-            AudioBuffer(samples = samples, sampleRate = sampleRate)
+            decodeToMonoFloat(extractor, codec, format)
+        } catch (error: GenerationCancelledException) {
+            throw error
         } catch (_: Exception) {
             null
         } finally {
@@ -92,23 +83,24 @@ object MediaAudioDecoder {
     private fun decodeToMonoFloat(
         extractor: MediaExtractor,
         codec: MediaCodec,
-        initialChannels: Int,
-        initialEncoding: PcmSampleEncoding,
-        onOutputFormatChanged: (MediaFormat) -> Unit,
-    ): FloatArray {
+        inputFormat: MediaFormat,
+    ): AudioBuffer {
         var samples = FloatArray(0)
         var sampleCount = 0
-        var channels = initialChannels
-        var encoding = initialEncoding
+        var sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+        var channels = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+        var encoding = PcmSampleEncoding.fromMediaFormat(inputFormat)
         var inputEosQueued = false
         val bufferInfo = MediaCodec.BufferInfo()
         val timeoutUs = 10_000L
+        var lastProgress = SystemClock.elapsedRealtime()
 
         while (true) {
-            val inputBufferIndex = codec.dequeueInputBuffer(timeoutUs)
-            if (inputBufferIndex >= 0 && !inputEosQueued) {
-                val inputBuffer = codec.getInputBuffer(inputBufferIndex)
-                    ?: continue
+            GenerationContext.checkCurrent()
+            check(SystemClock.elapsedRealtime() - lastProgress < 10_000) { "Audio decoder stopped responding." }
+            val inputBufferIndex = if (inputEosQueued) -1 else codec.dequeueInputBuffer(timeoutUs)
+            if (inputBufferIndex >= 0) {
+                val inputBuffer = checkNotNull(codec.getInputBuffer(inputBufferIndex))
                 val sampleSize = extractor.readSampleData(inputBuffer, 0)
                 if (sampleSize < 0) {
                     codec.queueInputBuffer(
@@ -123,6 +115,7 @@ object MediaAudioDecoder {
                     codec.queueInputBuffer(inputBufferIndex, 0, sampleSize, extractor.sampleTime, 0)
                     extractor.advance()
                 }
+                lastProgress = SystemClock.elapsedRealtime()
             }
 
             when (val outputBufferIndex = codec.dequeueOutputBuffer(bufferInfo, timeoutUs)) {
@@ -149,17 +142,20 @@ object MediaAudioDecoder {
                     }
                     codec.releaseOutputBuffer(outputBufferIndex, false)
                     if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) break
+                    if (bufferInfo.size > 0) lastProgress = SystemClock.elapsedRealtime()
                 }
                 MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     val outputFormat = codec.outputFormat
-                    onOutputFormatChanged(outputFormat)
+                    sampleRate = readIntOrDefault(outputFormat, MediaFormat.KEY_SAMPLE_RATE, sampleRate)
                     channels = readIntOrDefault(outputFormat, MediaFormat.KEY_CHANNEL_COUNT, channels)
                     encoding = PcmSampleEncoding.fromMediaFormat(outputFormat)
+                    lastProgress = SystemClock.elapsedRealtime()
                 }
             }
         }
 
-        return samples.copyOf(sampleCount)
+        require(sampleRate > 0 && sampleCount > 0) { "Invalid decoded audio." }
+        return AudioBuffer(samples = samples.copyOf(sampleCount), sampleRate = sampleRate)
     }
 
     /** Decode one interleaved PCM chunk and average channels without applying gain or clipping. */
