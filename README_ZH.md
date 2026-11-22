@@ -163,7 +163,7 @@ cd Voicebox/Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-默认构建使用 CPU 推理。如需启用 WebGPU 加速，请先构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](Android/model/gptsovits/patches)），并通过 `-PvoiceboxOrtAar=<AAR路径>` 传入 Gradle。
+`:app:assembleDebug` 构建应用本体，各模型的推理后端按需在软件内从 Release 下载。如需自行打包带 WebGPU 加速的 GPT-SoVITS 后端，请先构建定制 ONNX Runtime（[构建脚本](tools/build_ort_webgpu.ps1)、[补丁](Android/model/gptsovits/patches)），并在执行 `:model:gptsovits:bundleDebugBridge` 或 `:model:gptsovits:bundleReleaseBridge` 时通过 `-PvoiceboxOrtAar=<AAR路径>` 传入；不传该参数时默认打包 CPU 推理版本。
 
 ## 问题反馈
 

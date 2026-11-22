@@ -163,7 +163,7 @@ cd Voicebox/Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-標準ビルドは CPU 推論になります。WebGPU 加速を有効にするには、カスタム ONNX Runtime をビルドし（[ビルドスクリプト](tools/build_ort_webgpu.ps1)・[パッチ](Android/model/gptsovits/patches)）、`-PvoiceboxOrtAar=<AAR のパス>` を Gradle に渡してください。
+`:app:assembleDebug` はアプリ本体をビルドし、各モデルの推論バックエンドはアプリ内から Releases 経由でオンデマンド取得します。WebGPU 対応の GPT-SoVITS バックエンドを自前でパッケージングする場合は、カスタム ONNX Runtime をビルドし（[ビルドスクリプト](tools/build_ort_webgpu.ps1)・[パッチ](Android/model/gptsovits/patches)）、`:model:gptsovits:bundleDebugBridge` または `:model:gptsovits:bundleReleaseBridge` 実行時に `-PvoiceboxOrtAar=<AAR のパス>` を指定してください（未指定の場合は CPU 推論版になります）。
 
 ## 不具合報告と貢献
 

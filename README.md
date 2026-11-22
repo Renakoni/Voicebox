@@ -163,7 +163,7 @@ cd Voicebox/Android
 .\gradlew.bat :app:assembleDebug
 ```
 
-The default build runs on CPU. To enable WebGPU acceleration, build the custom ONNX Runtime ([build script](tools/build_ort_webgpu.ps1), [patches](Android/model/gptsovits/patches)) and pass its AAR to Gradle via `-PvoiceboxOrtAar=<path-to-AAR>`.
+`:app:assembleDebug` builds the app shell, which downloads model runtimes from Releases on demand. To package a WebGPU-enabled GPT-SoVITS backend yourself, build the custom ONNX Runtime ([build script](tools/build_ort_webgpu.ps1), [patches](Android/model/gptsovits/patches)) and pass `-PvoiceboxOrtAar=<path-to-AAR>` when running `:model:gptsovits:bundleDebugBridge` or `:model:gptsovits:bundleReleaseBridge`; omitting it builds a CPU-only backend package.
 
 ## Feedback and Contributing
 
