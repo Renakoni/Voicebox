@@ -27,7 +27,7 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
     val resources = LocalResources.current
     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FilledIconButton(onClick = onToggle, enabled = enabled && !preview.preparing,
-            shape = StudioControlShape,
+            shape = androidx.compose.foundation.shape.CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
                 contentColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.size(48.dp).padding(4.dp)) {
