@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import java.util.Locale
@@ -25,7 +27,7 @@ internal fun OutputPlayback(preview: PreviewState, durationMs: Long, enabled: Bo
     val resources = LocalResources.current
     Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         FilledIconButton(onClick = onToggle, enabled = enabled && !preview.preparing,
-            shape = StudioControlShape,
+            shape = androidx.compose.foundation.shape.CircleShape,
             colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.onSurface,
                 contentColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.size(48.dp).padding(4.dp)) {
@@ -75,3 +77,40 @@ private fun PauseIcon() {
 }
 
 private fun playbackTime(ms: Long) = String.format(Locale.ROOT, "%d:%02d", ms / 60_000, ms / 1000 % 60)
+
+@Composable
+internal fun StreamPlaybackBar(state: StreamPlayback, onToggle: () -> Unit, onStop: () -> Unit, modifier: Modifier) {
+    val resources = LocalResources.current
+    val colors = MaterialTheme.colorScheme
+    val status = when {
+        state.paused -> R.string.ming_stream_paused
+        state.playing -> R.string.ming_stream_playing
+        state.elapsedMs > 0 -> R.string.ming_stream_waiting
+        else -> R.string.ming_stream_preparing
+    }
+    Surface(modifier.fillMaxWidth(), color = colors.surfaceContainerLow) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            HorizontalDivider(color = colors.outlineVariant)
+            Row(Modifier.widthIn(max = 640.dp).fillMaxWidth().heightIn(min = 60.dp).padding(start = 24.dp, end = 12.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(resources.getString(status), Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                        style = MaterialTheme.typography.labelLarge)
+                    Text(playbackTime(state.elapsedMs), color = colors.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"))
+                }
+                IconButton(onClick = onToggle) {
+                    if (state.paused) Icon(Icons.Default.PlayArrow, resources.getString(R.string.ming_stream_resume))
+                    else PauseIcon()
+                }
+                IconButton(onClick = onStop) {
+                    val color = LocalContentColor.current
+                    Canvas(Modifier.size(24.dp).semantics { contentDescription = resources.getString(R.string.stop) }) {
+                        drawRect(color, topLeft = Offset(size.width * .25f, size.height * .25f),
+                            size = size.copy(width = size.width * .5f, height = size.height * .5f))
+                    }
+                }
+            }
+        }
+    }
+}

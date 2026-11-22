@@ -2,33 +2,54 @@ package dev.renakoni.voicebox.model.gptsovits
 
 import dev.renakoni.voicebox.core.LanguageTags
 import dev.renakoni.voicebox.core.i18n.UiText
+import dev.renakoni.voicebox.core.i18n.requireUi
+import java.lang.Character.UnicodeScript
 
 object LanguageNormalizer {
-    fun isChinese(language: String): Boolean =
-        LanguageTags.normalize(language) == "chinese"
+    private const val LatinWord = """\p{IsLatin}[\p{IsLatin}\p{M}]*"""
+    private val englishWord = Regex("""$LatinWord(?:['’-]$LatinWord)*""")
 
-    fun isEnglish(language: String): Boolean =
-        LanguageTags.normalize(language) == "english"
+    internal fun resolve(language: String, text: String): String {
+        val selected = LanguageTags.normalize(language)
+        if (selected != "auto") {
+            explicitScriptError(selected, text)?.let { requireUi(false) { UiText(it) } }
+            return selected
+        }
 
-    fun isJapanese(language: String): Boolean =
-        LanguageTags.normalize(language) == "japanese"
+        var hasHan = false
+        val codePoints = text.codePoints().iterator()
+        while (codePoints.hasNext()) {
+            when (UnicodeScript.of(codePoints.nextInt())) {
+                UnicodeScript.HIRAGANA, UnicodeScript.KATAKANA -> return "japanese"
+                UnicodeScript.HAN -> hasHan = true
+                else -> Unit
+            }
+        }
+        return if (!hasHan && englishWords(text).any()) "english" else "chinese"
+    }
 
-    fun isKorean(language: String): Boolean =
-        LanguageTags.normalize(language) == "korean"
+    fun scriptError(language: String, text: String): String? =
+        explicitScriptError(LanguageTags.normalize(language), text)
 
-    fun isHybridChineseEnglish(language: String): Boolean =
-        LanguageTags.normalize(language) == "hybrid-chinese-english"
-
-    fun scriptError(language: String, text: String): UiText? = when {
-        (isChinese(language) || isHybridChineseEnglish(language)) &&
-            text.any { it in '\u3040'..'\u30ff' || it in '\uff66'..'\uff9d' } ->
-            UiText("language_contains_kana")
-        isEnglish(language) && text.any { it in '\u3000'..'\u9fff' && it.isLetter() } ->
-            UiText("language_not_english")
+    private fun explicitScriptError(language: String, text: String): String? = when (language) {
+        "chinese", "hybrid-chinese-english" ->
+            "language_contains_kana".takeIf { text.codePoints().anyMatch { isKana(UnicodeScript.of(it)) } }
+        "english" -> "language_not_english".takeIf {
+            text.codePoints().anyMatch {
+                val script = UnicodeScript.of(it)
+                script == UnicodeScript.HAN || isKana(script)
+            }
+        }
         else -> null
     }
 
-    /** Mirrors the Python frontend guard against Chinese G2P dropping ASCII letters. */
-    fun shouldAutoDetectHybrid(language: String, text: String): Boolean =
-        isChinese(language) && text.any { it in 'a'..'z' || it in 'A'..'Z' }
+    internal fun englishWords(text: String): Sequence<MatchResult> = englishWord.findAll(text).filterNot { word ->
+        var before = word.range.first - 1
+        while (before >= 0 && text[before].isWhitespace()) before--
+        val previous = text.getOrNull(before)
+        (previous?.isDigit() == true && ChineseTextNormalizer.isMeasure(word.value)) ||
+            (previous == '°' && word.value == "C")
+    }
+
+    private fun isKana(script: UnicodeScript) = script == UnicodeScript.HIRAGANA || script == UnicodeScript.KATAKANA
 }

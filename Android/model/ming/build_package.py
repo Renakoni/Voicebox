@@ -14,7 +14,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '2'
+VERSION = '3'
 ABI = 'arm64-v8a'
 PROBE = ROOT.parent / 'gptsovits/src/main/assets/device-acceleration/probe.onnx'
 QNN_LIBRARIES = ('libQnnHtp.so', 'libQnnHtpPrepare.so', 'libQnnSystem.so')
@@ -39,8 +39,8 @@ def add_file(archive, path, name):
 
 def adapter_source_hash():
     digest = hashlib.sha256()
-    inputs = list(ROOT.glob('*.cpp')) + list(ROOT.glob('*.h')) + [ROOT / name for name in
-        ('CMakeLists.txt', 'Native.java', 'build_package.py', 'build.gradle.kts')]
+    inputs = list(ROOT.glob('*.cpp')) + list(ROOT.glob('*.h')) + list(ROOT.glob('*.java')) + [ROOT / name for name in
+        ('CMakeLists.txt', 'build_package.py', 'build.gradle.kts')]
     for path in sorted(inputs + list((ROOT / 'src/main/java').rglob('*.kt'))):
         digest.update(path.relative_to(ROOT).as_posix().encode() + b'\0')
         data = path.read_bytes()
@@ -59,9 +59,114 @@ def adapt_synthesis(source):
     old = '        } catch(Throwable error) {error.printStackTrace();System.exit(1);}\n'
     assert source.count(old) == 1
     source = source.replace(old, '').replace('"auto","cpu","webgpu"', '"auto","cpu","webgpu","htp"')
-    anchor = '        process(Arrays.asList(bundle.resolve("ming-run")'
-    assert source.count(anchor) == 1
-    return source.replace(anchor, '        Native.configure(bundle, mode, env);\n' + anchor)
+    source = replace_once(source, 'args.length<=5', 'args.length<=6')
+    source = replace_once(source, '[THREADS]"', '[THREADS] [STREAM_DIR]"')
+    anchor = '            TaskRequest request=new TaskRequest'
+    source = replace_once(source, anchor,
+        '            Path stream=args.length==6?new File(args[5]).toPath().toAbsolutePath():null;\n' + anchor)
+    source = replace_once(source, 'String threads,int startIndex)', 'String threads,int startIndex,Path stream)')
+    source = replace_once(source, 'JSONArray inputs=new JSONArray();', '')
+    source = replace_once(source,
+        '            inputs.put(new JSONObject().put("text",fragments.get(i)).put("tokens",new JSONArray(ids)));\n', '')
+    source = replace_once(source, 'text(work.resolve("inputs.json"),inputs.toString(2));', '')
+    for index in (0, 1):
+        source = source.replace(f',mode,threads,{index})', f',mode,threads,{index},stream)')
+    source = replace_once(source, '        Files.write(work.resolve("blocks.i64"),blocks.array());',
+        '''        if (stream!=null) {
+            blocks=ByteBuffer.allocate(8*fragments.size()).order(ByteOrder.LITTLE_ENDIAN);
+            for (int i=0;i<fragments.size();i++) blocks.putLong(1);
+        }
+        Files.write(work.resolve("blocks.i64"),blocks.array());''')
+    anchor = '''        process(Arrays.asList(bundle.resolve("ming-run").toString(),bundle.resolve("models").toString(),
+                work.resolve("000.i64").toString(),work.resolve("unused.wav").toString(),"-",threads),env,work.resolve("native.log"));'''
+    source = replace_once(source, anchor, '''        if (stream!=null) {
+            env.put("MING_STREAM_DIRECTORY",stream.toString());
+            env.put("MING_STREAM_START",Integer.toString(startIndex));
+        }
+        Native.configure(bundle, mode, env);
+        List<String> command=Arrays.asList(bundle.resolve("ming-run").toString(),bundle.resolve("models").toString(),
+                work.resolve("000.i64").toString(),work.resolve("unused.wav").toString(),"-",threads);
+        Path log=work.resolve("native.log");
+        if (stream==null) {
+            process(command,env,log);
+        } else {
+            try (StreamFragments publisher=new StreamFragments(stream,outputs,startIndex)) {
+                process(command,env,log);
+                publisher.finish();
+            }
+        }''')
+    anchor = '        return outputs;'
+    source = replace_once(source, anchor, '        if (stream==null) for (Path pcm : outputs) SilenceTrim.trim(pcm);\n' + anchor)
+    source = replace_once(source, 'concatenate(outputs,output)', 'stream==null?concatenate(outputs,output):StreamFragments.concatenate(stream,outputs.size(),output)')
+    anchor = 'subList(0,1),voice,null,mode,threads,0,stream)'
+    assert source.count(anchor) == 1, 'Review changed Ming first-fragment conditioning before packaging'
+    return source.replace(anchor, 'subList(0,1),voice,transcript,mode,threads,0,stream)')
+
+
+def replace_once(source, anchor, replacement):
+    assert source.count(anchor) == 1, f'Review changed Ming source near {anchor}'
+    return source.replace(anchor, replacement)
+
+
+def adapt_reference_batch(source):
+    source = replace_once(source, '#include "audio_job_queue.h"', '#include "audio_job_queue.h"\n#include <cstdio>\n#include <sys/stat.h>')
+    anchor = '    size_t begin=0,block_begin=0;'
+    source = replace_once(source, anchor, '''    const char* stream_path=std::getenv("MING_STREAM_DIRECTORY");
+    const std::string stream=stream_path ? stream_path : "";
+    const size_t stream_start=stream_path ? std::stoul(std::getenv("MING_STREAM_START")) : 0;
+    auto check_stream=[&]() {
+        struct stat info{};
+        if(stat(stream.c_str(),&info)!=0 || std::ifstream(stream+"/abort"))
+            throw std::runtime_error("Ming stream closed");
+    };
+''' + anchor)
+    anchor = '        std::vector<State> states(paragraph_size);'
+    source = replace_once(source, anchor, '''        if(stream_path) {
+            if(paragraph_size!=1)throw std::runtime_error("Ming streaming requires one fragment per group");
+            const size_t index=stream_start+begin;
+            check_stream();
+            // Keep at most two fragments ahead of the actual playback head.
+            while(index>=2 && !std::ifstream(stream+"/played-"+std::to_string(index-2))) {
+                check_stream();
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+        }
+''' + anchor)
+    # The app only consumes float PCM. Keep the atomic rename for concurrent streaming reads.
+    anchor = '''            for(auto item:{std::make_pair(".latent.f32",&s.latent),std::make_pair(".hidden.f32",&s.hidden),
+                std::make_pair(".stop.f32",&s.stop),std::make_pair(".noise.f32",&s.noise),std::make_pair(".pcm.f32",&s.wave)})
+                write_binary(output+item.first,*item.second);
+            wav(output,s.wave);'''
+    return replace_once(source, anchor, '''            const std::string pcm=output+".pcm.f32";
+            if(stream_path) {
+                const std::string partial=pcm+".partial";
+                write_binary(partial,s.wave);
+                if(std::rename(partial.c_str(),pcm.c_str())!=0)
+                    throw std::runtime_error("Cannot publish Ming fragment");
+            } else {
+                write_binary(pcm,s.wave);
+            }''')
+
+
+def adapt_task_request(source):
+    # The official BASIC caption leaves omitted attributes null.
+    allowed = '                    allowed(controls,"speed","pitch","volume");'
+    assert source.count(allowed) == 1, 'Review changed Ming BASIC task before packaging'
+    source = source.replace(allowed, allowed + '\n                    require(controls.length()>0,"BASIC requires task controls");')
+    for field in ('speed', 'pitch', 'volume'):
+        anchor = f'{field}=choice(controls,"{field}",'
+        assert source.count(anchor) == 1, 'Review changed Ming BASIC attributes before packaging'
+        source = source.replace(anchor, f'{field}=controls.isNull("{field}")?null:choice(controls,"{field}",')
+    for anchor, replacement in (
+        ('zeroSpeaker=design || task.equals("IP");',
+         'boolean freeformReference=task.equals("FREEFORM") && (referenceWav!=null || voiceCache!=null);\n'
+         '        zeroSpeaker=(design && !freeformReference) || task.equals("IP");'),
+        ('"PARALINGUISTIC","MULTILINGUAL").contains(task);', '"PARALINGUISTIC","MULTILINGUAL").contains(task)\n'
+         '                || (freeformReference && (referenceText!=null || voiceCache!=null));'),
+    ):
+        assert source.count(anchor) == 1, 'Review changed Ming task request before packaging'
+        source = source.replace(anchor, replacement)
+    return source
 
 
 def stage_qnn(runtime, qnn_archive, ort_archive):
@@ -105,7 +210,11 @@ def main():
     shutil.copyfile(args.ort_library, runtime / 'libonnxruntime.so')
     native = build / 'sources'
     native.mkdir(exist_ok=True)
-    shutil.copyfile(source / 'native/main.cpp', native / 'main.cpp')
+    main_source = (source / 'native/main.cpp').read_text(encoding='utf-8')
+    (native / 'main.cpp').write_text(
+        replace_once(main_source, '        write_binary(base_output + ".noise.f32", noise);\n', ''), encoding='utf-8')
+    batch = (source / 'native/reference_batch.h').read_text(encoding='utf-8')
+    (native / 'reference_batch.h').write_text(adapt_reference_batch(batch), encoding='utf-8')
     options = (source / 'native/htp_options.h').read_text(encoding='utf-8')
     backend = '{"backend_path","libQnnHtp.so"}'
     assert options.count(backend) == 1
@@ -133,8 +242,11 @@ def main():
             code = (source / f'android/{name}.java').read_text(encoding='utf-8')
             if name == 'Synthesis':
                 code = adapt_synthesis(code)
+            elif name == 'TaskRequest':
+                code = adapt_task_request(code)
             (java / f'{name}.java').write_text(code, encoding='utf-8')
-        shutil.copyfile(ROOT / 'Native.java', java / 'Native.java')
+        for helper in ('Native.java', 'SilenceTrim.java', 'StreamFragments.java'):
+            shutil.copyfile(ROOT / helper, java / helper)
         android_jar = sdk / 'platforms/android-36/android.jar'
         run('javac', '--release', '11', '-encoding', 'UTF-8', '-cp', android_jar,
             '-d', classes, *sorted(java.glob('*.java')))

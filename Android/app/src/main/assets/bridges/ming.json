@@ -4,32 +4,32 @@
   "entry": "dev.renakoni.voicebox.model.ming.MingEntry",
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "7422da96efbf695e7b108690120965b4b570386bbf416b6c945b073e9b02d8ff",
+  "adapterSourceSha256": "5104e04bf0fb46bd2f828843e8d483a84de2821dca1c21a49df04803f942d0e7",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
-  "version": "2",
+  "version": "3",
   "minAppVersionCode": 11,
-  "revision": "61cca5a4c6108be76c9dfe98c8676f3616ddc977d6003bfd4ac901ad2303eaa7",
+  "revision": "75188775091628211358786b72ba86bc747f37f0e5a16a86d9bf36f843921f5e",
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v2/ming-backend-v2-arm64-v8a.zip",
-      "bytes": 84676182,
-      "sha256": "61cca5a4c6108be76c9dfe98c8676f3616ddc977d6003bfd4ac901ad2303eaa7"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v3/ming-backend-v3-arm64-v8a.zip",
+      "bytes": 86929030,
+      "sha256": "75188775091628211358786b72ba86bc747f37f0e5a16a86d9bf36f843921f5e"
     }
   ],
   "files": {
     "provider-probe.onnx": 234,
     "bridge.json": 276,
-    "tasks.jar": 61504,
+    "tasks.jar": 80588,
     "libonnxruntime.so": 29166016,
-    "libming-synthesize.so": 9277200,
-    "libming-reference.so": 10000200,
-    "libming-ort.so": 2568192,
-    "libming-gpu-probe.so": 2229824,
+    "libming-synthesize.so": 9334856,
+    "libming-reference.so": 10000240,
+    "libming-ort.so": 2568232,
+    "libming-gpu-probe.so": 2229856,
     "libming-mmla-neon.so": 1990168,
     "libming-mmla-bf16.so": 3308488,
-    "libming-htp.so": 794128,
+    "libming-htp.so": 794208,
     "qnn/libonnxruntime-qnn.so": 21105856,
     "licenses/Qualcomm-LICENSE.pdf": 147577,
     "licenses/Qualcomm-NOTICE.txt": 129238,
@@ -52,7 +52,7 @@
     "licenses/ONNXRuntime-NOTICE.txt": 331175,
     "licenses/Khronos-OpenCL-LICENSE.txt": 11358,
     "licenses/Ming-THIRD-PARTY.txt": 2072,
-    "licenses/Voicebox-LICENSE.txt": 34020,
+    "licenses/Voicebox-LICENSE.txt": 34255,
     "licenses/pocketfft-LICENSE.txt": 1974
   }
 }

@@ -38,17 +38,24 @@ internal class MingBackendRuntime(private val context: Context, override val bac
             Files.createSymbolicLink(File(bundle, "htp").toPath(), htp.toPath())
             usingHtp = true
         }
+        val useReference = MingSynthesisOptions.usesReference(request.options)
         val reference = File(request.referenceAudioPath)
-        val default = resources.reference()
+        val default = if (useReference) resources.reference() else null
         val fixed = default != null && reference.canonicalFile == default.audioFile.canonicalFile && request.referenceText == default.referenceText
-        val task = JSONObject().put("task", if (fixed) "TTS" else "CLONE").put("text", request.synthesisText).put("language", request.language)
-        if (!fixed) {
+        val task = JSONObject().put("task", if (fixed) "TTS" else "CLONE").put("text", request.synthesisText)
+        if (request.language.isNotBlank()) task.put("language", request.language)
+        MingSynthesisOptions.applyTo(task, request.options)
+        val taskName = task.getString("task")
+        if (useReference && !fixed) {
             val audio = runCatching { WavAudioReader.readMonoPcm(reference) }.getOrElse {
                 requireNotNull(MediaAudioDecoder.decodeMonoPcm(reference)) { "Cannot decode reference audio" }
             }
             val wav = File(work, "reference.wav")
             WavFileWriter.writeMonoPcm16(wav, audio.samples, audio.sampleRate)
-            task.put("reference_wav", wav.absolutePath).put("reference_text", request.referenceText)
+            task.put("reference_wav", wav.absolutePath)
+            if (taskName == "CLONE" || taskName == "FREEFORM") task.put("reference_text", request.referenceText)
+        } else if (useReference && taskName == "FREEFORM") {
+            task.put("voice_cache", File(bundle, "voice").absolutePath)
         }
         val input = File(work, "request.json").apply { writeText(task.toString()) }
         val output = File(work, "output")
@@ -57,7 +64,8 @@ internal class MingBackendRuntime(private val context: Context, override val bac
         callbacks.onStage(GenerationStage.RUNNING_INFERENCE, UiText("ming_generating").resolve(context.resources))
         val entry = javaClass.classLoader!!.loadClass("dev.ming.local.Synthesis").getMethod("run", Array<String>::class.java)
         try {
-            entry.invoke(null, arrayOf(bundle.absolutePath, input.absolutePath, output.absolutePath, mode, threads))
+            val arguments = listOf(bundle.absolutePath, input.absolutePath, output.absolutePath, mode, threads)
+            entry.invoke(null, (arguments + listOfNotNull(request.context.streamDirectory)).toTypedArray())
         } catch (error: java.lang.reflect.InvocationTargetException) {
             output.walkTopDown().filter { it.isFile && it.extension == "log" }.forEach { log ->
                 java.io.RandomAccessFile(log, "r").use { reader ->
@@ -74,8 +82,8 @@ internal class MingBackendRuntime(private val context: Context, override val bac
         val samples = (duration * sampleRate).roundToInt()
         val wav = File(output, "output.wav")
         check(samples > 0 && wav.length() == 44L + 2L * samples) { "Incomplete Ming WAV" }
-        val timing = File(output, "speech/native.log").useLines { lines ->
-            lines.filter { it.startsWith("{\"paragraph\":") }.map { JSONObject(it) }.toList()
+        val timing = listOf("speech", "first", "rest").map { File(output, "$it/native.log") }.filter(File::isFile).flatMap { log ->
+            log.useLines { lines -> lines.filter { it.startsWith("{\"paragraph\":") }.map { JSONObject(it) }.toList() }
         }
         val inference = timing.sumOf { it.getDouble("inference_seconds") }
         check(inference.isFinite() && inference > 0) { "Missing Ming inference timing" }

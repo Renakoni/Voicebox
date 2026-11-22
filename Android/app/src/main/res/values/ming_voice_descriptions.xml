@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Short descriptions based on the Ming-3.0-tts cookbook, keyed by official IP ID. -->
+    <string-array name="ming_voice_descriptions">
+        <item>灵小柔|Clear, sweet woman’s voice · Customer service</item>
+        <item>灵楷|Warm, resonant man’s voice · Slow narration</item>
+        <item>US_Emma|US woman’s voice · Assistants, narration</item>
+        <item>UK_George|UK man’s voice · Audiobooks, announcements</item>
+        <item>灵小安|Bright young voice · Anime, game guide</item>
+        <item>灵语汐|Lively young voice · Entertainment</item>
+        <item>灵小萌|Bright woman’s voice · Audiobooks, radio</item>
+        <item>灵小雅|Light, sweet woman’s voice · News, audiobooks</item>
+        <item>花小呗|Bouncy childlike voice · Customer service</item>
+        <item>灵韵|Bright, brisk woman’s voice · Customer service</item>
+        <item>妩媚妲己|Sweet, lilting woman’s voice · Character acting</item>
+        <item>灵婉|Soft young voice · Intimate dialogue</item>
+        <item>灵小月|Upbeat woman’s voice · Travel, conversation</item>
+        <item>灵朵儿|Gentle woman’s voice · Essays, cultural narration</item>
+        <item>灵小锋|Warm, assured man’s voice · Everyday dialogue</item>
+        <item>灵小川|Rich, expressive man’s voice · Radio, food stories</item>
+        <item>灵小甄|Bright, quick woman’s voice · Live shopping</item>
+        <item>灵小知|Bright, forceful woman’s voice · Commercials</item>
+        <item>灵小惠|Fast, penetrating delivery · Beauty sales</item>
+        <item>灵小晴|Bright, high, fast delivery · Flash sales</item>
+        <item>灵小琪|Cheerful man’s voice · Food vlogs</item>
+        <item>灵梦|Playful young voice · Romantic dialogue</item>
+        <item>灵恬|Sweet, teasing delivery · Romantic dialogue</item>
+        <item>灵小汐|Relaxed young voice · Campus dialogue</item>
+        <item>灵小棠|Unhurried woman’s voice · Travel narration</item>
+        <item>灵小梨|Light, expressive woman’s voice · Audiobooks, radio</item>
+        <item>灵小芸|Calm woman’s voice · Late-night radio, podcasts</item>
+        <item>灵空|Low, breathy man’s voice · Bedtime whispers</item>
+        <item>灵宇|Resonant, playful man’s voice · Game characters</item>
+        <item>灵朗|Low, confident man’s voice · Romantic dialogue</item>
+        <item>灵旭|Clear, youthful man’s voice · Coming-of-age stories</item>
+        <item>灵江|Warm, unhurried man’s voice · Memoirs</item>
+        <item>悲伤女声|Soft, restrained woman’s voice · Film monologues</item>
+        <item>皮六|Bright, punchy man’s voice · Ads, trailers</item>
+        <item>悟空|Expressive delivery · Storytelling, comedy</item>
+        <item>蜡笔小新_野原美伢 (美伢)|Crayon Shin-chan character</item>
+        <item>小猪佩奇_佩奇|Peppa Pig character</item>
+        <item>康熙王朝_康熙|Kangxi Dynasty character</item>
+        <item>西游记_唐僧|Journey to the West character</item>
+        <item>甄嬛传_四郎|Empresses in the Palace character</item>
+        <item>水浒传_武松|Water Margin character</item>
+        <item>水浒传_潘金莲|Water Margin character</item>
+        <item>雍正王朝_雍正|Yongzheng Dynasty character</item>
+        <item>灵晓声|Composed man’s voice · Modern audio drama</item>
+        <item>灵风信|Soft, caring woman’s voice · Intimate dialogue</item>
+        <item>灵惜梦|Crisp woman’s voice · Modern dialogue</item>
+        <item>灵逸风|Relaxed, youthful man’s voice · Campus dialogue</item>
+        <item>灵悦澜|Cheerful young voice · Game dialogue</item>
+        <item>灵御心|Bright, direct woman’s voice · Workplace dialogue</item>
+        <item>灵语恬|Gentle woman’s voice · Friendly reminders</item>
+        <item>灵心恬|Crisp, cool woman’s voice · Mystery narration</item>
+        <item>灵亦尘|Warm, resonant man’s voice · Everyday dialogue</item>
+        <item>灵语尘|Low, husky man’s voice · Suspense, monologues</item>
+        <item>灵悦兮|Lively, assured woman’s voice · Work, travel</item>
+        <item>灵若虚|Poised woman’s voice · Interviews, news</item>
+        <item>灵未央|Crisp, rising delivery · Light dialogue</item>
+        <item>灵梦瑶|Soft child’s voice · Educational narration</item>
+        <item>灵妙声|Sweet, clear articulation · Audiobooks</item>
+        <item>灵言澈|Gentle, steady man’s voice · Everyday dialogue</item>
+        <item>灵嘉肴|Bright voice with crisp diction · Explainers</item>
+        <item>灵孤影|Warm, steady man’s voice · Food reviews</item>
+        <item>灵雨汐|Soft, breathy woman’s voice · Romance</item>
+        <item>灵信远|Warm, smiling man’s voice · Alarms, games</item>
+        <item>灵思齐|Bright, energetic man’s voice · Picture books</item>
+        <item>灵叙柔|Composed woman’s voice · News, documentaries</item>
+        <item>灵绮木|Warm, assured woman’s voice · Health explainers</item>
+        <item>灵渊霆|Easygoing man’s voice · Campus dialogue</item>
+        <item>灵素心|Lively young voice · Anime, youth explainers</item>
+        <item>灵采薇|Steady, soft woman’s voice · Parenting explainers</item>
+        <item>灵卓然|Rich, calm man’s voice · News, documentaries</item>
+        <item>灵浅忧|Bright boy’s voice · Financial news</item>
+        <item>灵昭野|Bright, youthful man’s voice · Audio dramas</item>
+        <item>灵心澜|Assured, mature woman’s voice · Family drama</item>
+        <item>灵犀言|Full, mature man’s voice · Formal news</item>
+        <item>灵语冰|Precise woman’s voice · Legal explainers</item>
+        <item>灵惊鸿|Easygoing man’s voice · Phone dialogue</item>
+        <item>灵惜蕊|Clear, friendly woman’s voice · Service prompts</item>
+        <item>灵语萱|Clear, tender woman’s voice · Romantic dialogue</item>
+        <item>灵语烟|Quick, bright woman’s voice · Sitcoms</item>
+        <item>灵律雅|Restrained woman’s voice · Domestic drama</item>
+        <item>灵惊涛|Man’s voice with a Nanning accent · Comedy</item>
+        <item>灵寒陌|Bright, urgent man’s voice · Romance</item>
+        <item>灵决冥|Calm, precise man’s voice · Nonfiction, mystery</item>
+        <item>灵慈萱|Bright, frank woman’s voice · Campus, work</item>
+        <item>灵妙音|Cool, commanding woman’s voice · Mystery, games</item>
+        <item>灵断尘|Youthful, brisk man’s voice · Everyday dialogue</item>
+        <item>灵熙婉|Bright, sweet woman’s voice · Fiction, entertainment</item>
+        <item>灵旭扬|Warm, intimate man’s voice · Late-night dialogue</item>
+        <item>灵阅川|Full, solemn man’s voice · History narration</item>
+        <item>灵妩月|Warm, composed woman’s voice · Game cutscenes</item>
+        <item>灵汐月|Soft, unhurried woman’s voice · Intimate narration</item>
+        <item>灵黛嗔|Warm, sincere woman’s voice · Reviews</item>
+        <item>UK_Charlotte|UK woman’s voice · Unhurried audiobook narration</item>
+    </string-array>
+</resources>

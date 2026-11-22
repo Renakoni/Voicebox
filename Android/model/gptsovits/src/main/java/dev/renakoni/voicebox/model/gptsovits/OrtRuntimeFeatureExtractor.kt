@@ -181,7 +181,7 @@ class OrtRuntimeFeatureExtractor(
             val textFeatures = timer.measure("text_features_ms") {
                 textFeatureExtractor.extract(
                     request.language,
-                    GenieTextConventions.prepareSynthesisText(request.language, request.synthesisText),
+                    GenieTextConventions.prepareSynthesisText(request.synthesisText),
                 )
             }
             timer.event(

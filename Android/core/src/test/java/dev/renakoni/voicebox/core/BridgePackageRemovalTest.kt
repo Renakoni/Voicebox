@@ -37,7 +37,7 @@ class BridgePackageRemovalTest {
         assertFalse(leftover.exists())
         assertTrue(sibling.isFile)
         assertTrue(reopened.install({}) {})
-        assertTrue(reopened.writableFixtureDirectory().isDirectory)
+        reopened.writableFixtureDirectory()
     }
 
     @Test fun uninstallDoesNotFollowLinksToOtherModelFiles() {

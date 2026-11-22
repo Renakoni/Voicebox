@@ -9,6 +9,7 @@ def main():
     parser.add_argument('--source', type=Path, required=True, help='ming-android checkout with exported models')
     parser.add_argument('--output', type=Path, required=True, help='New dense-0.5b model directory')
     parser.add_argument('--htp', action='store_true', help='Also stage the Snapdragon HTP Flow source')
+    parser.add_argument('--source-model', help='Original checkpoint repository ID for these exports')
     args = parser.parse_args()
 
     tasks = args.source / 'artifacts/tasks-arm64-v1'
@@ -33,6 +34,8 @@ def main():
         target = args.output / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
+    if args.source_model == 'inclusionAI/Ming-3.0-tts-0.5B':
+        shutil.copyfile(Path(__file__).with_name('official_voice_presets.json'), args.output / 'voice-presets.json')
     print(args.output)
 
 

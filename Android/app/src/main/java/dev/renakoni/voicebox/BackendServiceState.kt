@@ -15,6 +15,7 @@ data class BackendServiceState(
     val runtimeLabel: String = "ORT CPU EP",
     val initializedModelId: String? = null,
     val latestOutputFilePath: String? = null,
+    val latestOutputDurationMs: Long = 0,
     val progressPercent: Int? = null,
     val progressLabel: String? = null,
     val generationDurationMs: Long? = null,

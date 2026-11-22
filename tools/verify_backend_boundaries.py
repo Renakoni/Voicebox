@@ -81,9 +81,9 @@ def verify_package(spec, data):
             audit = json.loads((ANDROID / "model/gptsovits/bridge-assets.json").read_bytes())
             assets = {"assets/" + path for path in audit}
         else:
-            require(spec["version"] == "2" and abi == "arm64-v8a", "Expected Ming ARM64 package v2")
+            require(abi == "arm64-v8a", "Expected Ming ARM64 package")
             stubs = {name for name in sizes if re.fullmatch(r"qnn/libQnnHtpV[0-9]+Stub\.so", name)}
-            require(stubs, "Ming v2 requires HTP Stub/Skel pairs")
+            require(stubs, "Ming package requires HTP Stub/Skel pairs")
             libs = MING_LIBS | stubs
             dsp = {name.replace("Stub.so", "Skel.so") for name in stubs}
             assets = {"provider-probe.onnx"} | {f"licenses/{name}" for name in MING_NOTICES}

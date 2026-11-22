@@ -29,7 +29,7 @@ class GptProvider(
         listOf("zh", "ja", "en"),
         setOf(VoiceImport.CHECKPOINT_PAIR, VoiceImport.RUNTIME_ARCHIVE),
     )
-    override fun languageError(language: String, text: String) = LanguageNormalizer.scriptError(language, text)?.key
+    override fun languageError(language: String, text: String) = LanguageNormalizer.scriptError(language, text)
     override val supportsWarmup = true
     private val modelRepository by lazy { GptModelRepository(context) }
     private val runtimeRepository by lazy { RuntimeAssetRepository(context) }
