@@ -73,12 +73,11 @@ internal fun GlyphTile(modifier: Modifier = Modifier, size: Dp = 40.dp, content:
  * Reads as “how far along” at a glance without a percentage.
  */
 @Composable
-internal fun SegmentMeter(total: Int, done: Int, modifier: Modifier = Modifier) {
-    if (total <= 0) return
+internal fun SegmentMeter(installed: List<Boolean>, modifier: Modifier = Modifier) {
     val colors = MaterialTheme.colorScheme
     Row(modifier.fillMaxWidth().height(3.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        repeat(total) { index ->
-            val color by animateColorAsState(if (index < done) colors.primary else colors.outlineVariant,
+        for (ready in installed) {
+            val color by animateColorAsState(if (ready) colors.primary else colors.outlineVariant,
                 tween(260), label = "segment")
             Box(Modifier.weight(1f).fillMaxHeight().clip(CircleShape).background(color))
         }

@@ -49,9 +49,7 @@ import dev.renakoni.voicebox.bridge.GenerationCancelledException
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
-import dev.renakoni.voicebox.core.PinnedModelFiles
 import java.io.File
-import java.nio.file.Files
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -301,16 +299,6 @@ class VoiceBoxBackendService : Service() {
         val library = modelRepository.provider(voice.ref.backendId)
         library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id); putString("variant", voice.ref.variant) }, context) { label, percent ->
             progress(UiText.literal(label), percent)
-        }
-        if (voice.ref.backendId == "gptsovits") {
-            // The shipped GPT v3 bridge only removes the SoVITS source after conversion.
-            val root = requireNotNull(getExternalFilesDir(null)).canonicalFile
-            val sources = File(root, ".gpt-packages/voices")
-            val receipts = PinnedModelFiles(root, File(root, ".gpt-packages/receipts"))
-            val downloads = listOf(File(sources, "s1v3.ckpt"), File(sources, "${voice.id}.pth"))
-            val leftovers = downloads + downloads.map(receipts::receipt)
-            check(leftovers.map { it.parentFile!! }.distinct().all { it.canonicalFile == it })
-            leftovers.forEach { Files.deleteIfExists(it.toPath()) }
         }
     }
 

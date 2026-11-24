@@ -4,6 +4,8 @@ import dev.renakoni.voicebox.core.openBackendAsset
 
 import dev.renakoni.voicebox.core.ModelDownload
 import dev.renakoni.voicebox.core.ModelDownloadFile
+import dev.renakoni.voicebox.core.downloadModelFiles
+import dev.renakoni.voicebox.core.deleteFileTree
 
 import dev.renakoni.voicebox.core.i18n.UiText
 
@@ -53,16 +55,25 @@ class OfficialModelCatalog(json: JSONObject) {
 internal class OfficialModelInstaller(private val root: File, private val catalog: OfficialModelCatalog,
     private val shared: GptSharedResources, private val openAsset: (String) -> InputStream) {
     fun install(model: OfficialModel, cancel: () -> Unit, progress: (UiText, Int?) -> Unit) {
-        shared.forVoice(model.architecture, cancel, progress)
         val repository = GptModelRepository(root, openAsset)
         val sources = File(root, ".gpt-packages/voices")
-        // Both official voices read the same pinned GPT checkpoint.
-        val gpt = ModelDownloadFile(catalog.gpt, File(sources, "s1v3.ckpt"))
-        val sovits = ModelDownloadFile(model.sovits, File(sources, "${model.id}.pth"))
-        val downloads = listOf(gpt, sovits)
+        val stage = File(sources, model.id)
+        val inputs = mutableListOf(File(sources, "${model.id}.pth"))
+        // Older flat downloads shared one GPT checkpoint. Keep it while another voice still has staged inputs.
+        val siblingStaged = catalog.models.any { it.id != model.id &&
+            (File(sources, "${it.id}.pth").exists() || File(sources, ".${it.id}.pth.download").exists()) }
+        if (!siblingStaged) inputs.add(File(sources, "s1v3.ckpt"))
+        val leftovers = inputs.flatMap { listOf(it, File(sources, ".${it.name}.download"), shared.files.receipt(it)) }
+        check(leftovers.map { it.parentFile!! }.distinct().all { it.canonicalFile == it.absoluteFile })
+        cancel()
+        leftovers.forEach { Files.deleteIfExists(it.toPath()) }
+        deleteFileTree(stage)
+        shared.forVoice(model.architecture, cancel, progress)
         if (!repository.inspect(model.requiredFiles).isComplete) {
+            val gpt = ModelDownloadFile(catalog.gpt, File(stage, "s1v3.ckpt"))
+            val sovits = ModelDownloadFile(model.sovits, File(stage, "${model.id}.pth"))
             progress(UiText("download_selecting_source"), null)
-            shared.files.download(downloads, cancel) { done, count, percent ->
+            downloadModelFiles(listOf(gpt, sovits), cancel) { done, count, percent ->
                 progress(UiText("download_resources", done, count), percent)
             }
             cancel()
@@ -73,10 +84,7 @@ internal class OfficialModelInstaller(private val root: File, private val catalo
                 newCharacterId = model.id,
                 gptFilename = "s1v3.ckpt", sovitsFilename = if (model.architecture == "v5turbo") "s2Gv5turbo.pth" else "s2Gv2ProPlus.pth",
                 architectureHint = model.architecture)
-        }
-        downloads.forEach { file ->
-            Files.deleteIfExists(file.target.toPath())
-            Files.deleteIfExists(shared.files.receipt(file.target).toPath())
+            deleteFileTree(stage)
         }
     }
 }

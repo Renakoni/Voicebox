@@ -471,7 +471,6 @@
     <string name="model_remove_action">Uninstall</string>
     <string name="model_removing">Removing model component</string>
     <string name="model_remove_failed">Could not remove the model component.</string>
-    <string name="model_prepare">Prepare</string>
     <string name="ming_clone_resources">Voice cloning resources</string>
     <string name="ming_clone_resources_required">Download Ming-TTS voice cloning resources in Models to use this reference audio feature.</string>
     <string name="ming_htp_resources">Inference acceleration pack</string>

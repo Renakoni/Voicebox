@@ -29,13 +29,13 @@ internal class QwenModelPackage(private val context: Context) {
     fun install(part: String, cancel: () -> Unit, progress: (Int) -> Unit) {
         val (source, target) = files.getValue(part)
         if (pins.matches(target, source.pin, cancel)) return
+        cancel()
+        uninstall(part)
         val temporary = File(root, ".${target.name}.download")
-        try {
-            stageModelFile(source, temporary, modelImportDirectory(context), cancel, progress)
-            cancel()
-            Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            pins.record(target, source.pin)
-        } finally { Files.deleteIfExists(temporary.toPath()) }
+        stageModelFile(source, temporary, modelImportDirectory(context), cancel, progress)
+        cancel()
+        Files.move(temporary.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        pins.record(target, source.pin)
     }
 
     fun uninstall(part: String) {

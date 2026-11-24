@@ -460,7 +460,6 @@
     <string name="model_remove_action">卸载</string>
     <string name="model_removing">正在卸载模型组件</string>
     <string name="model_remove_failed">无法卸载模型组件。</string>
-    <string name="model_prepare">准备</string>
     <string name="ming_clone_resources">克隆推理资源</string>
     <string name="ming_clone_resources_required">请先在模型页下载 Ming-TTS 克隆推理资源。</string>
     <string name="ming_htp_resources">推理加速包</string>

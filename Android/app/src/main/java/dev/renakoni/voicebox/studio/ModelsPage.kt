@@ -17,7 +17,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.*
@@ -92,8 +91,9 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val bridgeReady = installed?.contains(spec.id) == true
     val ming = spec.id == MingModelPackage.BACKEND
     val packs = vm.resourcePacks[spec.id] ?: spec.initialResourcePacks
-    val ready = (if (bridgeReady) 1 else 0) + packs.count { it.installed }
-    val total = packs.size + 1
+    val partsInstalled = listOf(bridgeReady) + packs.map { it.installed }
+    val ready = partsInstalled.count { it }
+    val total = partsInstalled.size
     val remaining = packs.sumOf { it.remainingBytes } + if (bridgeReady) 0L else spec.downloadBytes
     val download = vm.officialDownload.takeIf { it.packageId == spec.id }
     val enabled = !vm.modelPreview && !vm.loading && vm.connected && !vm.busy && !vm.fileBusy
@@ -128,7 +128,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
             Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp).rotate(chevron), tint = colors.onSurfaceVariant)
         }
         if (installed != null && download?.running != true && total > 1) {
-            SegmentMeter(total, ready, Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp))
+            SegmentMeter(partsInstalled, Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp))
         }
         if (download?.running == true) {
             Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, bottom = 6.dp)) {
@@ -165,18 +165,16 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 HorizontalDivider(color = colors.outlineVariant.copy(alpha = .6f))
                 Column(Modifier.padding(vertical = 4.dp)) {
                     ModelPart(stringResource(R.string.model_bridge),
-                        if (bridgeReady) 0L else spec.downloadBytes, bridgeReady,
+                        spec.downloadBytes, bridgeReady,
                         enabled && (bridgeReady || archive.installable),
-                        remove = if (bridgeReady) ({ vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) }) else null,
+                        remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
                         install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
                     packs.forEach { pack ->
                         key(pack.id) {
                             val title = if (ming) stringResource(MingModelPackage.partTitle(pack.id))
                                 else UiText(pack.titleKey).resolve(resources)
-                            val removable = pack.installed || pack.remainingBytes < pack.downloadBytes
-                            ModelPart(title,
-                                if (pack.installed) pack.downloadBytes else pack.remainingBytes, pack.installed, enabled,
-                                remove = if (removable) ({ vm.removeModelPart(spec.id, pack.id) }) else null,
+                            ModelPart(title, pack.downloadBytes, pack.installed, enabled,
+                                remove = { vm.removeModelPart(spec.id, pack.id) },
                                 install = { vm.installModelParts(spec.id, pack.id) })
                         }
                     }
@@ -200,54 +198,46 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
 
 @Composable
 private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: Boolean,
-    remove: (() -> Unit)?, install: () -> Unit,
+    remove: () -> Unit, install: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     var confirmRemove by remember { mutableStateOf(false) }
-    val size = when {
-        bytes > 0 -> Formatter.formatShortFileSize(LocalContext.current, bytes)
-        !installed -> stringResource(R.string.model_prepare)
-        else -> null
-    }
-    val action = if (installed) Modifier.semantics(mergeDescendants = true) {} else
-        Modifier.clickable(enabled = enabled, role = Role.Button,
-            onClickLabel = stringResource(R.string.model_install_part, title), onClick = install)
-    val muted = !installed && !enabled
+    val action = if (installed) Modifier else Modifier.clickable(enabled = enabled, role = Role.Button,
+        onClickLabel = stringResource(R.string.model_install_part, title), onClick = install)
     val endPadding = 16.dp - (PartActionWidth - PartMarkSize) / 2
     Row(Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp)
         .padding(start = 16.dp, end = endPadding, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val muted = colors.onSurface.copy(alpha = .55f)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium,
-                color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurface)
-            size?.let {
-                Text(it, style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = Tabular),
-                    color = if (muted) colors.onSurface.copy(alpha = .38f) else colors.onSurfaceVariant)
-            }
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = if (installed) colors.onSurface else muted)
+            if (bytes > 0) Text(Formatter.formatShortFileSize(LocalContext.current, bytes),
+                style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = Tabular),
+                color = if (installed) colors.onSurfaceVariant else muted)
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (remove != null) {
-                PartMark(installed, enabled)
-                IconButton(onClick = { confirmRemove = true }, enabled = enabled, modifier = Modifier.size(PartActionWidth)) {
-                    val tint = if (enabled) colors.error else colors.error.copy(alpha = .38f)
-                    Box(Modifier.size(PartMarkSize).clip(CircleShape).background(tint.copy(alpha = .14f)),
-                        contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Close, stringResource(R.string.model_remove_part, title),
-                            Modifier.size(15.dp), tint = tint)
-                    }
+        if (installed) {
+            IconButton(onClick = { confirmRemove = true }, enabled = enabled, modifier = Modifier.size(PartActionWidth)) {
+                val tint = if (enabled) colors.error else colors.error.copy(alpha = .38f)
+                Box(Modifier.size(PartMarkSize).clip(CircleShape).background(tint.copy(alpha = .14f)),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Close, stringResource(R.string.model_remove_part, title), Modifier.size(15.dp), tint = tint)
                 }
-                if (confirmRemove) RemoveModelPartDialog(title, enabled, onDismiss = { confirmRemove = false },
-                    onConfirm = {
-                        confirmRemove = false
-                        remove()
-                    })
-            } else {
-                Box(Modifier.width(PartActionWidth), contentAlignment = Alignment.Center) {
-                    PartMark(installed, enabled)
+            }
+        } else {
+            Box(Modifier.width(PartActionWidth), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(PartMarkSize).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), CircleShape),
+                    contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(14.dp),
+                        tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .38f))
                 }
             }
         }
     }
+    if (installed && confirmRemove) RemoveModelPartDialog(title, enabled, onDismiss = { confirmRemove = false },
+        onConfirm = {
+            confirmRemove = false
+            remove()
+        })
 }
 
 @Composable
@@ -271,24 +261,6 @@ internal fun RemoveModelPartDialog(title: String, enabled: Boolean, onDismiss: (
                     }
                 }
             }
-        }
-    }
-}
-
-/** Installed parts settle into a filled clay dot; pending parts are an open ring holding the download glyph. */
-@Composable
-private fun PartMark(installed: Boolean, enabled: Boolean) {
-    val colors = MaterialTheme.colorScheme
-    val shape = CircleShape
-    if (installed) {
-        Box(Modifier.size(PartMarkSize).clip(shape).background(colors.primary.copy(alpha = .14f)), contentAlignment = Alignment.Center) {
-            Icon(Icons.Default.Check, stringResource(R.string.backend_installed), Modifier.size(15.dp), tint = colors.primary)
-        }
-    } else {
-        val tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .38f)
-        Box(Modifier.size(PartMarkSize).clip(shape).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), shape),
-            contentAlignment = Alignment.Center) {
-            Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(14.dp), tint = tint)
         }
     }
 }

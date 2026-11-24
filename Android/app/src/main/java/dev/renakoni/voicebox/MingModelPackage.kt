@@ -42,21 +42,20 @@ internal class MingModelPackage(context: Context) {
     private fun pack(part: String): ResourcePack {
         val files = packs.getValue(part)
         val target = directory
-        val remaining = files.entries.sumOf { (path, source) ->
-            if (target?.resolve(path)?.isInstalled(source) == true) 0L else source.bytes
-        }
-        return ResourcePack(part, "", files.values.sumOf { it.bytes }, remaining, remaining == 0L, emptySet())
+        val bytes = files.values.sumOf { it.bytes }
+        val installed = files.all { (path, source) -> target?.resolve(path)?.isInstalled(source) == true }
+        return ResourcePack(part, "", bytes, if (installed) 0L else bytes, installed, emptySet())
     }
 
     private fun File.isInstalled(source: ModelDownload) = regularFileAttributes()?.size() == source.bytes
 
     fun install(part: String, checkCancelled: () -> Unit, progress: (Int) -> Unit) {
         val target = requireNotNull(directory)
-        val missing = packs.getValue(part).mapNotNull { (path, source) ->
-            val file = File(target, path)
-            if (file.isInstalled(source)) null else ModelDownloadFile(source, file)
-        }
-        downloadModelFiles(missing, checkCancelled) { _, _, percent -> progress(percent) }
+        checkCancelled()
+        val files = packs.getValue(part).map { (path, source) -> ModelDownloadFile(source, File(target, path)) }
+        if (files.all { it.target.isInstalled(it.source) }) return
+        uninstall(part)
+        downloadModelFiles(files, checkCancelled) { _, _, percent -> progress(percent) }
     }
 
     fun uninstall(part: String) {

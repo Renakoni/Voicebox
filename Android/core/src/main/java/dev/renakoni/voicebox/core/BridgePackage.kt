@@ -127,30 +127,25 @@ class BridgePackage(
             val archive = File(root, ".download")
             val seen = mutableSetOf<String>()
             var received = 0L
-            try {
-                spec.parts.forEach { part ->
-                    stageModelFile(part, archive, imports, checkCancelled) { percent ->
-                        progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
-                    }
-                    extract(archive, staging, seen, checkCancelled)
-                    received += part.bytes
-                    archive.delete()
+            spec.parts.forEach { part ->
+                stageModelFile(part, archive, imports, checkCancelled) { percent ->
+                    progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
                 }
-                require(seen == spec.files.keys) { "Incomplete bridge package" }
-                require(File(staging, "bridge.json").length() <= 16_384)
-                spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
-                check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
-                revisions.mkdirs()
-                checkCancelled()
-                val active = File(revisions, id)
-                Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                activate(active)
-                progress(100)
-                true
-            } finally {
-                archive.delete()
-                staging.deleteRecursively()
+                extract(archive, staging, seen, checkCancelled)
+                received += part.bytes
+                Files.delete(archive.toPath())
             }
+            require(seen == spec.files.keys) { "Incomplete bridge package" }
+            require(File(staging, "bridge.json").length() <= 16_384)
+            spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
+            check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
+            revisions.mkdirs()
+            checkCancelled()
+            val active = File(revisions, id)
+            Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            activate(active)
+            progress(100)
+            true
         }
     }
 

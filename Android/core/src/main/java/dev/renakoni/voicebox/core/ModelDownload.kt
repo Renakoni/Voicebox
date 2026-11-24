@@ -52,8 +52,6 @@ fun stageModelFile(source: ModelDownload, target: File, imports: File?, checkCan
 private fun prepareDownloadTarget(target: File, bytes: Long) {
     val directory = requireNotNull(target.absoluteFile.parentFile)
     requireUi(directory.mkdirs() || directory.isDirectory) { UiText("download_directory_failed") }
-    // An interrupted transfer may still occupy space in this scratch file.
-    Files.deleteIfExists(target.toPath())
     requireUi(directory.usableSpace >= bytes) { UiText("download_storage_full") }
 }
 
@@ -92,20 +90,18 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
         files.forEachIndexed { index, file -> completion.submit(Callable {
             checkActive()
             val temporary = File(file.target.parentFile, ".${file.target.name}.download")
-            try {
-                batch.run {
-                    downloadModelFile(file.source, temporary, ::checkActive, routes[index]) { percent ->
-                        synchronized(received) {
-                            received[index] = file.source.bytes * percent / 100
-                            publish()
-                        }
+            batch.run {
+                downloadModelFile(file.source, temporary, ::checkActive, routes[index]) { percent ->
+                    synchronized(received) {
+                        received[index] = file.source.bytes * percent / 100
+                        publish()
                     }
                 }
-                checkActive()
-                Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-                onInstalled(file)
-                synchronized(received) { completed++; publish() }
-            } finally { temporary.delete() }
+            }
+            checkActive()
+            Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            onInstalled(file)
+            synchronized(received) { completed++; publish() }
         }) }
         repeat(files.size) { completion.take().get() }
     } catch (error: ExecutionException) {
@@ -117,7 +113,7 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
         cancelBatch?.close()
         batch.cancel("CANCELLED")
         pool.shutdownNow()
-        // The installer may delete its staging directory only after all writers exit.
+        // A retry must not clear this component while any of its writers are still running.
         while (true) {
             try { if (pool.awaitTermination(1, TimeUnit.SECONDS)) break }
             catch (_: InterruptedException) { interrupted = true }
@@ -199,10 +195,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
         complete = true
     } finally {
         hook?.close()
-        if (!complete) {
-            call.cancel()
-            target.delete()
-        }
+        if (!complete) call.cancel()
     }
 }
 

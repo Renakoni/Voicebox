@@ -182,18 +182,17 @@ private fun MingOfficialVoiceRow(vm: StudioViewModel, pack: ResourcePack, voice:
         onClick = { if (voice == null) vm.tab = StudioTab.MODELS else browse() },
         avatar = { RingedAvatar(title, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload,
-                removable = installed || pack.remainingBytes < pack.downloadBytes) {
+            OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload) {
                 vm.removeModelPart(MingModelPackage.BACKEND, MingModelPackage.OFFICIAL)
             }
         }) {
-        Text(title, style = MaterialTheme.typography.titleMedium)
+        Text(title, style = MaterialTheme.typography.titleMedium, color = if (installed) colors.onSurface else colors.onSurfaceVariant)
         val error = status?.error
         val detail = when {
             downloading -> weightTitle + (status.percent?.let { " · $it%" } ?: "")
             !installed && error != null -> error.resolve(resources)
             !installed -> resources.getString(R.string.ming_official_weights_download,
-                Formatter.formatShortFileSize(LocalContext.current, pack.remainingBytes))
+                Formatter.formatShortFileSize(LocalContext.current, pack.downloadBytes))
             voice == null && !vm.modelPreview -> resources.getString(R.string.shared_resources_missing)
             selected -> resources.getString(R.string.selected)
             else -> null
@@ -289,35 +288,34 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
 
 @Composable
 private fun OfficialWeightAction(name: String, installed: Boolean, enabled: Boolean, status: OfficialDownloadState?,
-    download: () -> Unit, cancel: () -> Unit, removable: Boolean = installed, remove: () -> Unit) {
+    download: () -> Unit, cancel: () -> Unit, remove: () -> Unit) {
     val resources = LocalResources.current
     val colors = MaterialTheme.colorScheme
     val downloading = status?.running == true
     var removing by remember { mutableStateOf(false) }
-    Row {
-        if (downloading || !installed) {
-            IconButton(onClick = if (downloading) cancel else download, enabled = downloading || enabled) {
-                if (downloading) Box(contentAlignment = Alignment.Center) {
-                    val percent = status.percent
-                    if (percent == null) CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 2.dp,
-                        trackColor = colors.outlineVariant)
-                    else CircularProgressIndicator(progress = { percent / 100f }, modifier = Modifier.size(30.dp),
-                        strokeWidth = 2.dp, trackColor = colors.outlineVariant, gapSize = 0.dp)
-                    Icon(Icons.Default.Close, resources.getString(R.string.cancel_download), Modifier.size(14.dp))
-                } else Box(Modifier.size(32.dp).border(1.dp, colors.outline.copy(alpha = .55f), CircleShape),
-                    contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_download), resources.getString(R.string.download_named_model, name),
-                        Modifier.size(16.dp), tint = colors.onSurface)
-                }
+    when {
+        downloading -> IconButton(onClick = cancel) {
+            Box(contentAlignment = Alignment.Center) {
+                val percent = status.percent
+                if (percent == null) CircularProgressIndicator(Modifier.size(30.dp), strokeWidth = 2.dp,
+                    trackColor = colors.outlineVariant)
+                else CircularProgressIndicator(progress = { percent / 100f }, modifier = Modifier.size(30.dp),
+                    strokeWidth = 2.dp, trackColor = colors.outlineVariant, gapSize = 0.dp)
+                Icon(Icons.Default.Close, resources.getString(R.string.cancel_download), Modifier.size(14.dp))
             }
         }
-        if (!downloading && removable) {
-            IconButton(onClick = { removing = true }, enabled = enabled) {
-                Box(Modifier.size(32.dp).clip(CircleShape).background(colors.error.copy(alpha = .14f)),
-                    contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Close, resources.getString(R.string.model_remove_part, name),
-                        Modifier.size(18.dp), tint = colors.error)
-                }
+        installed -> IconButton(onClick = { removing = true }, enabled = enabled) {
+            Box(Modifier.size(32.dp).clip(CircleShape).background(colors.error.copy(alpha = .14f)),
+                contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.Close, resources.getString(R.string.model_remove_part, name),
+                    Modifier.size(18.dp), tint = colors.error)
+            }
+        }
+        else -> IconButton(onClick = download, enabled = enabled) {
+            Box(Modifier.size(32.dp).border(1.dp, colors.outline.copy(alpha = .55f), CircleShape),
+                contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_download), resources.getString(R.string.download_named_model, name),
+                    Modifier.size(16.dp), tint = colors.onSurface)
             }
         }
     }
