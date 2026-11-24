@@ -7,6 +7,7 @@ import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.ReferenceInput
 import dev.renakoni.voicebox.VoiceCheckpointSource
 import dev.renakoni.voicebox.ImportedVoice
+import dev.renakoni.voicebox.core.BridgeInstallState
 import dev.renakoni.voicebox.core.OfficialDownloadState
 import dev.renakoni.voicebox.VoiceBoxApplication
 
@@ -86,7 +87,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val modelsRepository = app.backends
     private val settings = AppSettingsRepository(app)
     val backendPackages = app.bridgePackages.packages.sortedBy { it.spec.displayName }
-    var installedPackages by mutableStateOf<Set<String>?>(null); private set
+    var bridgeStates by mutableStateOf<Map<String, BridgeInstallState>?>(null); private set
     var resourcePacks by mutableStateOf<Map<String, List<ResourcePack>>>(emptyMap()); private set
     internal var mingVoiceWeights by mutableStateOf<ResourcePack?>(null); private set
     internal var qwenVoiceWeights by mutableStateOf<ResourcePack?>(null); private set
@@ -94,7 +95,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var capabilities by mutableStateOf(emptyMap<String, BackendCapabilities>())
     private val selectedCapabilities get() = capabilities[selectedVoice?.model?.backendId]
     var officialModels by mutableStateOf(emptyList<OfficialVoice>()); private set
-    val needsModel get() = installedPackages.isNullOrEmpty()
+    val needsModel get() = bridgeStates?.containsValue(BridgeInstallState.CURRENT) != true
     private fun providerFor(type: VoiceImport) = capabilities.entries.firstOrNull { type in it.value.imports }?.key
     internal val checkpointFormats get() = CheckpointFormat.entries.filter { providerFor(it.capability) != null }
     private val importProvider get() = checkpointDraft?.let { it.editingRef?.backendId ?: providerFor(it.format.capability) }
@@ -287,7 +288,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private data class ResourcesSnapshot(val models: List<CharacterModel>, val voices: List<StudioVoice>,
-        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>, val installed: Set<String>,
+        val ready: Set<ModelRef>, val catalog: List<OfficialVoice>, val auxiliary: Map<ModelRef, Int>,
+        val bridgeStates: Map<String, BridgeInstallState>,
         val capabilities: Map<String, BackendCapabilities>, val packs: Map<String, List<ResourcePack>>,
         val presets: Map<ModelRef, List<SynthesisVoicePreset>>, val referenceInputs: Map<ModelRef, ReferenceInput>,
         val mingVoiceWeights: ResourcePack?, val qwenVoiceWeights: ResourcePack?)
@@ -298,14 +300,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             loading = true
             try {
                 val data = withContext(Dispatchers.IO) {
-                    val installed = backendPackages.filter { it.installed }.map { it.spec.id }.toSet()
-                    val providers = modelsRepository.providers.filter { it.id in installed }
+                    val states = backendPackages.associate { it.spec.id to it.installState }
+                    val providers = modelsRepository.providers.filter { states[it.id] == BridgeInstallState.CURRENT }
                     val qwenAvailable = backendPackages.any { it.spec.id == QwenModelPackage.BACKEND && (it.installable || modelPreview) }
-                    val qwenWeights = if (QwenModelPackage.BACKEND in installed)
+                    val qwenWeights = if (states[QwenModelPackage.BACKEND] == BridgeInstallState.CURRENT)
                         app.qwenModelPackage.pack(QwenModelPackage.TALKER) { ensureActive() } else null
                     val catalog = providers.flatMap { it.officialVoices() }
                     val ming = app.mingModelPackage
-                    val mingWeights = if (MingModelPackage.BACKEND in installed || modelPreview) ming.officialPack() else null
+                    val mingWeights = if (states[MingModelPackage.BACKEND] == BridgeInstallState.CURRENT || modelPreview) ming.officialPack() else null
                     val codec = if (qwenAvailable) app.qwenModelPackage.pack(QwenModelPackage.CODEC) { ensureActive() } else null
                     val discovered = app.installedVoiceModels(providers, mingWeights?.installed == true, qwenWeights?.installed == true)
                     val inputs = discovered.associate { it.ref to modelsRepository.provider(it).referenceInput(it) }
@@ -330,7 +332,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
                     val presets = discovered.associate { it.ref to modelsRepository.provider(it).voicePresets(it) }
-                    ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, installed,
+                    ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, states,
                         providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to ming.modelPacks()),
                         presets, inputs, mingWeights, qwenWeights)
                 }
@@ -341,7 +343,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 readyResources = data.ready
                 officialModels = data.catalog
                 auxiliaryLimits = data.auxiliary
-                installedPackages = data.installed
+                bridgeStates = data.bridgeStates
                 resourcePacks = data.packs
                 mingVoiceWeights = data.mingVoiceWeights
                 qwenVoiceWeights = data.qwenVoiceWeights

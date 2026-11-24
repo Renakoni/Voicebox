@@ -41,6 +41,7 @@ import androidx.compose.ui.window.Dialog
 import dev.renakoni.voicebox.MingModelPackage
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.VoiceBoxBackendService
+import dev.renakoni.voicebox.core.BridgeInstallState
 import dev.renakoni.voicebox.core.BridgePackage
 import dev.renakoni.voicebox.core.i18n.UiText
 
@@ -54,7 +55,7 @@ internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
         PageHeader(stringResource(R.string.models))
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
             .padding(top = 4.dp, bottom = 28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (vm.installedPackages == null && !vm.loading && vm.connected) {
+            if (vm.bridgeStates == null && !vm.loading && vm.connected) {
                 StudioButton(vm::refreshResources, enabled = !vm.busy && !vm.fileBusy, style = StudioButtonStyle.Secondary,
                     modifier = Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.model_reload))
@@ -87,8 +88,9 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     }
     val resources = LocalResources.current
     val context = LocalContext.current
-    val installed = vm.installedPackages
-    val bridgeReady = installed?.contains(spec.id) == true
+    val states = vm.bridgeStates
+    val bridgeState = states?.get(spec.id)
+    val bridgeReady = bridgeState == BridgeInstallState.CURRENT
     val ming = spec.id == MingModelPackage.BACKEND
     val packs = vm.resourcePacks[spec.id] ?: spec.initialResourcePacks
     val partsInstalled = listOf(bridgeReady) + packs.map { it.installed }
@@ -101,7 +103,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val expansion = stringResource(if (expanded) R.string.expanded else R.string.collapsed)
     val complete = ready == total
     val status = when {
-        installed == null || download?.running == true -> null
+        states == null || download?.running == true -> null
         expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         complete -> stringResource(R.string.backend_installed)
         else -> stringResource(R.string.model_parts_ready, ready, total)
@@ -127,7 +129,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
             }
             Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp).rotate(chevron), tint = colors.onSurfaceVariant)
         }
-        if (installed != null && download?.running != true && total > 1) {
+        if (states != null && download?.running != true && total > 1) {
             SegmentMeter(partsInstalled, Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp))
         }
         if (download?.running == true) {
@@ -150,7 +152,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 }
             }
         }
-        if (installed == null && vm.loading) {
+        if (states == null && vm.loading) {
             LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 14.dp).clip(CircleShape),
                 trackColor = colors.outlineVariant.copy(alpha = .6f), gapSize = 0.dp)
         }
@@ -158,7 +160,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
             Text(it.resolve(resources), Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp),
                 style = MaterialTheme.typography.bodySmall, color = colors.error)
         }
-        AnimatedVisibility(expanded && installed != null,
+        AnimatedVisibility(expanded && states != null,
             enter = expandVertically(tween(220)) + fadeIn(tween(180)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(120))) {
             Column {
@@ -167,6 +169,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                     ModelPart(stringResource(R.string.model_bridge),
                         spec.downloadBytes, bridgeReady,
                         enabled && (bridgeReady || archive.installable),
+                        updateRequired = bridgeState == BridgeInstallState.UPDATE_REQUIRED,
                         remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
                         install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
                     packs.forEach { pack ->
@@ -181,7 +184,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 }
             }
         }
-        if (installed != null && !complete && (archive.installable || vm.modelPreview) &&
+        if (states != null && !complete && (archive.installable || vm.modelPreview) &&
             download?.running != true) {
             StudioButton({ vm.installModelParts(spec.id, null) },
                 enabled = enabled, style = StudioButtonStyle.Secondary,
@@ -198,12 +201,12 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
 
 @Composable
 private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: Boolean,
-    remove: () -> Unit, install: () -> Unit,
+    updateRequired: Boolean = false, remove: () -> Unit, install: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     var confirmRemove by remember { mutableStateOf(false) }
     val action = if (installed) Modifier else Modifier.clickable(enabled = enabled, role = Role.Button,
-        onClickLabel = stringResource(R.string.model_install_part, title), onClick = install)
+        onClickLabel = stringResource(if (updateRequired) R.string.model_update_part else R.string.model_install_part, title), onClick = install)
     val endPadding = 16.dp - (PartActionWidth - PartMarkSize) / 2
     Row(Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp)
         .padding(start = 16.dp, end = endPadding, top = 8.dp, bottom = 8.dp),
@@ -227,7 +230,8 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
             Box(Modifier.width(PartActionWidth), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(PartMarkSize).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), CircleShape),
                     contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(14.dp),
+                    Icon(painterResource(if (updateRequired) R.drawable.ic_model_update else R.drawable.ic_model_download),
+                        null, Modifier.size(14.dp),
                         tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .38f))
                 }
             }

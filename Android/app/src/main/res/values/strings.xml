@@ -466,6 +466,7 @@
     <string name="model_device_unsupported">Unsupported on this device</string>
     <string name="model_bridge">Inference bridge</string>
     <string name="model_install_part">Install %1$s</string>
+    <string name="model_update_part">Update %1$s</string>
     <string name="model_remove_part">Remove %1$s</string>
     <string name="model_remove_confirmation">Uninstall “%1$s”?</string>
     <string name="model_remove_action">Uninstall</string>

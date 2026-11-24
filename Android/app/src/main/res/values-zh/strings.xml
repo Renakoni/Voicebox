@@ -455,6 +455,7 @@
     <string name="model_device_unsupported">本设备不支持</string>
     <string name="model_bridge">推理桥接</string>
     <string name="model_install_part">安装%1$s</string>
+    <string name="model_update_part">更新%1$s</string>
     <string name="model_remove_part">卸载%1$s</string>
     <string name="model_remove_confirmation">卸载“%1$s”？</string>
     <string name="model_remove_action">卸载</string>

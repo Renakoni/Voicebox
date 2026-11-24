@@ -89,6 +89,8 @@ class BridgePackages(private val context: Context) {
 
 data class InstalledBridge(val spec: BridgePackageSpec, val directory: File)
 
+enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, CURRENT }
+
 class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
@@ -97,18 +99,26 @@ class BridgePackage(
     val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
-    val active get() = readActive()
-    val installed get() = active != null
+    val active get() = installedDirectory()?.takeIf { it.parentFile?.name == spec.revision }?.let { InstalledBridge(spec, it) }
+    val installState get() = when (installedDirectory()?.parentFile?.name) {
+        null -> BridgeInstallState.MISSING
+        spec.revision -> BridgeInstallState.CURRENT
+        else -> BridgeInstallState.UPDATE_REQUIRED
+    }
+    val installed get() = installState == BridgeInstallState.CURRENT
 
-    private fun readActive(): InstalledBridge? {
+    private fun installedDirectory(): File? {
         if (!installable || !receipt.isFile) return null
         return runCatching {
             val json = JSONObject(receipt.readText())
-            if (json.getString("revision") != spec.revision) return null
+            val revision = json.getString("revision")
+            require(SHA256_PATTERN.matches(revision))
             val slot = json.getString("directory")
             require('/' !in slot && BridgePackageSpec.safePath(slot))
-            val directory = File(File(root, spec.revision), slot)
-            InstalledBridge(spec, directory).takeIf { File(directory, spec.code).isFile }
+            val directory = File(File(root, revision), slot)
+            // Every activated slot has a manifest, even if a new revision renames its entry archive.
+            val file = if (revision == spec.revision) spec.code else "bridge.json"
+            directory.takeIf { File(it, file).isFile }
         }.getOrNull()
     }
 
