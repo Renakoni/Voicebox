@@ -39,14 +39,15 @@ fun modelImportDirectory(context: android.content.Context): File? =
 
 fun stageModelFile(source: ModelDownload, target: File, imports: File?, checkCancelled: () -> Unit, progress: (Int) -> Unit) {
     val name = URL(source.url).path.substringAfterLast('/')
-    val local = imports?.let { File(it, name) }?.takeIf { it.isFile }
-    if (local == null) {
-        downloadModelFile(source, target, checkCancelled, progress = progress)
-        return
+    val local = imports?.let { File(it, name) }
+    if (local != null && local.isFile && local.length() == source.bytes) {
+        checkCancelled()
+        prepareDownloadTarget(target, source.bytes)
+        if (local.inputStream().use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }) return
+        // Release the rejected staged copy before checking free space for the online package.
+        Files.delete(target.toPath())
     }
-    checkCancelled()
-    prepareDownloadTarget(target, source.bytes)
-    local.inputStream().use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }
+    downloadModelFile(source, target, checkCancelled, progress = progress)
 }
 
 private fun prepareDownloadTarget(target: File, bytes: Long) {
@@ -190,7 +191,9 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
         response.use {
             checkCancelled()
             requireUi(it.code == 200) { UiText("download_service_unavailable") }
-            copyVerifiedDownload(source, it.body.byteStream(), target, checkCancelled, progress)
+            requireUi(copyVerifiedDownload(source, it.body.byteStream(), target, checkCancelled, progress)) {
+                UiText("download_checksum_failed")
+            }
         }
         complete = true
     } finally {
@@ -200,7 +203,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
 }
 
 private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
-    checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
     val digest = MessageDigest.getInstance("SHA-256")
     var total = 0L
     var lastPercent = 0
@@ -221,5 +224,5 @@ private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStre
     }
     checkCancelled()
     val hash = digest.digest().toHexString()
-    requireUi(total == source.bytes && hash == source.sha256) { UiText("download_checksum_failed") }
+    return total == source.bytes && hash == source.sha256
 }
