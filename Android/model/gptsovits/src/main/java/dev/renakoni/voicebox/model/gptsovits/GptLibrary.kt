@@ -85,6 +85,7 @@ internal class GptLibrary(private val context: Context) : VoiceLibrary {
                 result.putString("id", imported.characterId); result.putString("name", imported.displayName)
                 result.putString("variant", imported.architecture)
             }
+            else -> error("Unsupported GPT-SoVITS library action: $action")
         }
         return result
     }

@@ -43,6 +43,8 @@ class BackendWorkerService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        // AndroidX Startup initializes OkHttp only in the main process.
+        okhttp3.OkHttp.initialize(applicationContext)
         // Android creates one instance of this non-exported service. Files left by a
         // force-stopped host belong to the previous process, before any new request.
         executor.execute {

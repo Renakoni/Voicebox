@@ -67,11 +67,6 @@ class PinnedModelFiles(private val root: File, private val receipts: File) {
         } finally { temp.delete() }
     }
 
-    fun download(files: List<ModelDownloadFile>, cancel: () -> Unit, progress: (Int, Int, Int) -> Unit) {
-        val missing = files.filterNot { matches(it.target, it.source.pin, cancel) }
-        downloadMissing(missing, cancel, progress)
-    }
-
     fun downloadMissing(missing: List<ModelDownloadFile>, cancel: () -> Unit, progress: (Int, Int, Int) -> Unit) {
         downloadModelFiles(missing, cancel, onInstalled = { record(it.target, it.source.pin) }, progress = progress)
     }

@@ -23,7 +23,7 @@ internal fun languageName(resources: Resources, value: String) = when (LanguageT
     "english" -> resources.getString(R.string.language_english)
     "chinese" -> resources.getString(R.string.language_chinese)
     "auto" -> resources.getString(R.string.language_auto_detect)
-    else -> value
+    else -> if (value.length == 2) java.util.Locale.forLanguageTag(value).getDisplayLanguage(resources.configuration.locales[0]) else value
 }
 
 @Composable

@@ -1,37 +1,74 @@
 package dev.renakoni.voicebox.core
 
+import dev.renakoni.voicebox.bridge.GenerationContext
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.requireUi
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 
 import java.io.File
-import java.net.HttpURLConnection
+import java.io.IOException
 import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import java.util.concurrent.Callable
 import java.util.concurrent.CancellationException
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.ExecutorCompletionService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+
+private val downloadClient by lazy {
+    OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS).build()
+}
+private val mirrorClient by lazy { downloadClient.newBuilder().callTimeout(4, TimeUnit.SECONDS).build() }
 
 data class ModelDownload(val url: String, val bytes: Long, val sha256: String, val mirrors: List<String> = emptyList())
 
 data class ModelDownloadFile(val source: ModelDownload, val target: File)
+
+/** Local copies of catalogued release assets can be staged before an offline install. */
+fun modelImportDirectory(context: android.content.Context): File? =
+    context.getExternalFilesDir(null)?.let { File(it, "VoiceBoxImports") }
+
+fun stageModelFile(source: ModelDownload, target: File, imports: File?, checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    val name = URL(source.url).path.substringAfterLast('/')
+    val local = imports?.let { File(it, name) }
+    if (local != null && local.isFile && local.length() == source.bytes) {
+        checkCancelled()
+        prepareDownloadTarget(target, source.bytes)
+        if (local.inputStream().use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }) return
+        // Release the rejected staged copy before checking free space for the online package.
+        Files.delete(target.toPath())
+    }
+    downloadModelFile(source, target, checkCancelled, progress = progress)
+}
+
+private fun prepareDownloadTarget(target: File, bytes: Long) {
+    val directory = requireNotNull(target.absoluteFile.parentFile)
+    requireUi(directory.mkdirs() || directory.isDirectory) { UiText("download_directory_failed") }
+    requireUi(directory.usableSpace >= bytes) { UiText("download_storage_full") }
+}
 
 /** Choose a reachable mirror once per host group, then transfer up to two missing files at a time. */
 fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Unit,
     onInstalled: (ModelDownloadFile) -> Unit = {},
     progress: (completed: Int, total: Int, percent: Int) -> Unit) {
     if (files.isEmpty()) return
+    val batch = GenerationContext()
+    val cancelBatch = GenerationContext.current()?.onCancel { batch.cancel("CANCELLED") }
     val pool = Executors.newFixedThreadPool(2)
-    val stopped = AtomicBoolean()
     var interrupted = false
     fun checkActive() {
         checkCancelled()
-        if (stopped.get() || Thread.currentThread().isInterrupted) throw CancellationException()
+        batch.checkCancelled()
+        if (Thread.currentThread().isInterrupted) throw CancellationException()
     }
     try {
         val preferredMirrors = mutableMapOf<List<String>, Int>()
@@ -54,18 +91,18 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
         files.forEachIndexed { index, file -> completion.submit(Callable {
             checkActive()
             val temporary = File(file.target.parentFile, ".${file.target.name}.download")
-            try {
+            batch.run {
                 downloadModelFile(file.source, temporary, ::checkActive, routes[index]) { percent ->
                     synchronized(received) {
                         received[index] = file.source.bytes * percent / 100
                         publish()
                     }
                 }
-                checkActive()
-                Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-                onInstalled(file)
-                synchronized(received) { completed++; publish() }
-            } finally { temporary.delete() }
+            }
+            checkActive()
+            Files.move(temporary.toPath(), file.target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            onInstalled(file)
+            synchronized(received) { completed++; publish() }
         }) }
         repeat(files.size) { completion.take().get() }
     } catch (error: ExecutionException) {
@@ -74,9 +111,10 @@ fun downloadModelFiles(files: List<ModelDownloadFile>, checkCancelled: () -> Uni
         interrupted = true
         throw error
     } finally {
-        stopped.set(true)
+        cancelBatch?.close()
+        batch.cancel("CANCELLED")
         pool.shutdownNow()
-        // The installer may delete its staging directory only after all writers exit.
+        // A retry must not clear this component while any of its writers are still running.
         while (true) {
             try { if (pool.awaitTermination(1, TimeUnit.SECONDS)) break }
             catch (_: InterruptedException) { interrupted = true }
@@ -90,11 +128,7 @@ fun downloadModelFile(source: ModelDownload, target: File, checkCancelled: () ->
     ordered: List<String> = listOf(source.url) + source.mirrors,
     progress: (Int) -> Unit) {
     checkCancelled()
-    val directory = requireNotNull(target.absoluteFile.parentFile)
-    requireUi(directory.mkdirs() || directory.isDirectory) { UiText("download_directory_failed") }
-    // All callers supply a scratch file. An interrupted transfer may still occupy its space.
-    Files.deleteIfExists(target.toPath())
-    requireUi(directory.usableSpace >= source.bytes) { UiText("download_storage_full") }
+    prepareDownloadTarget(target, source.bytes)
     var failure: Exception? = null
     for (url in ordered) {
         checkCancelled()
@@ -111,53 +145,65 @@ fun downloadModelFile(source: ModelDownload, target: File, checkCancelled: () ->
 }
 
 private fun preferredMirror(urls: List<String>, checkCancelled: () -> Unit): Int {
+    val calls = urls.map { mirrorClient.newCall(Request.Builder().url(it).head().build()) }
     val pool = Executors.newFixedThreadPool(urls.size)
     val completion = ExecutorCompletionService<Int?>(pool)
-    val connections = java.util.Collections.synchronizedList(mutableListOf<HttpURLConnection>())
     try {
-        urls.forEachIndexed { index, url -> completion.submit(Callable {
-            val connection = URL(url).openConnection() as HttpURLConnection
-            connections.add(connection)
-            try {
-                connection.connectTimeout = 4_000
-                connection.readTimeout = 4_000
-                connection.requestMethod = "HEAD"
-                if (connection.responseCode in 200..299) index else null
-            } catch (_: Exception) { null }
-            finally { connection.disconnect() }
+        calls.forEachIndexed { index, call -> completion.submit(Callable {
+            try { call.execute().use { if (it.isSuccessful) index else null } }
+            catch (_: IOException) { null }
         }) }
-        repeat(urls.size) {
+        var remaining = calls.size
+        while (remaining > 0) {
             checkCancelled()
-            val winner = completion.take().get()
+            val response = completion.poll(100, TimeUnit.MILLISECONDS) ?: continue
+            remaining--
+            val winner = response.get()
             if (winner != null) return winner
         }
         return 0
     } finally {
+        calls.forEach(Call::cancel)
         pool.shutdownNow()
-        synchronized(connections) { connections.forEach(HttpURLConnection::disconnect) }
     }
 }
 
 private fun downloadFromUrl(source: ModelDownload, url: String, target: File, checkCancelled: () -> Unit,
     progress: (Int) -> Unit) {
-    val connection = URL(url).openConnection() as HttpURLConnection
-    connection.connectTimeout = 15_000
-    connection.readTimeout = 15_000
-    connection.setRequestProperty("User-Agent", "VoiceBox/${BuildConfig.VERSION_NAME}")
+    val request = Request.Builder().url(url).header("User-Agent", "VoiceBox/${BuildConfig.VERSION_NAME}").build()
+    val call = downloadClient.newCall(request)
+    val headers = CompletableFuture<Response>()
+    val hook = GenerationContext.current()?.onCancel {
+        // DNS can still be resolving. Release the installer and close any active socket off the UI thread.
+        headers.cancel(false)
+        downloadClient.dispatcher.executorService.execute(call::cancel)
+    }
     var complete = false
     try {
         checkCancelled()
-        requireUi(connection.responseCode == HttpURLConnection.HTTP_OK) { UiText("download_service_unavailable") }
-        connection.inputStream.use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }
+        call.enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) { headers.completeExceptionally(e) }
+            override fun onResponse(call: Call, response: Response) {
+                if (!headers.complete(response)) response.close()
+            }
+        })
+        val response = try { headers.join() } catch (error: CompletionException) { throw error.cause ?: error }
+        response.use {
+            checkCancelled()
+            requireUi(it.code == 200) { UiText("download_service_unavailable") }
+            requireUi(copyVerifiedDownload(source, it.body.byteStream(), target, checkCancelled, progress)) {
+                UiText("download_checksum_failed")
+            }
+        }
         complete = true
     } finally {
-        connection.disconnect()
-        if (!complete) target.delete()
+        hook?.close()
+        if (!complete) call.cancel()
     }
 }
 
 private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
-    checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
     val digest = MessageDigest.getInstance("SHA-256")
     var total = 0L
     var lastPercent = 0
@@ -178,5 +224,5 @@ private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStre
     }
     checkCancelled()
     val hash = digest.digest().toHexString()
-    requireUi(total == source.bytes && hash == source.sha256) { UiText("download_checksum_failed") }
+    return total == source.bytes && hash == source.sha256
 }

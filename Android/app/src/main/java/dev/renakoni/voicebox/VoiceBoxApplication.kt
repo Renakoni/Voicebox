@@ -12,6 +12,7 @@ import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 class VoiceBoxApplication : Application() {
     val bridgePackages by lazy { BridgePackages(this) }
     internal val mingModelPackage by lazy { MingModelPackage(this) }
+    internal val qwenModelPackage by lazy { QwenModelPackage(this) }
     val backends by lazy {
         val settings = AppSettingsRepository(this)
         BackendRegistry(bridgePackages.packages.map { archive ->
@@ -25,11 +26,18 @@ class VoiceBoxApplication : Application() {
         })
     }
 
-    internal fun completeModels(providers: List<InstalledBackend>, mingWeightsInstalled: Boolean? = null): List<CharacterModel> =
+    internal fun installedVoiceModels(providers: List<InstalledBackend>, mingWeightsInstalled: Boolean? = null,
+        qwenWeightsInstalled: Boolean? = null): List<CharacterModel> =
         providers.flatMap { provider ->
             if (provider.id == MingModelPackage.BACKEND) {
                 if (mingWeightsInstalled ?: mingModelPackage.officialPack().installed) provider.discoverCharacterModels()
                 else emptyList()
+            } else if (provider.id == QwenModelPackage.BACKEND) {
+                val officialInstalled = qwenWeightsInstalled ?: qwenModelPackage.pack(QwenModelPackage.TALKER) {}.installed
+                if (officialInstalled) provider.discoverCharacterModels() else {
+                    val official = provider.officialVoices().singleOrNull()?.ref ?: return@flatMap emptyList()
+                    provider.discoverCharacterModels().filterNot { it.ref == official }
+                }
             } else provider.discoverCharacterModels().filter { provider.inspect(it).isComplete }
         }
 

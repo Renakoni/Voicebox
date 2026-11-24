@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.renakoni.voicebox.R
+import dev.renakoni.voicebox.QwenModelPackage
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.studio.*
@@ -82,10 +83,14 @@ internal fun CreatePage(vm: StudioViewModel, save: (StudioOutput) -> Unit, share
                 StudioCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(resources.getString(R.string.engine_setup), style = MaterialTheme.typography.titleMedium)
-                        Text(vm.resourceHint?.let { UiText(it).resolve(resources) }
-                            ?: resources.getString(R.string.voice_resources_hint), style = MaterialTheme.typography.bodyMedium,
+                        val qwen = vm.selectedVoice?.model?.backendId == QwenModelPackage.BACKEND
+                        val hint = if (qwen) resources.getString(R.string.install_missing_model_parts, resources.getString(R.string.qwen_audio_codec))
+                            else vm.resourceHint?.let { UiText(it).resolve(resources) } ?: resources.getString(R.string.voice_resources_hint)
+                        Text(hint, style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (vm.canImportArchive) StudioButton(onClick = pickRuntime, enabled = vm.connected && !vm.busy,
+                        if (qwen) StudioButton(onClick = { vm.tab = StudioTab.MODELS }, style = StudioButtonStyle.Secondary) {
+                            Text(resources.getString(R.string.go_models))
+                        } else if (vm.canImportArchive) StudioButton(onClick = pickRuntime, enabled = vm.connected && !vm.busy,
                             style = StudioButtonStyle.Secondary, modifier = Modifier.padding(top = 4.dp)) {
                             Text(resources.getString(R.string.import_resources))
                         }

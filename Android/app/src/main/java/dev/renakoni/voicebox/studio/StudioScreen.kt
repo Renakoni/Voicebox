@@ -215,7 +215,7 @@ private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pi
     val official = officialModel != null
     val displayName = officialModel?.displayName(resources) ?: draft.name
     val focus = LocalFocusManager.current
-    VoiceEditorLayout(if (editing) resources.getString(R.string.edit_voice) else resources.getString(R.string.import_voice), vm::closeCheckpointImport, enabled, modifier,
+    VoiceEditorLayout(if (editing) resources.getString(R.string.edit_voice) else resources.getString(R.string.import_format_voice, draft.format.title), vm::closeCheckpointImport, enabled, modifier,
         actions = {
             StudioButton(onClick = { focus.clearFocus(); vm.importCheckpoints() }, enabled = enabled && vm.connected,
                 style = StudioButtonStyle.Quiet,
@@ -227,41 +227,43 @@ private fun CheckpointImportPage(vm: StudioViewModel, draft: CheckpointDraft, pi
         VoiceAvatarEditor(displayName, draft.avatarPath, enabled, pickAvatar, takeAvatarPhoto)
         OutlinedTextField(displayName, vm::editCheckpointName, label = { Text(resources.getString(R.string.voice_name)) }, singleLine = true,
             enabled = enabled && !official, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth())
-        listOf(true, false).forEach { gpt ->
+        listOf(true, false).forEach { first ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(if (gpt) resources.getString(R.string.gpt_weights) else resources.getString(R.string.sovits_weights), style = MaterialTheme.typography.titleMedium)
-                StudioButton(onClick = { pickCheckpoint(gpt) }, enabled = enabled && !official, style = StudioButtonStyle.Secondary,
+                Text(resources.getString(if (first) draft.format.firstLabel else draft.format.secondLabel), style = MaterialTheme.typography.titleMedium)
+                StudioButton(onClick = { pickCheckpoint(first) }, enabled = enabled && !official, style = StudioButtonStyle.Secondary,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text((if (gpt) draft.gptName else draft.sovitsName).ifBlank { if (editing) resources.getString(R.string.original_filename_unknown) else resources.getString(R.string.select_file) },
+                    Text((if (first) draft.firstName else draft.secondName).ifBlank { if (editing) resources.getString(R.string.original_filename_unknown) else resources.getString(R.string.select_file) },
                         maxLines = 1, softWrap = false, overflow = TextOverflow.MiddleEllipsis,
                         textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 }
-                if (editing && (if (gpt) draft.gpt else draft.sovits) != null) {
-                    StudioButton(onClick = { vm.clearCheckpointReplacement(gpt) }, enabled = enabled,
+                if (editing && (if (first) draft.first else draft.second) != null) {
+                    StudioButton(onClick = { vm.clearCheckpointReplacement(first) }, enabled = enabled,
                         style = StudioButtonStyle.Quiet) { Text(resources.getString(R.string.undo_replacement)) }
                 }
             }
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(resources.getString(R.string.model_version), style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(vm.checkpointRecognition?.resolve(resources) ?: resources.getString(R.string.awaiting_import),
-                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
-                color = if (vm.checkpointRecognition == null) MaterialTheme.colorScheme.onSurfaceVariant
-                    else MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.End)
+        if (draft.format == CheckpointFormat.GPT) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(resources.getString(R.string.model_version), style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(vm.checkpointRecognition?.resolve(resources) ?: resources.getString(R.string.awaiting_import),
+                    style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f),
+                    color = if (vm.checkpointRecognition == null) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.End)
+            }
+            ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
+                pickReference, recordReference) {
+                Text(resources.getString(R.string.reference_audio), style = MaterialTheme.typography.titleMedium)
+            }
+            LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, enabled, vm.importLanguages,
+                autoText = draft.transcript, onSelect = vm::editCheckpointLanguage)
+            OutlinedTextField(draft.transcript, vm::editCheckpointTranscript, label = { Text(resources.getString(R.string.reference_transcript)) },
+                minLines = 3, maxLines = 6,
+                enabled = enabled, shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth())
         }
-        ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
-            pickReference, recordReference) {
-            Text(resources.getString(R.string.reference_audio), style = MaterialTheme.typography.titleMedium)
-        }
-        LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, enabled, vm.importLanguages,
-            autoText = draft.transcript, onSelect = vm::editCheckpointLanguage)
-        OutlinedTextField(draft.transcript, vm::editCheckpointTranscript, label = { Text(resources.getString(R.string.reference_transcript)) },
-            minLines = 3, maxLines = 6,
-            enabled = enabled, shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth())
         if (vm.importing) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
         }
@@ -276,6 +278,7 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
     val resources = LocalResources.current
     val focus = LocalFocusManager.current
     val editing = vm.voices.any { it.id == draft.id }
+    val optional = vm.optionalReference(draft.modelRef)
     var confirmDelete by remember { mutableStateOf(false) }
     VoiceEditorLayout(if (editing) resources.getString(R.string.edit_voice) else resources.getString(R.string.clone_voice), vm::closeEditor, !vm.fileBusy, modifier,
         actions = {
@@ -296,7 +299,7 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
                         onClick = { installed?.let { vm.edit(draft.copy(modelRef = it.ref)) } },
                         label = { Text(model.displayName(resources)) }, enabled = installed != null && !vm.fileBusy && !vm.busy)
                 }
-                vm.models.filterNot { vm.isOfficial(it.ref) }.forEach { model ->
+                vm.cloneModels.filterNot { vm.isOfficial(it.ref) }.forEach { model ->
                     FilterChip(selected = draft.modelRef == model.ref,
                         onClick = { vm.edit(draft.copy(modelRef = model.ref)) },
                         label = { Text(model.displayName) }, enabled = !vm.fileBusy,
@@ -308,11 +311,22 @@ private fun VoiceEditor(vm: StudioViewModel, draft: VoiceDraft, pickReference: (
         }
         ReferenceAudioInput(vm, draft.audioPath, draft.audioName, draft.durationMs,
             pickReference, recordReference) {
-            StepTitle("02", resources.getString(R.string.reference_audio))
+            StepTitle("02", resources.getString(if (optional) R.string.reference_audio_optional else R.string.reference_audio))
         }
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            StepTitle("03", resources.getString(R.string.enter_transcript))
-            LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, !vm.fileBusy, vm.languages(draft.modelRef),
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                StepTitle("03", resources.getString(if (optional) R.string.reference_transcript_optional else R.string.enter_transcript),
+                    Modifier.weight(1f))
+                val enabled = draft.audioPath.isNotBlank() && draft.audioName.isNotBlank() && !vm.fileBusy && !vm.busy
+                StudioButton(onClick = {
+                    val transcript = draft.audioName.substringBeforeLast('.').ifEmpty { draft.audioName }
+                    vm.edit(draft.copy(transcript = transcript))
+                }, enabled = enabled, style = StudioButtonStyle.Quiet) {
+                    Text(resources.getString(R.string.use_audio_filename),
+                        color = if (enabled) MaterialTheme.colorScheme.primary else LocalContentColor.current)
+                }
+            }
+            if (!optional) LanguageChoice(resources.getString(R.string.reference_language), draft.referenceLanguage, !vm.fileBusy, vm.languages(draft.modelRef),
                 autoText = draft.transcript, onSelect = { vm.edit(draft.copy(referenceLanguage = it)) })
             OutlinedTextField(draft.transcript, { vm.edit(draft.copy(transcript = it)) },
                 minLines = 3, maxLines = 6,
@@ -351,8 +365,8 @@ private fun VoiceEditorLayout(title: String, onBack: () -> Unit, backEnabled: Bo
 }
 
 @Composable
-private fun StepTitle(number: String, title: String) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+private fun StepTitle(number: String, title: String, modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(number, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
     }

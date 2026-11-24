@@ -53,11 +53,11 @@ class MainActivity : ComponentActivity() {
     private val runtimePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(studio::importRuntimePackage)
     }
-    private val gptPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { studio.pickCheckpoint(it, gpt = true) }
+    private val firstCheckpointPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { studio.pickCheckpoint(it, first = true) }
     }
-    private val sovitsPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let { studio.pickCheckpoint(it, gpt = false) }
+    private val secondCheckpointPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { studio.pickCheckpoint(it, first = false) }
     }
     private val outputPicker = registerForActivityResult(ActivityResultContracts.CreateDocument("audio/wav")) { uri ->
         val path = exportPath
@@ -85,8 +85,8 @@ class MainActivity : ComponentActivity() {
                             studio.startReferenceRecording()
                         else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                     },
-                    pickCheckpoint = { gpt ->
-                        (if (gpt) gptPicker else sovitsPicker).launch(arrayOf("*/*"))
+                    pickCheckpoint = { first ->
+                        (if (first) firstCheckpointPicker else secondCheckpointPicker).launch(arrayOf("*/*"))
                     },
                     pickRuntimePackage = {
                         runtimePicker.launch(arrayOf("application/zip", "application/x-zip-compressed", "application/octet-stream"))

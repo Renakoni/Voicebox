@@ -223,7 +223,6 @@
     <string name="playback_position">Playback position</string>
     <string name="pause_playback">Pause playback</string>
     <string name="add_audio">Add audio</string>
-    <string name="loading">Loading</string>
     <string name="pause">Pause</string>
     <string name="record_release_cancel">Release to cancel</string>
     <string name="record_release_finish">Release to finish</string>
@@ -266,6 +265,13 @@
     <string name="expanded">Expanded</string>
     <string name="collapsed">Collapsed</string>
     <string name="advanced_settings">Advanced settings</string>
+    <string name="qwen_talker">Main model</string>
+    <string name="qwen_q4" translatable="false">Q4</string>
+    <string name="qwen_subtalker">Acoustic code predictor</string>
+    <string name="qwen_sampling">Enable sampling</string>
+    <string name="qwen_length">Generation length</string>
+    <string name="qwen_max_new_tokens">Maximum new tokens</string>
+    <string name="qwen_context_limit">The prompt and generated audio share a 4096-token context.</string>
     <string name="speech_speed">Speed</string>
     <string name="temperature">Temperature</string>
     <string name="repetition_penalty">Repetition penalty</string>
@@ -342,6 +348,11 @@
     <string name="voices_custom">Your voices</string>
     <string name="clone_voice">Clone voice</string>
     <string name="import_voice">Import voice</string>
+    <string name="import_format_voice">Import %1$s voice</string>
+    <string name="qwen_config">Model configuration · config.json</string>
+    <string name="qwen_language_unsupported">Qwen3-TTS does not support this language.</string>
+    <string name="qwen_checkpoint_weights">Model weights · .safetensors</string>
+    <string name="qwen_import_needs_codec">Voice imported. Install the audio codec to use it.</string>
     <string name="model_unavailable">Model unavailable</string>
     <string name="selected">Selected</string>
     <string name="edit_named_voice">Edit %1$s</string>
@@ -401,7 +412,7 @@
     <string name="recording_incomplete">The recording was too short or did not finish. Record it again.</string>
     <string name="recording_filename">Recording.m4a</string>
     <string name="recording_minimum">Record at least half a second of speech.</string>
-    <string name="voice_fields_required">Enter a voice name and reference transcript, then select reference audio and a base voice.</string>
+    <string name="voice_fields_required">Enter a voice name and select a base voice.</string>
     <string name="voice_name_exists">This voice name is already in use. Choose another name.</string>
     <string name="voice_saved">Voice saved. You can now use it to create speech.</string>
     <string name="voice_save_failed">Could not save the voice. Check available storage and try again.</string>
@@ -412,11 +423,11 @@
     <string name="import_resources_complete">Import complete. Resources are saved on this device.</string>
     <string name="import_resources_failed">Import failed. Select a compatible VoiceBox ZIP resource package and check available storage.</string>
     <string name="import_engine_busy">The engine is busy. Try importing again later.</string>
-    <string name="checkpoint_extension">Select a %2$s file for the %1$s weights.</string>
+    <string name="checkpoint_extension">Select a file ending in %1$s.</string>
     <string name="model_identifying">Identifying model…</string>
     <string name="model_identify_on_import">To be identified on import</string>
     <string name="model_identify_failed">Could not identify the model. Check the weight file.</string>
-    <string name="checkpoint_fields_required">Enter a voice name and select a matching pair of .ckpt and .pth files.</string>
+    <string name="checkpoint_fields_required">Enter a voice name and select the matching %1$s and %2$s files.</string>
     <string name="checkpoint_replace_pair">To replace weights, select both matching .ckpt and .pth files.</string>
     <string name="checkpoint_reference_required">Select matching reference audio and enter the words spoken in it.</string>
     <string name="voice_saving">Saving voice</string>
@@ -455,12 +466,12 @@
     <string name="model_device_unsupported">Unsupported on this device</string>
     <string name="model_bridge">Inference bridge</string>
     <string name="model_install_part">Install %1$s</string>
+    <string name="model_update_part">Update %1$s</string>
     <string name="model_remove_part">Remove %1$s</string>
     <string name="model_remove_confirmation">Uninstall “%1$s”?</string>
     <string name="model_remove_action">Uninstall</string>
     <string name="model_removing">Removing model component</string>
     <string name="model_remove_failed">Could not remove the model component.</string>
-    <string name="model_prepare">Prepare</string>
     <string name="ming_clone_resources">Voice cloning resources</string>
     <string name="ming_clone_resources_required">Download Ming-TTS voice cloning resources in Models to use this reference audio feature.</string>
     <string name="ming_htp_resources">Inference acceleration pack</string>
@@ -480,4 +491,10 @@
     <string name="top_p">Top-P</string>
     <string name="aux_references">Additional recordings (%1$d/%2$d)</string>
     <string name="voice_resources_hint">Select or import a voice in Voices.</string>
+    <string name="qwen_audio_codec">Audio codec</string>
+    <string name="install_missing_model_parts">Install %1$s from Models</string>
+    <string name="reference_transcript_optional">Reference transcript (optional)</string>
+    <string name="use_audio_filename">Use filename</string>
+    <string name="reference_audio_optional">Reference audio (optional)</string>
+    <string name="transcript_needs_audio">Add the audio that matches the transcript, or leave the transcript blank.</string>
 </resources>

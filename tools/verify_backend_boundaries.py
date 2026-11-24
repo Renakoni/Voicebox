@@ -1,5 +1,6 @@
-"""Check the host APK and both independently built backend candidates. Uses only Python's standard library."""
+"""Check the host APK and independently built backend candidates. Uses only Python's standard library."""
 import argparse
+import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
@@ -9,7 +10,7 @@ from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 ANDROID = ROOT / "Android"
-MODEL_CLASSES = ("Ldev/renakoni/voicebox/model/", "Ldev/ming/local/", "Lai/onnxruntime/")
+MODEL_CLASSES = ("Ldev/renakoni/voicebox/model/", "Ldev/ming/local/", "Lai/onnxruntime/", "Lcom/qwen3/android/")
 PARENT_CLASSES = ("Ldev/renakoni/voicebox/core/", "Ldev/renakoni/voicebox/bridge/", "Lkotlin/")
 GPT_LIBS = {"libc++_shared.so", "libvoicebox_japanese.so", "libnative_decoder_loop.so",
             "libonnxruntime.so", "libonnxruntime4j_jni.so"}
@@ -20,6 +21,7 @@ MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so
 MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
                 "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
                 "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
+QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_probe.so", "libqwen3_checkpoint.so"}
 
 
 def require(condition, message):
@@ -29,7 +31,8 @@ def require(condition, message):
 
 def check_sources():
     dependencies = {"app": {"core"}, "core": {"bridge-api"}, "bridge-api": set(),
-                    "model/gptsovits": {"core", "bridge-api"}, "model/ming": {"core", "bridge-api"}}
+                    "model/gptsovits": {"core", "bridge-api"}, "model/ming": {"core", "bridge-api"},
+                    "model/qwen3": {"core", "bridge-api"}}
     for name, allowed in dependencies.items():
         module = ANDROID / name
         gradle = (module / "build.gradle.kts").read_text(encoding="utf-8")
@@ -80,6 +83,13 @@ def verify_package(spec, data):
             libs = GPT_LIBS
             audit = json.loads((ANDROID / "model/gptsovits/bridge-assets.json").read_bytes())
             assets = {"assets/" + path for path in audit}
+        elif backend == "qwen3":
+            require(abi == "arm64-v8a", "Expected Qwen ARM64 package")
+            libs = QWEN_LIBS
+            dsp = {"accelerated/libggml-htp-v75.so"}
+            assets = {"assets/qwen-vk2-1124406273-2150531084.bin",
+                      "assets/checkpoint-layout.json", "assets/checkpoint-metadata.bin"} | {
+                f"licenses/{name}-LICENSE.txt" for name in ("qwentts", "ggml", "Qwen3-TTS", "VoiceBox")}
         else:
             require(abi == "arm64-v8a", "Expected Ming ARM64 package")
             stubs = {name for name in sizes if re.fullmatch(r"qnn/libQnnHtpV[0-9]+Stub\.so", name)}
@@ -99,15 +109,17 @@ def verify_package(spec, data):
                     f"{backend}: unexpected DEX JAR member")
             classes = definitions(jar)
         require("L" + spec["entry"].replace(".", "/") + ";" in classes, f"{backend}: missing entry")
-        forbidden = PARENT_CLASSES + (("Ldev/renakoni/voicebox/model/ming/", "Ldev/ming/local/") if backend == "gptsovits"
-                                      else ("Ldev/renakoni/voicebox/model/gptsovits/", "Lai/onnxruntime/"))
+        owned = {"ming": ("Ldev/renakoni/voicebox/model/ming/", "Ldev/ming/local/"),
+                 "gptsovits": ("Ldev/renakoni/voicebox/model/gptsovits/", "Lai/onnxruntime/"),
+                 "qwen3": ("Ldev/renakoni/voicebox/model/qwen3/", "Lcom/qwen3/android/")}
+        forbidden = PARENT_CLASSES + tuple(prefix for owner, prefixes in owned.items() if owner != backend for prefix in prefixes)
         require(not any(name.startswith(forbidden) for name in classes), f"{backend}: duplicate or foreign classes")
     return dict(abi=abi, bytes=len(data), classes=len(classes), assets=len(assets))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("apk", "gpt", "ming"):
+    for name in ("apk", "gpt", "ming", "qwen3"):
         parser.add_argument("--" + name, type=Path, required=True)
     parser.add_argument("--mapping", type=Path, help="R8 mapping.txt from this APK's build")
     args = parser.parse_args()
@@ -123,18 +135,23 @@ def main():
                     original = "L" + line.split(" -> ", 1)[0].replace(".", "/") + ";"
                     require(not original.startswith(MODEL_CLASSES), "Host R8 mapped a backend class: " + original)
         native = {Path(n).name for n in app.namelist() if n.startswith("lib/")}
-        require(not (native & (GPT_LIBS - {"libc++_shared.so"}) or any(n.startswith("libming-") for n in native)),
+        require(not (native & ((GPT_LIBS - {"libc++_shared.so"}) | {Path(n).name for n in QWEN_LIBS} | {"libggml-htp-v75.so"})
+                     or any(n.startswith("libming-") for n in native)),
                 "Host includes backend native code")
         require(not any(entry.filename.startswith("assets/backend-packages/") for entry in members),
                 "Host bundles bridge packages")
         host_abis = {n.split("/")[1] for n in app.namelist() if n.startswith("lib/") and n.endswith(".so")}
         report = {"host_classes": len(host)}
-        for backend, path in (("gptsovits", args.gpt), ("ming", args.ming)):
+        weights = json.loads(app.read("assets/qwen3-models.json"))
+        require(set(weights) == {"qwen-talker-0.6b-base-Q4_K_M.gguf", "qwen-tokenizer-12hz-F32.gguf"},
+                "Qwen requires exactly the Q4 Talker and F32 codec")
+        for backend, path in (("gptsovits", args.gpt), ("ming", args.ming), ("qwen3", args.qwen3)):
             spec = json.loads(app.read(f"assets/bridges/{backend}.json"))
             require(spec["id"] == backend, "Backend catalog misidentified")
             data = path.read_bytes()
             parts = spec["parts"]
             require(len(parts) == 1 and parts[0]["bytes"] == len(data), f"{backend}: catalog package size differs")
+            require(hashlib.sha256(data).hexdigest() == parts[0]["sha256"], f"{backend}: catalog package checksum differs")
             url = parts[0]["url"]
             require(url.startswith("https://") and url.rsplit("/", 1)[-1] == path.name,
                     f"{backend}: catalog URL differs")

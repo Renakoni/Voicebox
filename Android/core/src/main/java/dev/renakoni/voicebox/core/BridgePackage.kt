@@ -81,32 +81,44 @@ class BridgePackages(private val context: Context) {
     val packages = context.assets.list("bridges").orEmpty().filter { it.endsWith(".json") }.map { name ->
         val spec = context.assets.open("bridges/$name").bufferedReader().use { BridgePackageSpec(JSONObject(it.readText())) }
         require(name == "${spec.id}.json")
-        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi, appVersion)
+        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi, appVersion,
+            modelImportDirectory(context))
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }
 
 data class InstalledBridge(val spec: BridgePackageSpec, val directory: File)
 
+enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, CURRENT }
+
 class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
+    private val imports: File? = null,
 ) {
     val supported get() = spec.abi == abi
     val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
-    val active get() = readActive()
-    val installed get() = active != null
+    val active get() = installedDirectory()?.takeIf { it.parentFile?.name == spec.revision }?.let { InstalledBridge(spec, it) }
+    val installState get() = when (installedDirectory()?.parentFile?.name) {
+        null -> BridgeInstallState.MISSING
+        spec.revision -> BridgeInstallState.CURRENT
+        else -> BridgeInstallState.UPDATE_REQUIRED
+    }
+    val installed get() = installState == BridgeInstallState.CURRENT
 
-    private fun readActive(): InstalledBridge? {
+    private fun installedDirectory(): File? {
         if (!installable || !receipt.isFile) return null
         return runCatching {
             val json = JSONObject(receipt.readText())
-            if (json.getString("revision") != spec.revision) return null
+            val revision = json.getString("revision")
+            require(SHA256_PATTERN.matches(revision))
             val slot = json.getString("directory")
             require('/' !in slot && BridgePackageSpec.safePath(slot))
-            val directory = File(File(root, spec.revision), slot)
-            InstalledBridge(spec, directory).takeIf { File(directory, spec.code).isFile }
+            val directory = File(File(root, revision), slot)
+            // Every activated slot has a manifest, even if a new revision renames its entry archive.
+            val file = if (revision == spec.revision) spec.code else "bridge.json"
+            directory.takeIf { File(it, file).isFile }
         }.getOrNull()
     }
 
@@ -125,30 +137,25 @@ class BridgePackage(
             val archive = File(root, ".download")
             val seen = mutableSetOf<String>()
             var received = 0L
-            try {
-                spec.parts.forEach { part ->
-                    downloadModelFile(part, archive, checkCancelled) { percent ->
-                        progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
-                    }
-                    extract(archive, staging, seen, checkCancelled)
-                    received += part.bytes
-                    archive.delete()
+            spec.parts.forEach { part ->
+                stageModelFile(part, archive, imports, checkCancelled) { percent ->
+                    progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
                 }
-                require(seen == spec.files.keys) { "Incomplete bridge package" }
-                require(File(staging, "bridge.json").length() <= 16_384)
-                spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
-                check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
-                revisions.mkdirs()
-                checkCancelled()
-                val active = File(revisions, id)
-                Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
-                activate(active)
-                progress(100)
-                true
-            } finally {
-                archive.delete()
-                staging.deleteRecursively()
+                extract(archive, staging, seen, checkCancelled)
+                received += part.bytes
+                Files.delete(archive.toPath())
             }
+            require(seen == spec.files.keys) { "Incomplete bridge package" }
+            require(File(staging, "bridge.json").length() <= 16_384)
+            spec.verifyManifest(JSONObject(File(staging, "bridge.json").readText()))
+            check(File(staging, spec.code).setReadOnly()) { "Cannot protect bridge DEX" }
+            revisions.mkdirs()
+            checkCancelled()
+            val active = File(revisions, id)
+            Files.move(staging.toPath(), active.toPath(), StandardCopyOption.ATOMIC_MOVE)
+            activate(active)
+            progress(100)
+            true
         }
     }
 

@@ -50,7 +50,7 @@ internal class StreamingPlayback(
             IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
-    fun start(target: File) {
+    fun start(target: File, sampleRate: Int) {
         check(directory == null && target.mkdirs())
         directory = target
         complete = false
@@ -58,7 +58,7 @@ internal class StreamingPlayback(
         update(state)
         job = scope.launch {
             try {
-                play(target)
+                play(target, sampleRate)
                 stop()
             } catch (error: CancellationException) {
                 throw error
@@ -83,7 +83,7 @@ internal class StreamingPlayback(
         publish(state.copy(paused = true, playing = false))
     }
 
-    private suspend fun play(directory: File) {
+    private suspend fun play(directory: File, sampleRate: Int) {
         var next = 0
         var acknowledged = 0
         var written = 0L
@@ -114,7 +114,7 @@ internal class StreamingPlayback(
             }
             val buffer = clip
             if (!state.paused && (buffer != null || played < written)) {
-                if (player == null) player = openTrack().also { track = it }
+                if (player == null) player = openTrack(sampleRate).also { track = it }
                 if (player.playState != AudioTrack.PLAYSTATE_PLAYING) {
                     if (audioManager.requestAudioFocus(focus) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) player.play()
                     else pause()
@@ -130,18 +130,18 @@ internal class StreamingPlayback(
                     }
                 }
             }
-            publish(state.copy(elapsedMs = played * 1000 / SampleRate, playing = !state.paused && played < written))
+            publish(state.copy(elapsedMs = played * 1000 / sampleRate, playing = !state.paused && played < written))
             delay(20)
         }
     }
 
-    private fun openTrack(): AudioTrack {
-        val minimum = AudioTrack.getMinBufferSize(SampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
+    private fun openTrack(sampleRate: Int): AudioTrack {
+        val minimum = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT)
         check(minimum > 0) { "PCM playback is unavailable" }
         return AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(AudioFormat.Builder()
-            .setSampleRate(SampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+            .setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
             .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-            .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(maxOf(minimum, SampleRate * 2 / 5)).build()
+            .setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(maxOf(minimum, sampleRate * 2 / 5)).build()
     }
 
     private fun publish(next: StreamPlayback) {
@@ -171,5 +171,4 @@ internal class StreamingPlayback(
         context.unregisterReceiver(noisy)
     }
 
-    private companion object { const val SampleRate = 44100 }
 }

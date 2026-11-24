@@ -49,9 +49,7 @@ import dev.renakoni.voicebox.bridge.GenerationCancelledException
 import dev.renakoni.voicebox.bridge.GenerationStage
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
-import dev.renakoni.voicebox.core.PinnedModelFiles
 import java.io.File
-import java.nio.file.Files
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -112,7 +110,10 @@ class VoiceBoxBackendService : Service() {
 
                 override fun availableModels(): List<CharacterModel> {
                     val enabled = enabledBackends.value
-                    return app.completeModels(modelRepository.providers.filter { enabled[it.id].orEmpty().isNotEmpty() })
+                    return app.installedVoiceModels(modelRepository.providers.filter { provider ->
+                        enabled[provider.id].orEmpty().isNotEmpty() && (provider.id != QwenModelPackage.BACKEND ||
+                            app.qwenModelPackage.pack(QwenModelPackage.CODEC) {}.installed)
+                    })
                 }
 
                 override fun referenceExample(model: CharacterModel) = modelRepository.findReferenceExample(model)
@@ -124,8 +125,11 @@ class VoiceBoxBackendService : Service() {
                     modelRepository.provider(model).resolveSynthesisOptions(defaults, overrides)
                 override fun usesReference(model: CharacterModel, options: Map<String, String>) =
                     modelRepository.provider(model).usesReference(options)
+                override fun referenceInput(model: CharacterModel) = modelRepository.provider(model).referenceInput(model)
                 override fun requiresOutputLanguage(model: CharacterModel, options: Map<String, String>) =
                     modelRepository.provider(model).let { it.requiresOutputLanguage && it.usesOutputLanguage(options) }
+                override fun languageError(model: CharacterModel, language: String, text: String) =
+                    modelRepository.provider(model).languageError(language, text)?.let { UiText(it).resolve(resources) }
 
                 override fun activeDefaults(): ActiveDefaults? = this@VoiceBoxBackendService.activeDefaults
 
@@ -284,26 +288,27 @@ class VoiceBoxBackendService : Service() {
         enabledBackends.value += provider.id to provider.executionModes()
     }
 
-    fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context ->
+    fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context, progress ->
+        if (voice.ref.backendId == QwenModelPackage.BACKEND) {
+            require(app.bridgePackages.get(QwenModelPackage.BACKEND).installed)
+            app.qwenModelPackage.install(QwenModelPackage.TALKER, context::checkCancelled) { percent ->
+                progress(UiText.literal(voice.name), percent)
+            }
+            return@downloadOnWorker
+        }
         val library = modelRepository.provider(voice.ref.backendId)
         library.perform(LibraryAction.DOWNLOAD_VOICE, Bundle().apply { putString("model", voice.id); putString("variant", voice.ref.variant) }, context) { label, percent ->
-            officialDownloadState.value = OfficialDownloadState(voice.ref, UiText.literal(label), percent, running = true)
-        }
-        if (voice.ref.backendId == "gptsovits") {
-            // The shipped GPT v3 bridge only removes the SoVITS source after conversion.
-            val root = requireNotNull(getExternalFilesDir(null)).canonicalFile
-            val sources = File(root, ".gpt-packages/voices")
-            val receipts = PinnedModelFiles(root, File(root, ".gpt-packages/receipts"))
-            val downloads = listOf(File(sources, "s1v3.ckpt"), File(sources, "${voice.id}.pth"))
-            val leftovers = downloads + downloads.map(receipts::receipt)
-            check(leftovers.map { it.parentFile!! }.distinct().all { it.canonicalFile == it })
-            leftovers.forEach { Files.deleteIfExists(it.toPath()) }
+            progress(UiText.literal(label), percent)
         }
     }
 
     internal fun removeOfficialWeights(voice: OfficialVoice, onComplete: (Result<Unit>) -> Unit): Boolean =
         removeOnWorker(OfficialDownloadState(voice = voice.ref), onComplete) {
             val ref = voice.ref
+            if (ref.backendId == QwenModelPackage.BACKEND) {
+                app.qwenModelPackage.uninstall(QwenModelPackage.TALKER)
+                return@removeOnWorker
+            }
             require(ref.backendId == "gptsovits")
             val provider = modelRepository.provider(ref.backendId)
             require(provider.officialVoices().any { it.ref == ref })
@@ -318,27 +323,33 @@ class VoiceBoxBackendService : Service() {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
         if (!archive.installable) return false
         val target = OfficialDownloadState(packageId = id)
-        return downloadOnWorker(target) { context ->
+        return downloadOnWorker(target) { context, progress ->
             val provider = modelRepository.provider(id)
-            val bridgeInstalled = archive.install(context::checkCancelled) { percent ->
-                officialDownloadState.value = target.copy(label = UiText(R.string.model_bridge), percent = percent, running = true)
+            val codecOnly = id == QwenModelPackage.BACKEND && part == QwenModelPackage.CODEC
+            val bridgeInstalled = !codecOnly && archive.install(context::checkCancelled) { percent ->
+                progress(UiText(R.string.model_bridge), percent)
             }
             if (bridgeInstalled) {
                 provider.invalidateMetadata()
                 refreshBackendModes(provider)
             }
-            if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
+            if (part != BRIDGE_PART && id == QwenModelPackage.BACKEND) {
+                require(part == null || part == QwenModelPackage.CODEC)
+                app.qwenModelPackage.install(QwenModelPackage.CODEC, context::checkCancelled) { percent ->
+                    progress(UiText(R.string.qwen_audio_codec), percent)
+                }
+            } else if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
                 val model = app.mingModelPackage
                 val parts = part?.let(::listOf) ?: model.modelParts
                 parts.forEach { component ->
                     val label = UiText(MingModelPackage.partTitle(component))
                     model.install(component, context::checkCancelled) { percent ->
-                        officialDownloadState.value = target.copy(label = label, percent = percent, running = true)
+                        progress(label, percent)
                     }
                 }
             } else if (part != BRIDGE_PART && provider.hasVoiceLibrary) {
                 provider.perform(LibraryAction.INSTALL_RESOURCES, Bundle().apply { putString("pack", part) }, context) { label, percent ->
-                    officialDownloadState.value = target.copy(label = UiText.literal(label), percent = percent, running = true)
+                    progress(UiText.literal(label), percent)
                 }
             }
         }
@@ -358,6 +369,9 @@ class VoiceBoxBackendService : Service() {
                     provider.invalidateMetadata()
                     refreshBackendModes(provider)
                 }
+            } else if (id == QwenModelPackage.BACKEND) {
+                require(part == QwenModelPackage.CODEC)
+                app.qwenModelPackage.uninstall(part)
             } else if (id == MingModelPackage.BACKEND) {
                 app.mingModelPackage.uninstall(part)
             } else {
@@ -370,7 +384,7 @@ class VoiceBoxBackendService : Service() {
     private fun removeOnWorker(target: OfficialDownloadState, onComplete: (Result<Unit>) -> Unit,
         remove: (GenerationContext) -> Unit): Boolean = importOnWorker(onComplete = { result ->
         val download = officialDownloadState.value
-        if (result.isSuccess && !download.running && download.voice == target.voice && download.packageId == target.packageId) {
+        if (result.isSuccess && download.finished && download.voice == target.voice && download.packageId == target.packageId) {
             officialDownloadState.value = OfficialDownloadState()
         }
         onComplete(result)
@@ -380,27 +394,46 @@ class VoiceBoxBackendService : Service() {
         val archive = app.bridgePackages.get(MingModelPackage.BACKEND)
         if (!archive.installed) return false
         val target = OfficialDownloadState(voice = MingModelPackage.modelRef)
-        return downloadOnWorker(target) { context ->
+        return downloadOnWorker(target) { context, progress ->
             app.mingModelPackage.install(MingModelPackage.OFFICIAL, context::checkCancelled) { percent ->
-                officialDownloadState.value = target.copy(label = UiText(R.string.ming_official_weights), percent = percent, running = true)
+                progress(UiText(R.string.ming_official_weights), percent)
             }
         }
     }
 
-    private fun downloadOnWorker(target: OfficialDownloadState, transfer: (GenerationContext) -> Unit): Boolean {
-        return importOnWorker<Unit>(onComplete = { result ->
-            officialDownloadState.value = result.fold(
-                { target.copy(label = UiText(R.string.download_complete), completed = true) },
-                { error ->
-                    Log.w("OfficialModels", "Model download failed", error)
-                    target.copy(error = if (error is java.util.concurrent.CancellationException)
-                        UiText(R.string.download_cancelled) else error.userText()
-                        ?: UiText(R.string.download_failed))
-                })
-        }) { context, _ ->
-            officialDownloadState.value = target.copy(label = UiText(R.string.download_preparing), running = true)
-            transfer(context)
+    fun cancelOfficialDownload(requestId: String): Boolean {
+        val active = officialDownloadState.value
+        if (active.requestId != requestId || !active.running || !cancelGeneration(requestId)) return false
+        officialDownloadState.value = active.copy(running = false, label = null, percent = null)
+        return true
+    }
+
+    private fun downloadOnWorker(target: OfficialDownloadState,
+        transfer: (GenerationContext, (UiText, Int?) -> Unit) -> Unit): Boolean {
+        val context = GenerationContext()
+        val active = target.copy(requestId = context.requestId, running = true, label = UiText(R.string.download_preparing))
+        val accepted = importOnWorker<Unit>(context = context, message = R.string.download_preparing, onComplete = { result ->
+            if (officialDownloadState.value.requestId != context.requestId) return@importOnWorker
+            val error = result.exceptionOrNull()?.takeUnless {
+                context.cancellationReason != null || it is java.util.concurrent.CancellationException
+            }
+            if (error != null) Log.w("OfficialModels", "Model download failed", error)
+            val finished = target.copy(requestId = context.requestId, finished = true,
+                label = if (result.isSuccess) UiText(R.string.download_complete) else null,
+                error = error?.let { it.userText() ?: UiText(R.string.download_failed) })
+            officialDownloadState.value = finished
+            mainHandler.postDelayed({ officialDownloadState.compareAndSet(finished, OfficialDownloadState()) }, 4_000L)
+        }) { _, _ ->
+            transfer(context) { label, percent ->
+                mainHandler.post {
+                    val current = officialDownloadState.value
+                    if (current.requestId == context.requestId && current.running)
+                        officialDownloadState.value = active.copy(label = label, percent = percent)
+                }
+            }
         }
+        if (accepted) officialDownloadState.value = active
+        return accepted
     }
 
     /** Import on the session owner thread; a replacement must never race inference or warmup. */
@@ -419,18 +452,11 @@ class VoiceBoxBackendService : Service() {
             Bundle().apply { putString("uri", uri.toString()) }, GenerationContext()) { _, _ -> }.getString("variant")
     }.get()
 
-    fun importCheckpointPair(
-        backendId: String, name: String, gpt: android.net.Uri, sovits: android.net.Uri, onProgress: (UiText) -> Unit,
-        onComplete: (Result<ImportedVoice>) -> Unit, reference: ReferenceExample? = null,
-        replace: ModelRef? = null, gptFilename: String = "", sovitsFilename: String = "",
-    ): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
-        val arguments = referenceArguments(name, reference).apply {
-            putString("first", gpt.toString()); putString("second", sovits.toString()); putString("id", replace?.modelId)
-            putString("firstName", gptFilename); putString("secondName", sovitsFilename); putString("variant", replace?.variant)
-        }
-        val provider = modelRepository.provider(backendId)
-        require(replace == null || replace.backendId == backendId)
-        val result = provider.perform(LibraryAction.IMPORT_PAIR, arguments, context) { text, _ -> progress(UiText.literal(text)) }
+    fun importVoiceCheckpoint(name: String, source: VoiceCheckpointSource, onProgress: (UiText) -> Unit,
+        onComplete: (Result<ImportedVoice>) -> Unit): Boolean = importOnWorker(onComplete, onProgress) { context, progress ->
+        val provider = modelRepository.provider(source.backendId)
+        require(source.format in provider.capabilities.imports) { "Install the ${source.backendId} checkpoint importer" }
+        val result = provider.perform(source.action, source.arguments(name), context) { text, _ -> progress(UiText.literal(text)) }
         ImportedVoice(ModelRef(provider.id, result.getString("variant")!!, result.getString("id")!!), result.getString("name")!!)
     }
 
@@ -441,18 +467,13 @@ class VoiceBoxBackendService : Service() {
         ImportedVoice(ref, name.trim())
     }
 
-    private fun referenceArguments(name: String, reference: ReferenceExample?) = Bundle().apply {
-        putString("name", name)
-        reference?.let { putString("reference", it.audioFile.absolutePath); putString("transcript", it.referenceText); putString("language", it.language) }
-    }
-
     private fun <T> importOnWorker(
         onComplete: (Result<T>) -> Unit,
         onProgress: (UiText) -> Unit = {},
         message: Int = R.string.resources_importing,
+        context: GenerationContext = GenerationContext(),
         operation: (GenerationContext, (UiText) -> Unit) -> T,
     ): Boolean {
-        val context = GenerationContext()
         if (!generationGate.tryAcquire(context)) return false
         activeDefaults = null
         warmupContext?.cancel("RESOURCES_CHANGED")
@@ -462,7 +483,7 @@ class VoiceBoxBackendService : Service() {
             val result = runCatching {
                 context.checkCancelled()
                 closeWorkerRuntime()
-                operation(context) { message -> mainHandler.post { onProgress(message) } }
+                context.run { operation(context) { message -> mainHandler.post { onProgress(message) } } }
             }
             generationGate.release(context)
             publishState(GenerationStage.IDLE, false, state.requestedBackend,
