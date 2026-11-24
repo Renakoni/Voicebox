@@ -5,6 +5,7 @@ import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.bridge.CharacterModel
 import dev.renakoni.voicebox.bridge.ExecutionBackend
 import dev.renakoni.voicebox.bridge.GenerationRequest
+import dev.renakoni.voicebox.bridge.ReferenceInput
 import dev.renakoni.voicebox.core.ReferenceLanguage
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -36,7 +37,9 @@ class LocalHttpApiServer(
             model.maxAuxiliaryReferences > 0
         fun resolveSynthesisOptions(model: CharacterModel, defaults: Map<String, String>, overrides: Map<String, String>): Map<String, String>
         fun usesReference(model: CharacterModel, options: Map<String, String>): Boolean = true
+        fun referenceInput(model: CharacterModel): ReferenceInput = ReferenceInput.REQUIRED
         fun requiresOutputLanguage(model: CharacterModel, options: Map<String, String>): Boolean = true
+        fun languageError(model: CharacterModel, language: String, text: String): String?
         fun activeDefaults(): ActiveDefaults?
         fun inferBlocking(backend: ExecutionBackend, request: GenerationRequest, timeoutMs: Long): InferResult
         fun cancel(requestId: String): Boolean = false
@@ -225,11 +228,13 @@ class LocalHttpApiServer(
             referenceText = params["referenceText"].orEmpty(),
             auxiliaryReferenceAudioPaths = params["auxReferenceAudioPaths"]?.split('|')?.map(String::trim)?.filter(String::isNotBlank).orEmpty(),
         )
-        return inferWithPayload(payload, defaults, useVoiceDefaults = true, useDefaultAuxiliary = "auxReferenceAudioPaths" !in params)
+        return inferWithPayload(payload, defaults, useVoiceDefaults = true, useDefaultAuxiliary = "auxReferenceAudioPaths" !in params,
+            explicitAudio = "referenceAudioPath" in params, explicitTranscript = "referenceText" in params)
     }
 
     private fun inferWithPayload(input: InferPayload, defaults: ActiveDefaults? = bridge.activeDefaults(),
-        useVoiceDefaults: Boolean = false, useDefaultAuxiliary: Boolean = false): HttpResponse {
+        useVoiceDefaults: Boolean = false, useDefaultAuxiliary: Boolean = false,
+        explicitAudio: Boolean = false, explicitTranscript: Boolean = false): HttpResponse {
         val matches = bridge.availableModels().filter {
             it.id == input.modelId && (input.backendId == null || it.ref.backendId == input.backendId) &&
                 (input.variant == null || it.ref.variant == input.variant)
@@ -240,9 +245,13 @@ class LocalHttpApiServer(
         val options = try { bridge.resolveSynthesisOptions(model, active?.options.orEmpty(), input.options) }
         catch (error: IllegalArgumentException) { return HttpResponse(400, errorJson(error.message ?: "Invalid options.")) }
         val requiresLanguage = bridge.requiresOutputLanguage(model, options)
-        val usesReference = bridge.usesReference(model, options)
+        val referenceInput = bridge.referenceInput(model)
+        if (referenceInput == ReferenceInput.NONE && (input.referenceAudioPath.isNotBlank() || input.referenceText.isNotBlank()))
+            return HttpResponse(400, errorJson("This voice uses its trained speaker and takes no reference audio or transcript."))
+        val usesReference = referenceInput != ReferenceInput.NONE && bridge.usesReference(model, options)
+        val optional = referenceInput == ReferenceInput.OPTIONAL
         val payload = if (useVoiceDefaults) {
-            val reference = if (usesReference && active == null && (input.referenceAudioPath.isBlank() || input.referenceText.isBlank()))
+            val reference = if (usesReference && !optional && active == null && (input.referenceAudioPath.isBlank() || input.referenceText.isBlank()))
                 runCatching { bridge.referenceExample(model) }.getOrNull() else null
             val referenceLanguage = reference?.let {
                 if (it.language == "auto") ReferenceLanguage.resolve(it.language, it.referenceText.orEmpty()) else it.language
@@ -252,8 +261,10 @@ class LocalHttpApiServer(
                 backendName = input.backendName.ifBlank { active?.backend?.name.orEmpty() },
                 language = language,
                 promptLanguage = input.promptLanguage.ifBlank { active?.promptLanguage ?: referenceLanguage ?: language },
-                referenceAudioPath = input.referenceAudioPath.ifBlank { active?.referenceAudioPath ?: reference?.audioFile?.absolutePath.orEmpty() },
-                referenceText = input.referenceText.ifBlank { active?.referenceText ?: reference?.referenceText.orEmpty() },
+                referenceAudioPath = if (optional && explicitAudio) input.referenceAudioPath else
+                    input.referenceAudioPath.ifBlank { active?.referenceAudioPath ?: reference?.audioFile?.absolutePath.orEmpty() },
+                referenceText = if (optional && (explicitAudio || explicitTranscript)) input.referenceText else
+                    input.referenceText.ifBlank { active?.referenceText ?: reference?.referenceText.orEmpty() },
                 auxiliaryReferenceAudioPaths = if (useDefaultAuxiliary) active?.auxiliaryReferenceAudioPaths.orEmpty() else input.auxiliaryReferenceAudioPaths,
             )
         } else input
@@ -262,11 +273,12 @@ class LocalHttpApiServer(
         val required = buildList {
             if (requiresLanguage && payload.language.isBlank()) add("language")
             if (payload.text.isBlank()) add("text")
-            if (usesReference && payload.referenceAudioPath.isBlank()) add("referenceAudioPath")
-            if (usesReference && payload.referenceText.isBlank()) add("referenceText")
+            if (usesReference && (!optional || payload.referenceText.isNotBlank()) && payload.referenceAudioPath.isBlank()) add("referenceAudioPath")
+            if (usesReference && !optional && payload.referenceText.isBlank()) add("referenceText")
         }
         if (required.isNotEmpty()) return HttpResponse(400, errorJson("Missing required fields: ${required.joinToString()}"))
-        if (usesReference && !File(payload.referenceAudioPath).isFile) {
+        bridge.languageError(model, payload.language, payload.text)?.let { return HttpResponse(400, errorJson(it)) }
+        if (usesReference && payload.referenceAudioPath.isNotBlank() && !File(payload.referenceAudioPath).isFile) {
             return HttpResponse(400, errorJson("Reference audio not found: ${payload.referenceAudioPath}"))
         }
         validateAuxiliaryReferenceCapability(model, payload.auxiliaryReferenceAudioPaths)?.let { error ->

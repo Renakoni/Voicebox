@@ -29,7 +29,7 @@ internal class CreationSettings(
     val hasModel get() = selectedModel() != null
     val languages get() = selectedModel()?.let(languagesFor).orEmpty()
     private val automaticLanguage get() = model.automaticOutputLanguage
-        ?: "".takeIf { provider?.requiresOutputLanguage == false }
+        ?: (if ("auto" in languages) "auto" else "").takeIf { provider?.requiresOutputLanguage == false }
     val outputLanguage: String get() {
         val ref = selectedModel() ?: return ""
         val automatic = automaticLanguage

@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.MingModelPackage
+import dev.renakoni.voicebox.QwenModelPackage
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.OfficialVoice
@@ -48,6 +49,7 @@ import dev.renakoni.voicebox.studio.creation.ming.MingPresetBrowser
 private val previewOfficialVoices = listOf(
     OfficialVoice(ModelRef("gptsovits", "v2ProPlus", "official-v2proplus"), "V2 ProPlus", "model_v2_pro_plus"),
     OfficialVoice(ModelRef("gptsovits", "v5turbo", "official-v5turbo"), "V5 Turbo", "model_v5_turbo"),
+    OfficialVoice(ModelRef("qwen3", "Q4_K_M", "qwen3-tts-0.6b-base"), "Qwen3-TTS-0.6B Q4", ""),
 )
 
 @Composable
@@ -66,20 +68,33 @@ internal fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
         PageHeader(resources.getString(R.string.my_voices))
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(top = 4.dp, bottom = 8.dp).height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StudioButton(onClick = { vm.beginVoice() }, enabled = vm.models.isNotEmpty() && !vm.loading && !vm.busy && !vm.fileBusy,
+            StudioButton(onClick = { vm.beginVoice() }, enabled = vm.cloneModels.isNotEmpty() && !vm.loading && !vm.busy && !vm.fileBusy,
                 style = StudioButtonStyle.Primary, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 44.dp)) {
                 Icon(Icons.Default.Add, null, Modifier.size(18.dp))
                 Text(resources.getString(R.string.clone_voice))
             }
-            if (vm.modelPreview || vm.canImportCheckpoints) StudioButton(onClick = vm::beginCheckpointImport,
-                enabled = vm.canImportCheckpoints && vm.connected && !vm.busy && !vm.fileBusy,
-                style = StudioButtonStyle.Secondary, modifier = Modifier.weight(1f).fillMaxHeight().heightIn(min = 44.dp)) {
-                Icon(painterResource(R.drawable.ic_download), null, Modifier.size(17.dp))
-                Text(resources.getString(R.string.import_voice))
+            val formats = vm.checkpointFormats
+            if (vm.modelPreview || formats.isNotEmpty()) Box(Modifier.weight(1f).fillMaxHeight()) {
+                var choosingFormat by remember { mutableStateOf(false) }
+                StudioButton(onClick = {
+                    if (formats.size == 1) vm.beginCheckpointImport(formats.single()) else choosingFormat = true
+                }, enabled = formats.isNotEmpty() && vm.connected && !vm.busy && !vm.fileBusy,
+                    style = StudioButtonStyle.Secondary, modifier = Modifier.fillMaxSize().heightIn(min = 44.dp)) {
+                    Icon(painterResource(R.drawable.ic_download), null, Modifier.size(17.dp))
+                    Text(resources.getString(R.string.import_voice))
+                }
+                DropdownMenu(choosingFormat, onDismissRequest = { choosingFormat = false }) {
+                    formats.forEach { format ->
+                        DropdownMenuItem(text = { Text(format.title) }, onClick = {
+                            choosingFormat = false
+                            vm.beginCheckpointImport(format)
+                        })
+                    }
+                }
             }
         }
         val officialModels = if (vm.modelPreview) previewOfficialVoices else vm.officialModels
-        val mingWeights = vm.mingVoiceWeights.takeIf { vm.mingInstalled || vm.modelPreview }
+        val mingWeights = vm.mingVoiceWeights
         val mingVoice = vm.voices.firstOrNull {
             it.builtIn && it.model == MingModelPackage.modelRef && vm.creationSettings.presetsFor(it.model).isNotEmpty()
         }
@@ -126,7 +141,7 @@ internal fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                     onClick = { vm.select(voice); vm.tab = StudioTab.CREATE },
                     avatar = { RingedAvatar(voice.name, voice.avatarPath, selected, dim = !available) },
                     trailing = {
-                        IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy) {
+                        if (!voice.builtIn || vm.acceptsReference(voice.model)) IconButton(onClick = { vm.beginEditVoice(voice) }, enabled = !vm.busy && !vm.fileBusy) {
                             Icon(Icons.Outlined.Edit, resources.getString(R.string.edit_named_voice, voice.name),
                                 Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -135,7 +150,12 @@ internal fun VoicesPage(vm: StudioViewModel, modifier: Modifier) {
                         maxLines = 2, overflow = TextOverflow.Ellipsis,
                         color = if (available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant)
                     val detail = listOfNotNull(vm.variantLabel(voice.model).resolve(resources),
-                        if (!available) resources.getString(R.string.model_unavailable) else null).joinToString(" · ")
+                        when {
+                            !available -> resources.getString(R.string.model_unavailable)
+                            voice.model.backendId == QwenModelPackage.BACKEND && !vm.resourcesReady(voice.model) ->
+                                resources.getString(R.string.install_missing_model_parts, resources.getString(R.string.qwen_audio_codec))
+                            else -> null
+                        }).joinToString(" · ")
                     Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (selected) Text(resources.getString(R.string.selected), style = MaterialTheme.typography.labelMedium,
@@ -222,7 +242,9 @@ internal fun RingedAvatar(name: String, path: String, selected: Boolean, dim: Bo
 private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: Shape) {
     val resources = LocalResources.current
     val colors = MaterialTheme.colorScheme
-    val installed = vm.modelFor(model) != null || vm.modelPreview
+    val qwen = model.ref.backendId == QwenModelPackage.BACKEND
+    val weightPack = if (qwen) vm.qwenVoiceWeights else null
+    val installed = (weightPack?.installed ?: (vm.modelFor(model) != null)) || vm.modelPreview
     val ready = vm.resourcesReady(model.ref) || vm.modelPreview
     val voice = vm.voiceFor(model)
     val status = vm.officialDownload.takeIf { it.voice == model.ref }
@@ -232,8 +254,12 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
     val name = model.displayName(resources)
     val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
     VoiceTile(shape, selected, enabled = installed && enabled,
-        onClick = { if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE } else vm.editOfficial(model) },
-        onLongClick = { vm.editOfficial(model) },
+        onClick = {
+            if (qwen && !ready) vm.tab = StudioTab.MODELS
+            else if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE }
+            else vm.editOfficial(model)
+        },
+        onLongClick = if (qwen && !ready) null else ({ vm.editOfficial(model) }),
         onLongClickLabel = resources.getString(R.string.edit_named_voice, name),
         avatar = { RingedAvatar(name, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
@@ -246,7 +272,10 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
         val detail = when {
             downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
             !ready && error != null -> error.resolve(resources)
+            !installed && weightPack != null -> resources.getString(R.string.ming_official_weights_download,
+                Formatter.formatShortFileSize(LocalContext.current, weightPack.remainingBytes))
             !installed -> resources.getString(R.string.not_downloaded)
+            !ready && qwen -> resources.getString(R.string.install_missing_model_parts, resources.getString(R.string.qwen_audio_codec))
             !ready -> resources.getString(R.string.shared_resources_missing)
             else -> null
         }

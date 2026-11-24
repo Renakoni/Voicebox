@@ -81,7 +81,8 @@ class BridgePackages(private val context: Context) {
     val packages = context.assets.list("bridges").orEmpty().filter { it.endsWith(".json") }.map { name ->
         val spec = context.assets.open("bridges/$name").bufferedReader().use { BridgePackageSpec(JSONObject(it.readText())) }
         require(name == "${spec.id}.json")
-        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi, appVersion)
+        BridgePackage(File(context.noBackupFilesDir, "model-runtimes/${spec.id}"), spec, processAbi, appVersion,
+            modelImportDirectory(context))
     }
     fun get(id: String) = packages.single { it.spec.id == id }
 }
@@ -90,6 +91,7 @@ data class InstalledBridge(val spec: BridgePackageSpec, val directory: File)
 
 class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
+    private val imports: File? = null,
 ) {
     val supported get() = spec.abi == abi
     val installable get() = supported && spec.minAppVersionCode <= appVersion
@@ -127,7 +129,7 @@ class BridgePackage(
             var received = 0L
             try {
                 spec.parts.forEach { part ->
-                    downloadModelFile(part, archive, checkCancelled) { percent ->
+                    stageModelFile(part, archive, imports, checkCancelled) { percent ->
                         progress(((received + part.bytes * percent / 100) * 99 / spec.downloadBytes).toInt())
                     }
                     extract(archive, staging, seen, checkCancelled)

@@ -223,7 +223,6 @@
     <string name="playback_position">播放进度</string>
     <string name="pause_playback">暂停播放</string>
     <string name="add_audio">添加音频</string>
-    <string name="loading">加载中</string>
     <string name="pause">暂停</string>
     <string name="record_release_cancel">松开取消</string>
     <string name="record_release_finish">松开完成</string>
@@ -338,6 +337,11 @@
     <string name="voices_custom">自建音色</string>
     <string name="clone_voice">克隆音色</string>
     <string name="import_voice">导入音色</string>
+    <string name="import_format_voice">导入 %1$s 音色</string>
+    <string name="qwen_config">模型配置 · config.json</string>
+    <string name="qwen_language_unsupported">千问不支持所选语言。</string>
+    <string name="qwen_checkpoint_weights">模型权重 · .safetensors</string>
+    <string name="qwen_import_needs_codec">音色已导入，安装音频编解码器后即可使用。</string>
     <string name="model_unavailable">模型不可用</string>
     <string name="selected">已选用</string>
     <string name="edit_named_voice">编辑“%1$s”</string>
@@ -397,7 +401,7 @@
     <string name="recording_incomplete">录音太短或未完成，请重新录制。</string>
     <string name="recording_filename">录音.m4a</string>
     <string name="recording_minimum">请录制至少半秒的人声。</string>
-    <string name="voice_fields_required">请填好音色名称、参考音频和对应原文，并选择基础音色。</string>
+    <string name="voice_fields_required">请填写音色名称并选择基础音色。</string>
     <string name="voice_name_exists">音色名称已存在，请换一个名称。</string>
     <string name="voice_saved">音色已保存，可以开始创作了。</string>
     <string name="voice_save_failed">音色保存失败，请检查手机剩余空间后重试。</string>
@@ -408,11 +412,11 @@
     <string name="import_resources_complete">导入完成，资源已保存在手机上。</string>
     <string name="import_resources_failed">导入失败，请选择对应的 VoiceBox ZIP 资源包，并确认手机剩余空间充足。</string>
     <string name="import_engine_busy">引擎繁忙，请稍后重新导入。</string>
-    <string name="checkpoint_extension">%1$s 权重请选择以 %2$s 结尾的文件。</string>
+    <string name="checkpoint_extension">请选择以 %1$s 结尾的文件。</string>
     <string name="model_identifying">正在识别…</string>
     <string name="model_identify_on_import">导入时识别</string>
     <string name="model_identify_failed">无法识别，请检查权重文件。</string>
-    <string name="checkpoint_fields_required">请填写音色名称，并选择配套的 .ckpt 和 .pth 文件。</string>
+    <string name="checkpoint_fields_required">请填写音色名称，并选择配套的 %1$s 和 %2$s 文件。</string>
     <string name="checkpoint_replace_pair">更换权重时，请同时选择配套的 .ckpt 和 .pth。</string>
     <string name="checkpoint_reference_required">请选择配套的参考音频，并填写音频中的原文。</string>
     <string name="voice_saving">正在保存音色</string>
@@ -476,4 +480,16 @@
     <string name="top_p">Top-P</string>
     <string name="aux_references">辅助参考录音（%1$d/%2$d）</string>
     <string name="voice_resources_hint">请在“音色”中选择或导入音色。</string>
+    <string name="qwen_audio_codec">音频编解码器</string>
+    <string name="install_missing_model_parts">请在模型页安装%1$s</string>
+    <string name="reference_transcript_optional">参考音频原文（选填）</string>
+    <string name="use_audio_filename">识别文件名</string>
+    <string name="reference_audio_optional">参考音频（选填）</string>
+    <string name="transcript_needs_audio">请添加与原文对应的参考音频，或将原文留空。</string>
+    <string name="qwen_talker">主模型</string>
+    <string name="qwen_subtalker">子模型（声学编码预测）</string>
+    <string name="qwen_sampling">启用采样</string>
+    <string name="qwen_length">生成长度</string>
+    <string name="qwen_max_new_tokens">最大生成 Token 数</string>
+    <string name="qwen_context_limit">输入提示和生成音频共用 4096 个 Token 的上下文。</string>
 </resources>

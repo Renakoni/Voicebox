@@ -1,6 +1,6 @@
 package dev.renakoni.voicebox.bridge
 
-enum class VoiceImport { CHECKPOINT_PAIR, RUNTIME_ARCHIVE }
+enum class VoiceImport { CHECKPOINT_PAIR, RUNTIME_ARCHIVE, QWEN_SAFETENSORS }
 
 data class BackendCapabilities(
     val languages: List<String>,

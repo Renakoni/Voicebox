@@ -1,0 +1,85 @@
+--- a/qwen3_jni.cpp
++++ b/qwen3_jni.cpp
+@@ -1,8 +1,5 @@
+ #include "audio-io.h"
+ #include "qwen.h"
+-#ifdef GGML_USE_VULKAN
+-#include "ggml-vulkan.h"
+-#endif
+ 
+ #include <android/log.h>
+ #include <jni.h>
+@@ -12,6 +9,9 @@
+ #include <memory>
+ #include <stdexcept>
+ #include <string>
++
++extern "C" JNIEXPORT jboolean JNICALL Java_com_qwen3_android_Engine_synthesize(
++        JNIEnv *, jclass, jlong, jbyteArray, jbyteArray, jbyteArray, jbyteArray, jlong, jobject);
+ 
+ namespace {
+ void fail(JNIEnv * env, const char * message) {
+@@ -143,23 +143,48 @@
+     qt_free(reinterpret_cast<qt_context *>(handle));
+ }
+ 
+-extern "C" JNIEXPORT jboolean JNICALL Java_com_qwen3_android_Engine_synthesize(
+-        JNIEnv * env, jclass, jlong handle, jbyteArray text_arg, jbyteArray language_arg,
+-        jbyteArray reference_arg, jbyteArray transcript_arg, jlong seed, jobject sink) {
++extern "C" JNIEXPORT jboolean JNICALL Java_com_qwen3_android_Engine_synthesizeConfigured(
++        JNIEnv * env, jclass type_arg, jlong handle, jbyteArray text_arg, jbyteArray language_arg,
++        jbyteArray reference_arg, jbyteArray transcript_arg, jbyteArray speaker_arg,
++        jboolean do_sample, jfloat temperature, jint top_k, jfloat top_p, jfloat repetition_penalty,
++        jboolean subtalker_dosample, jfloat subtalker_temperature, jint subtalker_top_k, jfloat subtalker_top_p,
++        jint max_new_tokens, jlong seed, jobject sink) {
+     try {
++        qt_tts_params params;
++        qt_tts_default_params(&params);
++        // Delegate untuned Base requests to the shipped JNI. On Vulkan it also
++        // persists new pipeline-cache entries through a private core function.
++        if (!speaker_arg && do_sample && subtalker_dosample &&
++                temperature == params.temperature && top_k == params.top_k && top_p == params.top_p &&
++                repetition_penalty == params.repetition_penalty && subtalker_temperature == params.subtalker_temperature &&
++                subtalker_top_k == params.subtalker_top_k && subtalker_top_p == params.subtalker_top_p &&
++                max_new_tokens == params.max_new_tokens) {
++            return Java_com_qwen3_android_Engine_synthesize(env, type_arg, handle, text_arg, language_arg,
++                    reference_arg, transcript_arg, seed, sink);
++        }
+         const auto text = utf8(env, text_arg);
+         const auto language = utf8(env, language_arg);
+         const auto reference = utf8(env, reference_arg);
+         const auto transcript = utf8(env, transcript_arg);
++        const auto speaker = utf8(env, speaker_arg);
+         if (env->ExceptionCheck()) {
+             return false;
+         }
+ 
+-        qt_tts_params params;
+-        qt_tts_default_params(&params);
+         params.text = text.c_str();
+         params.lang = language.c_str();
++        params.speaker = speaker.empty() ? nullptr : speaker.c_str();
+         params.seed = seed;
++        // At top_p == 0 the official nucleus filter retains only its best token.
++        // The native samplers use zero temperature for that same greedy path.
++        params.temperature = do_sample && top_p > 0 ? temperature : 0.0f;
++        params.top_k = top_k;
++        params.top_p = top_p;
++        params.repetition_penalty = repetition_penalty;
++        params.subtalker_temperature = subtalker_dosample && subtalker_top_p > 0 ? subtalker_temperature : 0.0f;
++        params.subtalker_top_k = subtalker_top_k;
++        params.subtalker_top_p = subtalker_top_p;
++        params.max_new_tokens = max_new_tokens;
+         std::unique_ptr<float, decltype(&std::free)> ref(nullptr, &std::free);
+         if (!reference.empty()) {
+             ref.reset(audio_read_mono(reference.c_str(), 24000, &params.ref_n_samples));
+@@ -188,9 +213,6 @@
+         params.cancel_user_data = &stream;
+         qt_audio audio{};
+         const auto status = qt_synthesize(reinterpret_cast<qt_context *>(handle), &params, &audio);
+-#ifdef GGML_USE_VULKAN
+-        if (status == QT_STATUS_OK) ggml_backend_vk_save_pipeline_cache();
+-#endif
+         qt_audio_free(&audio);
+         env->DeleteGlobalRef(stream.sink);
+         if (stream.callback_failed) {

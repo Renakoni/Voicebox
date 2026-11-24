@@ -1,5 +1,8 @@
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@string/checkpoint_big_endian,
+    tools:keep="@string/qwen_max_new_tokens,
+        @string/qwen_language_unsupported,
+        @string/qwen_q4,
+        @string/checkpoint_big_endian,
         @string/checkpoint_complete_required,
         @string/checkpoint_config_missing,
         @string/checkpoint_empty,

@@ -13,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -53,7 +54,7 @@ internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String
         }
         if (path.isNotBlank()) {
             ReferencePlayback(vm.preview.takeIf { it.path == path } ?: PreviewState(), name, durationMs,
-                enabled, onToggle = { vm.audio.toggle(path) })
+                enabled, onRemove = vm::removeReference, onToggle = { vm.audio.toggle(path) })
         }
         if (vm.fileBusy && !recording) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
@@ -61,7 +62,7 @@ internal fun ReferenceAudioInput(vm: StudioViewModel, path: String, name: String
 
 @Composable
 internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: Long, enabled: Boolean,
-    onToggle: () -> Unit) {
+    onRemove: () -> Unit, onToggle: () -> Unit) {
     val resources = LocalResources.current
     val duration = (if (preview.durationMs > 0) preview.durationMs.toLong() else durationMs).coerceAtLeast(0)
     val position = preview.positionMs.toLong()
@@ -74,8 +75,16 @@ internal fun ReferencePlayback(preview: PreviewState, name: String, durationMs: 
             Text(if (duration > 0) recordingTime(((remaining + 999) / 1000) * 1000) else "—:—",
                 style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        StudioButton(onClick = onToggle, enabled = enabled && !preview.preparing, style = StudioButtonStyle.Quiet) {
-            Text(if (preview.preparing) resources.getString(R.string.loading) else if (preview.playing) resources.getString(R.string.pause) else resources.getString(R.string.preview_audio))
+        StudioButton(onClick = onRemove, enabled = enabled, style = StudioButtonStyle.Quiet) {
+            Text(resources.getString(R.string.delete), color = if (enabled) MaterialTheme.colorScheme.error else LocalContentColor.current)
+        }
+        StudioButton(onClick = onToggle, enabled = enabled, style = StudioButtonStyle.Quiet) {
+            val active = preview.preparing || preview.playing
+            val hidden = Modifier.clearAndSetSemantics {}.alpha(0f)
+            Box(contentAlignment = Alignment.Center) {
+                Text(resources.getString(R.string.preview_audio), if (active) hidden else Modifier)
+                Text(resources.getString(R.string.pause), if (active) Modifier else hidden)
+            }
         }
     }
 }

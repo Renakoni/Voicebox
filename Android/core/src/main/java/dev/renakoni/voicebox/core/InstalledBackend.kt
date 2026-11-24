@@ -45,6 +45,9 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun studioOptions(values: Map<String, String>) = library()?.studioOptions(values) ?: validateOptions(values)
     val synthesisSettingsLayout get() = (metadata() as? SynthesisSettingsProvider)?.synthesisSettingsLayout
     val supportsStreaming get() = metadata() is StreamingSynthesisProvider
+    val streamSampleRate get() = (metadata() as StreamingSynthesisProvider).streamSampleRate
+    fun referenceInput(model: CharacterModel) =
+        (metadata() as? SynthesisSettingsProvider)?.referenceInput(model) ?: ReferenceInput.REQUIRED
     val requiresOutputLanguage get() = (metadata() as? SynthesisSettingsProvider)?.requiresOutputLanguage ?: true
 
     fun voicePresets(model: CharacterModel) = (metadata() as? VoicePresetProvider)?.voicePresets(model).orEmpty()

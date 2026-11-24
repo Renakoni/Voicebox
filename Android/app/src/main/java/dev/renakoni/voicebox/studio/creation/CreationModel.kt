@@ -31,13 +31,18 @@ internal interface CreationModel {
     fun saveOptions(saved: Map<String, String>, edited: Map<String, String>, preset: SynthesisVoicePreset?) = edited
 }
 
-internal fun creationModel(provider: InstalledBackend?): CreationModel = when {
-    provider?.synthesisSettingsLayout == SynthesisSettingsLayout.MING -> MingCreation
-    provider?.id == "gptsovits" -> GptSovitsCreation
-    else -> DefaultCreation
+internal fun creationModel(provider: InstalledBackend?): CreationModel = when (provider?.synthesisSettingsLayout) {
+    SynthesisSettingsLayout.MING -> MingCreation
+    SynthesisSettingsLayout.QWEN -> QwenCreation
+    else -> if (provider?.id == "gptsovits") GptSovitsCreation else DefaultCreation
 }
 
-private object DefaultCreation : CreationModel {
+internal object DefaultCreation : CreationModel {
+    @Composable
+    override fun VoiceExtras(settings: CreationSettings, enabled: Boolean) {
+        if (settings.supportsStreaming) OutputLanguageToolbarMenu(settings, enabled)
+    }
+
     @Composable
     override fun Toolbar(settings: CreationSettings, enabled: Boolean) {
         if (settings.supportsStreaming) StreamingToolbarMenu(settings, enabled)

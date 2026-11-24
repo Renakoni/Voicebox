@@ -69,6 +69,7 @@ internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
 @Composable
 private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val spec = archive.spec
+    val name = spec.displayName
     val colors = MaterialTheme.colorScheme
     if (!archive.supported && !vm.modelPreview) {
         StudioCard(Modifier.fillMaxWidth()) {
@@ -78,7 +79,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 GlyphTile(Modifier.alpha(.5f)) {
                     Icon(painterResource(R.drawable.ic_models), null, Modifier.size(20.dp))
                 }
-                Text(spec.displayName, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
+                Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 StatusTag(stringResource(R.string.model_device_unsupported))
             }
@@ -115,7 +116,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 Icon(painterResource(R.drawable.ic_models), null, Modifier.size(20.dp))
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(spec.displayName, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium,
+                Text(name, Modifier.semantics { heading() }, style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (status != null) Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {

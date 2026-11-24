@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
@@ -123,10 +124,10 @@ private fun ThemeSetting(theme: ThemeMode, onSelect: (ThemeMode) -> Unit) {
 }
 
 @Composable
-private fun SettingsSwitch(title: String, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true,
-    detail: String? = null) {
+internal fun SettingsSwitch(title: String, checked: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true,
+    detail: String? = null, horizontalPadding: Dp = 16.dp) {
     Row(Modifier.fillMaxWidth().toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onChange)
-        .heightIn(min = 56.dp).padding(horizontal = 16.dp, vertical = 10.dp),
+        .heightIn(min = 56.dp).padding(horizontal = horizontalPadding, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)

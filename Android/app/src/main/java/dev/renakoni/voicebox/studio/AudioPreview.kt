@@ -54,7 +54,10 @@ class AudioPreview(private val context: Context, private val update: (PreviewSta
             publishPosition(if (state.seeking) state.positionMs else player!!.currentPosition)
             return
         }
-        if (state.path == path && state.preparing) return
+        if (state.path == path && state.preparing) {
+            stop()
+            return
+        }
         if (state.path == path && player != null) {
             startPrepared()
             return
