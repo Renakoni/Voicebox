@@ -15,6 +15,12 @@ $SourceDir = (Resolve-Path -LiteralPath $SourceDir).Path
 $BuildEnv = (Resolve-Path -LiteralPath $BuildEnv).Path
 $Protoc = (Resolve-Path -LiteralPath $Protoc).Path
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
+$adrenoPatch = (Resolve-Path -LiteralPath "$PSScriptRoot/../Android/model/gptsovits/patches/onnxruntime-1.27-webgpu-adreno660.patch").Path
+& git -C $SourceDir apply --reverse --check $adrenoPatch 2>$null
+if ($LASTEXITCODE -ne 0) {
+    & git -C $SourceDir apply $adrenoPatch
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply the Adreno 660 WebGPU fix to $SourceDir." }
+}
 . "$BuildEnv/Scripts/Activate.ps1"
 $env:PYTHONIOENCODING = 'utf-8'
 $buildArgs = @(

@@ -94,7 +94,7 @@ androidComponents.onVariants { variant ->
         buildTools.set(android.buildToolsVersion)
         abi.set(if (variant.name == "debug") providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") else "arm64-v8a")
         commit.set(providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() })
-        releaseUrl.set("https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v4")
+        releaseUrl.set("https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v5")
         output.set(layout.buildDirectory.dir("outputs/bridge/${variant.name}"))
     }
 }

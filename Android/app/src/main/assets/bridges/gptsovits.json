@@ -4,16 +4,24 @@
   "entry": "dev.renakoni.voicebox.model.gptsovits.GptEntry",
   "abi": "arm64-v8a",
   "code": "backend.jar",
-  "sourceCommit": "6f913efbea0bdb9b2535e3dd3626ede3dac50be4",
-  "adapterSourceSha256": "0fcca610276ca279c5dba6f4e6f27c4655436a633640de456234d147ac5f16c0",
+  "sourceCommit": "2100f9258c50a17d527fb3191deb1da6ad9bbd82",
+  "adapterSourceSha256": "ca9cfda933f8ca9f01054067ed90e458dec6bc4e95145cea8d2b9a2938d9042f",
   "format": 2,
   "displayName": "GPT-SoVITS",
   "initialResourcePacks": [
-    {"id": "common", "titleKey": "pack_gpt_common", "bytes": 1005900781},
-    {"id": "v5-vocoder", "titleKey": "pack_gpt_vocoder", "bytes": 57761163}
+    {
+      "id": "common",
+      "titleKey": "pack_gpt_common",
+      "bytes": 1005900781
+    },
+    {
+      "id": "v5-vocoder",
+      "titleKey": "pack_gpt_vocoder",
+      "bytes": 57761163
+    }
   ],
-  "revision": "8f5211cc75fa6c24882e1dae4c248564760cb89702811a16f79c2db43331db60",
-  "version": "4",
+  "revision": "72bb9644d1e8896e2182258303692758d37cab82bf92e8f669d82b6833d6fb2c",
+  "version": "5",
   "files": {
     "bridge.json": 287,
     "backend.jar": 353158,
@@ -94,16 +102,16 @@
     "assets/official-runtime/v5-vocoder-subpixel.onnx": 124152,
     "assets/official-runtime/v5-vocoder.json": 30947,
     "libc++_shared.so": 1253544,
-    "libvoicebox_japanese.so": 1059232,
+    "libvoicebox_japanese.so": 1059136,
     "libnative_decoder_loop.so": 61128,
-    "libonnxruntime.so": 29169440,
+    "libonnxruntime.so": 29153208,
     "libonnxruntime4j_jni.so": 111648
   },
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v4/gptsovits-arm64-v8a.zip",
-      "bytes": 20681028,
-      "sha256": "8f5211cc75fa6c24882e1dae4c248564760cb89702811a16f79c2db43331db60"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v5/gptsovits-arm64-v8a.zip",
+      "bytes": 20680994,
+      "sha256": "72bb9644d1e8896e2182258303692758d37cab82bf92e8f669d82b6833d6fb2c"
     }
   ]
 }

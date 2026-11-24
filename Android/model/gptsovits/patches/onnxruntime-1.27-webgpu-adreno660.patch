@@ -1,0 +1,59 @@
+diff --git a/onnxruntime/core/providers/webgpu/compute_context.h b/onnxruntime/core/providers/webgpu/compute_context.h
+--- a/onnxruntime/core/providers/webgpu/compute_context.h
++++ b/onnxruntime/core/providers/webgpu/compute_context.h
+@@ -70,6 +70,10 @@ class ComputeContextBase {
+   inline const wgpu::AdapterInfo& AdapterInfo() const {
+     return webgpu_context_.AdapterInfo();
+   }
++  inline bool IsAdreno660() const {
++    const auto& adapter = AdapterInfo();
++    return adapter.vendorID == 0x5143 && (adapter.deviceID & 0xffffff00u) == 0x06060000u;
++  }
+   inline const wgpu::Limits& DeviceLimits() const {
+     return webgpu_context_.DeviceLimits();
+   }
+diff --git a/onnxruntime/core/providers/webgpu/math/matmul.cc b/onnxruntime/core/providers/webgpu/math/matmul.cc
+--- a/onnxruntime/core/providers/webgpu/math/matmul.cc
++++ b/onnxruntime/core/providers/webgpu/math/matmul.cc
+@@ -120,7 +120,11 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
+   }
+   bool has_bias = context.InputCount() > 2;
+ 
+-  if (helper.N() < 8 && helper.K() < 8) {  // call MatMulNaiveProgram
++  // The packed vec4 shader loses columns in the final partial tile on Adreno 660.
++  const bool partial_adreno_tile = context.IsAdreno660() && helper.K() % 4 == 0 &&
++                                   helper.N() % 4 == 0 && helper.N() % 32 != 0 &&
++                                   a->Shape().NumDimensions() >= 2 && b->Shape().NumDimensions() >= 2;
++  if ((helper.N() < 8 && helper.K() < 8) || partial_adreno_tile) {
+ 
+     const uint32_t m = narrow<uint32_t>(helper.M());  // left matrix first dimension
+     const uint32_t n = narrow<uint32_t>(helper.N());  // right matrix second dimension
+diff --git a/onnxruntime/core/providers/webgpu/nn/conv.cc b/onnxruntime/core/providers/webgpu/nn/conv.cc
+--- a/onnxruntime/core/providers/webgpu/nn/conv.cc
++++ b/onnxruntime/core/providers/webgpu/nn/conv.cc
+@@ -173,7 +173,10 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
+                                     output);
+   }
+ 
+-  if (conv_attrs_.group > 1) {
++  // Packed NHWC convolution on Adreno 660 can corrupt the final partial output-channel tile.
++  // The direct convolution shader also supports a single group and avoids that tile.
++  const bool partial_adreno_tile = is_channels_last && context.IsAdreno660() && output_channels % 32 != 0;
++  if (conv_attrs_.group > 1 || partial_adreno_tile) {
+     Tensor transposed_kernel;
+     if (is_channels_last) {
+       const Tensor* grouped_kernel = kernel;
+diff --git a/onnxruntime/core/providers/webgpu/tensor/transpose.cc b/onnxruntime/core/providers/webgpu/tensor/transpose.cc
+--- a/onnxruntime/core/providers/webgpu/tensor/transpose.cc
++++ b/onnxruntime/core/providers/webgpu/tensor/transpose.cc
+@@ -187,7 +187,9 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContextBase& context,
+   SqueezeShape(input_shape.GetDims(), permutations, new_shape, new_perm);
+   const bool channels_last = new_perm == TensorShapeVector({2, 3, 1});
+   const bool channels_first = new_perm == TensorShapeVector({3, 1, 2});
+-  const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
++  // The Adreno 660 driver returns partially zeroed tiles from this shared-memory shader.
++  const bool use_shared = !context.IsAdreno660() &&
++                          ((new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first);
+   auto new_input_shape = input_shape;
+ 
+   if (use_shared) {
