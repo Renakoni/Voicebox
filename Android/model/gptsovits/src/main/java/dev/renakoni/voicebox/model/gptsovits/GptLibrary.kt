@@ -13,7 +13,7 @@ import java.io.File
 
 class GptEntry : BackendEntry {
     override fun open(context: Context, directory: File, work: File, settings: Bundle): BackendProvider =
-        GptProvider(context, settings.getInt("t2sThreads"), settings.getInt("vocoderThreads"), settings.getBoolean("allowNpu"))
+        GptProvider(context, directory.parentFile!!.name, settings.getInt("t2sThreads"), settings.getInt("vocoderThreads"), settings.getBoolean("allowNpu"))
 }
 
 internal class GptLibrary(private val context: Context) : VoiceLibrary {

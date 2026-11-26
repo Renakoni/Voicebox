@@ -22,10 +22,7 @@ internal object MingHtp {
     fun detect(context: Context, directory: File): AccelerationInfo {
         val facts = DeviceFacts.read(context)
         val device = facts.soc.ifBlank { facts.model }
-        if (facts.abi != "arm64-v8a" ||
-            !(facts.manufacturer.contains("qualcomm", ignoreCase = true) ||
-                facts.manufacturer.equals("qti", ignoreCase = true) ||
-                facts.hardware.equals("qcom", ignoreCase = true))) {
+        if (facts.abi != "arm64-v8a") {
             return AccelerationInfo(device, detail = "npu_unavailable")
         }
         val available = runCatching {

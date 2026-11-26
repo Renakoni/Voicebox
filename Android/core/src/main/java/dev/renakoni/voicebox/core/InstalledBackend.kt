@@ -25,6 +25,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     @Synchronized private fun metadata(): BackendProvider? {
         cached?.let { return it }
         val installed = archive.active ?: return null
+        if (!archive.supported) return null
         return installed.openProvider(context, context.cacheDir, settings()).also { cached = it }
     }
     override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
@@ -60,13 +61,14 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
         validateOptions((metadata() as? SynthesisSettingsProvider)?.mergeSynthesisOptions(defaults, overrides)
             ?: (defaults + overrides))
 
-    private var npuAvailable = false
+    @Volatile var npuAvailable = false
+        private set
     override fun executionModes(): Set<ExecutionBackend> {
         if (!archive.installed) {
             npuAvailable = false
             return emptySet()
         }
-        return try {
+        val modes = try {
             val result = WorkerRuntime(context, id, ExecutionBackend.CPU, settings(), false).probe()
             npuAvailable = result.getBoolean("npu")
             result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
@@ -75,6 +77,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
             npuAvailable = false
             setOf(ExecutionBackend.CPU)
         }
+        return if (archive.spec.requiresVulkan12Storage16 && ExecutionBackend.WEBGPU !in modes) emptySet() else modes
     }
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext,

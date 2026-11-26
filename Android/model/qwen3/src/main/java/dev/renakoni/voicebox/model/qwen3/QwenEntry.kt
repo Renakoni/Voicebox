@@ -30,7 +30,6 @@ private class QwenProvider(private val context: Context, private val directory: 
         "Qwen3-TTS-0.6B Q4", "qwen3-model")
     private val resources = QwenResources(context)
     private val imported = QwenCheckpointVoices(context, directory)
-    private val devices by lazy { QwenDevices.available(context, directory) }
     override val capabilities = BackendCapabilities(languages.keys.toList(), setOf(VoiceImport.QWEN_SAFETENSORS))
     override val supportsWarmup = false
     override val requiresOutputLanguage = false
@@ -47,8 +46,8 @@ private class QwenProvider(private val context: Context, private val directory: 
         if (model.ref == this.model.ref || imported.find(model).speaker == null) ReferenceInput.OPTIONAL else ReferenceInput.NONE
     override fun findReferenceExample(model: CharacterModel): ReferenceExample? = null
     override fun supportsAuxiliaryReferences(model: CharacterModel) = false
-    override fun executionModes() = if (devices and 1 != 0) ExecutionBackend.entries.toSet() else setOf(ExecutionBackend.CPU)
-    override fun accelerationInfo() = AccelerationInfo(available = devices and 2 != 0)
+    override fun executionModes() = if (QwenDevices.hasGpu(context, directory)) ExecutionBackend.entries.toSet() else emptySet()
+    override fun accelerationInfo() = AccelerationInfo(available = QwenDevices.hasHtp(directory))
     override fun createRuntime(execution: ExecutionBackend) =
         QwenRuntime(context, directory, work, resources, model.ref, imported, execution, allowNpu)
     override fun validateOptions(options: Map<String, String>): Map<String, String> {

@@ -39,7 +39,6 @@ import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.AppSettingsRepository
 import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.DeviceNpu
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
@@ -168,7 +167,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
         model.executionModes intersect probes[model.ref.backendId].orEmpty()
     }.orEmpty()
-    val gpuAvailable get() = probes.values.any { ExecutionBackend.WEBGPU in it }
+    var gpuAvailable by mutableStateOf(false); private set
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     val deviceFacts = DeviceFacts.read(app)
     var deviceNpuAvailable by mutableStateOf<Boolean?>(null); private set
@@ -278,7 +277,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         viewModelScope.launch {
-            deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceNpu.isSupported(deviceFacts) }
+            gpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute }
+            deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasDeviceAccelerator }
         }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
@@ -304,17 +304,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val data = withContext(Dispatchers.IO) {
                     val states = backendPackages.associate { it.spec.id to it.installState }
                     val providers = modelsRepository.providers.filter { states[it.id] == BridgeInstallState.CURRENT }
-                    val qwenAvailable = backendPackages.any { it.spec.id == QwenModelPackage.BACKEND && (it.installable || modelPreview) }
-                    val qwenWeights = if (states[QwenModelPackage.BACKEND] == BridgeInstallState.CURRENT)
-                        app.qwenModelPackage.pack(QwenModelPackage.TALKER) { ensureActive() } else null
+                    val qwenWeights = app.qwenModelPackage.pack(QwenModelPackage.TALKER) { ensureActive() }
                     val catalog = providers.flatMap { it.officialVoices() }
                     val ming = app.mingModelPackage
                     val mingWeights = if (states[MingModelPackage.BACKEND] == BridgeInstallState.CURRENT || modelPreview) ming.officialPack() else null
-                    val codec = if (qwenAvailable) app.qwenModelPackage.pack(QwenModelPackage.CODEC) { ensureActive() } else null
-                    val discovered = app.installedVoiceModels(providers, mingWeights?.installed == true, qwenWeights?.installed == true)
+                    val codec = app.qwenModelPackage.pack(QwenModelPackage.CODEC) { ensureActive() }
+                    val discovered = app.installedVoiceModels(providers, mingWeights?.installed == true, qwenWeights.installed)
                     val inputs = discovered.associate { it.ref to modelsRepository.provider(it).referenceInput(it) }
                     val packs = providers.associate { provider -> provider.id to provider.resourcePacks { ensureActive() } }.toMutableMap()
-                    if (codec != null) packs[QwenModelPackage.BACKEND] = listOf(codec)
+                    packs[QwenModelPackage.BACKEND] = listOf(codec)
                     val ready = discovered.map { it.ref }.filter { ref ->
                         packs.getValue(ref.backendId).all { it.installed || (it.variants.isNotEmpty() && ref.variant !in it.variants) }
                     }.toSet()
@@ -334,8 +332,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
                     val presets = discovered.associate { it.ref to modelsRepository.provider(it).voicePresets(it) }
+                    val mingPacks = ming.modelPacks(modelPreview || modelsRepository.provider(MingModelPackage.BACKEND).npuAvailable)
                     ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, states,
-                        providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to ming.modelPacks()),
+                        providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to mingPacks),
                         presets, inputs, mingWeights, qwenWeights)
                 }
                 models = data.models

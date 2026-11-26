@@ -18,7 +18,7 @@ Java_dev_renakoni_voicebox_core_DeviceFacts_queryHexagonArch(JNIEnv*, jclass) {
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_dev_renakoni_voicebox_DeviceNpu_hasAndroidAccelerator(JNIEnv*, jclass) {
+Java_dev_renakoni_voicebox_core_DeviceFacts_hasAndroidAccelerator(JNIEnv*, jclass) {
     uint32_t count = 0;
     if (ANeuralNetworks_getDeviceCount(&count) != ANEURALNETWORKS_NO_ERROR) return JNI_FALSE;
     for (uint32_t i = 0; i < count; ++i) {

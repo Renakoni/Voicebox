@@ -88,7 +88,7 @@ class BackendWorkerService : Service() {
                         setOf(ExecutionBackend.CPU)
                     }
                     result.putStringArrayList("modes", ArrayList(modes.map { it.name }))
-                    val npu = runCatching { backend.accelerationInfo()?.available == true }.getOrElse {
+                    val npu = ExecutionBackend.WEBGPU in modes && runCatching { backend.accelerationInfo()?.available == true }.getOrElse {
                         Log.w("VoiceBoxWorker", "NPU probe failed for ${backend.id}", it)
                         false
                     }

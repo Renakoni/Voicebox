@@ -3,7 +3,6 @@ package dev.renakoni.voicebox
 import android.content.Context
 import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.ResourcePack
-import dev.renakoni.voicebox.core.DeviceFacts
 import dev.renakoni.voicebox.core.ModelDownload
 import dev.renakoni.voicebox.core.ModelDownloadFile
 import dev.renakoni.voicebox.core.deleteFileTree
@@ -16,11 +15,6 @@ import java.nio.file.Files
 internal class MingModelPackage(context: Context) {
     private val context = context
     private val directory get() = context.getExternalFilesDir(null)?.resolve(MODEL_DIRECTORY)
-    private val device = DeviceFacts.read(context)
-    private val showHtp = (BuildConfig.DEBUG && BuildConfig.MODEL_PREVIEW) ||
-        device.manufacturer.contains("qualcomm", ignoreCase = true) ||
-        device.manufacturer.equals("qti", ignoreCase = true) || device.hardware.equals("qcom", ignoreCase = true)
-
     private val packs = context.assets.open("ming-models.json").bufferedReader().use {
         val catalog = JSONObject(it.readText())
         val baseUrl = catalog.getString("baseUrl")
@@ -34,9 +28,11 @@ internal class MingModelPackage(context: Context) {
         }
     }
 
-    val modelParts = if (showHtp) listOf(CLONE, HTP) else listOf(CLONE)
+    fun modelParts(htpAvailable: Boolean) = if (htpAvailable) listOf(CLONE, HTP) else listOf(CLONE)
 
-    fun modelPacks() = modelParts.map(::pack)
+    fun modelPacks(htpAvailable: Boolean) = listOf(pack(CLONE), pack(HTP)).filter {
+        it.id != HTP || htpAvailable || it.installed
+    }
     fun officialPack() = pack(OFFICIAL)
 
     private fun pack(part: String): ResourcePack {

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import zipfile
 
-VERSION = '5'
+VERSION = '6'
 
 
 def digest(path):

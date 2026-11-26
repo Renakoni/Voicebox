@@ -252,8 +252,8 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
     val selected = voice != null && voice.id == vm.selectedId
     val name = model.displayName(resources)
     val unsupported = qwen && vm.qwenGpuRejected
-    val enabled = !unsupported && !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
-    VoiceTile(shape, selected, enabled = installed && enabled,
+    val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
+    VoiceTile(shape, selected, enabled = installed && enabled && !unsupported,
         onClick = {
             if (qwen && !ready) vm.tab = StudioTab.MODELS
             else if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE }
@@ -263,7 +263,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
         onLongClickLabel = resources.getString(R.string.edit_named_voice, name),
         avatar = { RingedAvatar(name, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            if (unsupported) StatusTag(resources.getString(R.string.model_device_unsupported))
+            if (unsupported && !installed) StatusTag(resources.getString(R.string.model_device_unsupported))
             else OfficialWeightAction(name, installed, enabled, status, { vm.downloadOfficial(model) }, vm::cancelOfficialDownload) {
                 vm.removeOfficialWeights(model)
             }
@@ -272,6 +272,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
             color = if (installed) colors.onSurface else colors.onSurfaceVariant)
         val detail = when {
             downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
+            unsupported -> if (installed) resources.getString(R.string.model_device_unsupported) else null
             !ready && error != null -> error.resolve(resources)
             !installed && weightPack != null -> resources.getString(R.string.ming_official_weights_download,
                 Formatter.formatShortFileSize(LocalContext.current, weightPack.remainingBytes))

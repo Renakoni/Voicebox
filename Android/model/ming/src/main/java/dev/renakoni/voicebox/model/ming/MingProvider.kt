@@ -18,16 +18,15 @@ internal class MingProvider(private val context: Context, private val directory:
     override val requiresOutputLanguage = false
     override val supportsWarmup = false
     private val resources = MingModelResources(context)
-    private val gpuAvailable by lazy { MingWebGpu.available(directory) }
     override fun discoverCharacterModels() = if (resources.available) listOf(MingModel.model) else emptyList()
     override fun inspect(model: CharacterModel) = ModelInspectionResult(if (resources.available) emptyList() else listOf("ming-model"))
     override fun findReferenceExample(model: CharacterModel) = resources.reference()
     override fun voicePresets(model: CharacterModel) =
         if (model.ref == MingModel.model.ref) resources.voicePresets() else emptyList()
     override fun supportsAuxiliaryReferences(model: CharacterModel) = false
-    override fun executionModes() = if (gpuAvailable) ExecutionBackend.entries.toSet()
+    override fun executionModes() = if (MingWebGpu.available(directory)) ExecutionBackend.entries.toSet()
         else setOf(ExecutionBackend.CPU)
-    override fun accelerationInfo() = if (gpuAvailable) MingHtp.detect(context, directory) else null
+    override fun accelerationInfo() = MingHtp.detect(context, directory)
     override fun createRuntime(execution: ExecutionBackend) =
         MingBackendRuntime(context, execution, directory, work, allowNpu)
     override fun validateOptions(options: Map<String, String>): Map<String, String> {

@@ -18,11 +18,9 @@ from checkpoint_layout import checkpoint_assets
 ROOT = Path(__file__).resolve().parent
 ANDROID = ROOT.parents[1]
 ABI = "arm64-v8a"
-VERSION = "4"
+VERSION = "5"
 HTP_ARCHES = (73, 75, 79, 81, 85)
 UPSTREAM = "2edb35f87b709a070b2d5379f77e5c52a1daa585"
-ACCELERATED_APK = "qwen3-android-0.2.0-htp-v75-debug.apk"
-SEED = "qwen-vk2-1124406273-2150531084.bin"
 WEIGHTS = ("qwen-talker-0.6b-base-Q4_K_M.gguf", "qwen-tokenizer-12hz-F32.gguf")
 
 
@@ -97,8 +95,6 @@ def main():
         if b"Java_dev_renakoni_voicebox_model_qwen3_QwenDevices_probe" not in symbols.split():
             raise ValueError("Build the accelerated runtime with optional-hexagon.patch")
         files["accelerated/libqwen3_jni.so"] = gpu.read_bytes()
-    with ZipFile(source / "artifacts" / ACCELERATED_APK) as apk:
-        files["assets/" + SEED] = apk.read("assets/" + SEED)
     for arch in HTP_ARCHES:
         name = f"libggml-htp-v{arch}.so"
         data = (args.accelerated_dir / name).read_bytes()
@@ -137,6 +133,7 @@ def main():
     with archive.open("rb") as stream:
         revision = hashlib.file_digest(stream, "sha256").hexdigest()
     catalog = dict(manifest, format=2, displayName="Qwen3-TTS-0.6B", version=VERSION, revision=revision,
+                   minSdk=31, requiresVulkan12Storage16=True,
                    parts=[dict(url=f"{release}/{archive.name}", bytes=archive.stat().st_size, sha256=revision)],
                    files={name: len(data) for name, data in sorted(files.items())},
                    initialResourcePacks=[dict(id="codec", titleKey="qwen_audio_codec", bytes=weights[WEIGHTS[1]]["bytes"])])

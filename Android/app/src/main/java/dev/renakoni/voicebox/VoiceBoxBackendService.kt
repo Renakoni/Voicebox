@@ -348,7 +348,9 @@ class VoiceBoxBackendService : Service() {
                 }
             } else if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
                 val model = app.mingModelPackage
-                val parts = part?.let(::listOf) ?: model.modelParts
+                val supported = model.modelParts(provider.npuAvailable)
+                require(part == null || part in supported)
+                val parts = part?.let(::listOf) ?: supported
                 parts.forEach { component ->
                     val label = UiText(MingModelPackage.partTitle(component))
                     model.install(component, context::checkCancelled) { percent ->
@@ -378,7 +380,7 @@ class VoiceBoxBackendService : Service() {
                     refreshBackendModes(provider)
                 }
             } else if (id == QwenModelPackage.BACKEND) {
-                require(part == QwenModelPackage.CODEC)
+                require(part == QwenModelPackage.CODEC || part == QwenModelPackage.TALKER)
                 app.qwenModelPackage.uninstall(part)
             } else if (id == MingModelPackage.BACKEND) {
                 app.mingModelPackage.uninstall(part)
