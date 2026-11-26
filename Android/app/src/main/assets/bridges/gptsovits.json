@@ -4,8 +4,8 @@
   "entry": "dev.renakoni.voicebox.model.gptsovits.GptEntry",
   "abi": "arm64-v8a",
   "code": "backend.jar",
-  "sourceCommit": "2100f9258c50a17d527fb3191deb1da6ad9bbd82",
-  "adapterSourceSha256": "ca9cfda933f8ca9f01054067ed90e458dec6bc4e95145cea8d2b9a2938d9042f",
+  "sourceCommit": "5973c1fd0f2bc2fbc8d2f603da59a933e972b5f5",
+  "adapterSourceSha256": "b07a96256f2308cd167f07641cdbc28736c433c457b93f109c982f18df5018d2",
   "format": 2,
   "displayName": "GPT-SoVITS",
   "initialResourcePacks": [
@@ -20,11 +20,11 @@
       "bytes": 57761163
     }
   ],
-  "revision": "72bb9644d1e8896e2182258303692758d37cab82bf92e8f669d82b6833d6fb2c",
-  "version": "5",
+  "revision": "f3839a5793103197594b4817a3f902fb1b1374454ed6fd70c90f4d0df85ecdf7",
+  "version": "6",
   "files": {
     "bridge.json": 287,
-    "backend.jar": 353158,
+    "backend.jar": 352929,
     "assets/checkpoint-licenses/F5-TTS-MIT.txt": 1068,
     "assets/checkpoint-licenses/GPT-SoVITS-MIT.txt": 1065,
     "assets/checkpoint-licenses/NOTICE.txt": 514,
@@ -102,16 +102,16 @@
     "assets/official-runtime/v5-vocoder-subpixel.onnx": 124152,
     "assets/official-runtime/v5-vocoder.json": 30947,
     "libc++_shared.so": 1253544,
-    "libvoicebox_japanese.so": 1059136,
+    "libvoicebox_japanese.so": 1059344,
     "libnative_decoder_loop.so": 61128,
     "libonnxruntime.so": 29153208,
     "libonnxruntime4j_jni.so": 111648
   },
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v5/gptsovits-arm64-v8a.zip",
-      "bytes": 20680994,
-      "sha256": "72bb9644d1e8896e2182258303692758d37cab82bf92e8f669d82b6833d6fb2c"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v6/gptsovits-arm64-v8a.zip",
+      "bytes": 20680356,
+      "sha256": "f3839a5793103197594b4817a3f902fb1b1374454ed6fd70c90f4d0df85ecdf7"
     }
   ]
 }
