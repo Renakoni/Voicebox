@@ -11,6 +11,7 @@ import dev.renakoni.voicebox.bridge.OfficialVoice
 
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.UiLanguageContext
+import dev.renakoni.voicebox.core.i18n.checkUi
 import dev.renakoni.voicebox.core.i18n.userMessage
 import dev.renakoni.voicebox.core.i18n.userText
 
@@ -220,11 +221,10 @@ class VoiceBoxBackendService : Service() {
     fun currentState(): BackendServiceState = state
 
     private fun supportedBackends(model: CharacterModel) =
-        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
+        model.executionModes intersect enabledBackends.value[model.ref.backendId].orEmpty()
 
     fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
         val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
-            ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
             generationGate.invalidate("VOICE_CHANGED")
@@ -289,8 +289,8 @@ class VoiceBoxBackendService : Service() {
     }
 
     private fun requireGpu(id: String) {
-        check(ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty()) {
-            getString(R.string.model_device_unsupported)
+        checkUi(ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty()) {
+            UiText(R.string.model_device_unsupported)
         }
     }
 
