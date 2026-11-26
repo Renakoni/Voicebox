@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Bundle
 import dalvik.system.DexClassLoader
 import dev.renakoni.voicebox.bridge.*
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 internal fun InstalledBridge.openProvider(context: Context, work: File, settings: Bundle): BackendProvider {
@@ -18,12 +20,12 @@ internal fun InstalledBridge.openProvider(context: Context, work: File, settings
 
 /** Metadata can be inspected locally. Native sessions are created only in the private service. */
 class InstalledBackend(private val context: Context, private val archive: BridgePackage,
+    private val externalNpuRuntime: File? = null,
     private val settings: () -> Bundle = { Bundle() }) : BackendProvider, VoiceLibrary {
     override val id get() = archive.spec.id
     private var cached: BackendProvider? = null
     @Synchronized fun invalidateMetadata() {
         cached = null
-        npuAvailable = null
     }
     @Synchronized private fun metadata(): BackendProvider? {
         cached?.let { return it }
@@ -64,26 +66,60 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
         validateOptions((metadata() as? SynthesisSettingsProvider)?.mergeSynthesisOptions(defaults, overrides)
             ?: (defaults + overrides))
 
-    private var npuAvailable: Boolean? = null
-    override fun executionModes(): Set<ExecutionBackend> {
-        if (!archive.installed) return emptySet()
-        return try {
-            val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe()
-            val modes = result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
-            if (ExecutionBackend.WEBGPU in modes) modes else emptySet()
-        } catch (error: Exception) {
-            android.util.Log.w("VoiceBoxWorker", "GPU probe failed for $id", error)
-            emptySet()
-        }
+    private val gpuCache by lazy { ProbeCache(context, "$id-gpu") }
+    private val npuCache by lazy { ProbeCache(context, "$id-npu") }
+
+    private fun cachedModes() = gpuCache.read(archive.spec.revision) { result ->
+        val names = result.getJSONArray("modes")
+        (0 until names.length()).map { ExecutionBackend.valueOf(names.getString(it)) }.toSet()
     }
 
-    private fun probeNpu(): Boolean = npuAvailable ?: try {
-        WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe(npu = true)
-            .getBoolean("npu").also { npuAvailable = it }
+    // An untested bridge must accept the first synthesis request so its GPU can be checked.
+    val candidateModes get() = if (archive.installed) cachedModes() ?: ExecutionBackend.entries.toSet() else emptySet()
+
+    override fun executionModes(): Set<ExecutionBackend> {
+        if (!archive.installed) return emptySet()
+        cachedModes()?.let { return it }
+        val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe()
+        val modes = requireNotNull(result.getStringArrayList("modes")).map(ExecutionBackend::valueOf).toSet()
+            .takeIf { ExecutionBackend.WEBGPU in it }.orEmpty()
+        gpuCache.write(archive.spec.revision, JSONObject().put("modes", JSONArray(modes.map { it.name })))
+        return modes
+    }
+
+    private fun npuCacheKey(): String {
+        val revision = archive.spec.revision
+        // The Qwen HTP bridge chooses its library from the architecture reported by FastRPC.
+        if (id == "qwen3") return "$revision/${DeviceFacts.hexagonArch}"
+        val directory = externalNpuRuntime ?: return revision
+        val libraries = directory.listFiles().orEmpty().filter { it.isFile && it.extension == "so" }.sortedBy { it.name }
+        return revision + libraries.joinToString("\n", prefix = "\n") { "${it.name}:${it.length()}:${it.lastModified()}" }
+    }
+
+    private fun probeNpu(key: String, options: Bundle): Boolean = try {
+        val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, options, false).probe(npu = true)
+        check(result.containsKey("npu"))
+        result.getBoolean("npu").also { npuCache.write(key, JSONObject().put("npu", it)) }
     } catch (error: Exception) {
+        GenerationContext.checkCurrent()
         android.util.Log.w("VoiceBoxWorker", "NPU probe failed for $id", error)
         false
     }
+
+    private fun configuredRuntime(execution: ExecutionBackend, probeIfMissing: Boolean): BackendRuntime? {
+        val options = settings()
+        val allowNpu = if (execution == ExecutionBackend.WEBGPU && options.getBoolean("allowNpu")) {
+            val key = npuCacheKey()
+            val cached = npuCache.read(key) { it.getBoolean("npu") }
+            if (cached == null && !probeIfMissing) return null
+            cached ?: probeNpu(key, options)
+        } else false
+        options.putBoolean("allowNpu", allowNpu)
+        return WorkerRuntime(context, id, execution, options, retain = true)
+    }
+
+    fun createWarmupRuntime(execution: ExecutionBackend): BackendRuntime? =
+        if (execution in cachedModes().orEmpty()) configuredRuntime(execution, probeIfMissing = false) else null
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext,
         progress: (String, Int?) -> Unit): Bundle =
@@ -91,7 +127,5 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
 
     override fun validateOptions(options: Map<String, String>) = requireNotNull(metadata()).validateOptions(options)
     override fun createRuntime(execution: ExecutionBackend): BackendRuntime =
-        WorkerRuntime(context, id, execution, settings().apply {
-            putBoolean("allowNpu", execution == ExecutionBackend.WEBGPU && getBoolean("allowNpu") && probeNpu())
-        }, retain = true)
+        checkNotNull(configuredRuntime(execution, probeIfMissing = true))
 }

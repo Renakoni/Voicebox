@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -30,6 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -78,8 +81,8 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
     val ming = spec.id == MingModelPackage.BACKEND
     val qwen = spec.id == QwenModelPackage.BACKEND
-    val unsupported = states != null && !vm.modelPreview &&
-        (!archive.supported || vm.gpuRejected(spec.id))
+    val rechecking = vm.recheckingModel == spec.id
+    val unsupported = states != null && !vm.modelPreview && !archive.supported
     val storedBridge = bridgeReady || bridgeState == BridgeInstallState.INCOMPATIBLE
     val packs = (vm.resourcePacks[spec.id] ?: spec.initialResourcePacks) +
         listOfNotNull(vm.qwenVoiceWeights?.takeIf { qwen && !bridgeReady && unsupported && it.installed })
@@ -88,14 +91,13 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val total = partsInstalled.size
     val remaining = packs.sumOf { it.remainingBytes } + if (bridgeReady) 0L else spec.downloadBytes
     val download = vm.officialDownload.takeIf { it.packageId == spec.id }
-    val enabled = !vm.modelPreview && !vm.loading && vm.connected && !vm.busy && !vm.fileBusy
+    val enabled = !vm.modelPreview && !vm.loading && vm.connected && !vm.busy && !vm.fileBusy && vm.recheckingModel == null
     var expanded by rememberSaveable(spec.id) { mutableStateOf(false) }
     val expansion = stringResource(if (expanded) R.string.expanded else R.string.collapsed)
     val complete = ready == total
     val canExpand = !unsupported || ready > 0
     val status = when {
-        unsupported -> stringResource(R.string.model_device_unsupported)
-        states == null || download?.running == true -> null
+        unsupported || states == null || download?.running == true -> null
         expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         complete -> stringResource(R.string.backend_installed)
         else -> stringResource(R.string.model_parts_ready, ready, total)
@@ -176,11 +178,22 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 }
             }
         }
-        if (!unsupported && states != null && !complete && (archive.installable || vm.modelPreview) &&
+        val actionModifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp,
+            top = if (expanded) 4.dp else 0.dp)
+        if (unsupported || rechecking) {
+            StudioButton({ vm.recheckDownloadSupport(archive) }, enabled = enabled, style = StudioButtonStyle.Secondary,
+                modifier = actionModifier.semantics { liveRegion = LiveRegionMode.Polite }) {
+                if (rechecking) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                else Icon(Icons.Default.Refresh, stringResource(R.string.model_recheck_gpu), Modifier.size(16.dp),
+                    tint = colors.onSurfaceVariant)
+                Text(stringResource(if (rechecking) R.string.model_rechecking else R.string.model_device_unsupported),
+                    color = colors.onSurfaceVariant)
+            }
+        } else if (states != null && !complete && (archive.installable || vm.modelPreview) &&
             download?.running != true) {
             StudioButton({ vm.installModelParts(spec.id, null) },
                 enabled = enabled, style = StudioButtonStyle.Secondary,
-                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 16.dp, top = if (expanded) 4.dp else 0.dp)) {
+                modifier = actionModifier) {
                 Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(16.dp))
                 Text(stringResource(R.string.model_download_all))
                 if (remaining > 0) Text(Formatter.formatShortFileSize(context, remaining),

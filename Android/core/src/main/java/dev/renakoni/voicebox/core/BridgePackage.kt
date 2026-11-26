@@ -97,7 +97,7 @@ class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
 ) {
-    private val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
+    val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
     val supported get() = compatiblePlatform &&
         (if (spec.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute)
     val installable get() = supported && spec.minAppVersionCode <= appVersion

@@ -268,7 +268,12 @@ private fun GenerateDock(vm: StudioViewModel, settings: CreationSettings) {
                     settings.model.Toolbar(settings, enabled = !vm.busy)
                     StudioButton(onClick = { focus.clearFocus(); vm.generate() }, enabled = vm.canGenerate,
                         modifier = Modifier.weight(1f).height(48.dp)) {
-                        Text(resources.getString(if (settings.streaming) R.string.ming_generate_and_play else R.string.generate_speech))
+                        val label = when {
+                            vm.selectedRuntimeUnsupported -> R.string.model_gpu_runtime_unavailable
+                            settings.streaming -> R.string.ming_generate_and_play
+                            else -> R.string.generate_speech
+                        }
+                        Text(resources.getString(label))
                         Icon(Icons.AutoMirrored.Filled.ArrowForward, null, Modifier.size(18.dp))
                     }
                 }

@@ -29,7 +29,7 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
     }
 
     fun probe(npu: Boolean = false): Bundle = call(WorkerProtocol.PROBE, null, null,
-        Bundle().apply { putBoolean("npu", npu) })
+        Bundle().apply { putBoolean("npu", npu) }, cancellation = GenerationContext.current())
 
     fun operate(action: LibraryAction, arguments: Bundle, context: GenerationContext, progress: (String, Int?) -> Unit): Bundle =
         call(WorkerProtocol.LIBRARY, null, object : BackendRuntimeCallbacks {
@@ -45,6 +45,7 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
         try {
             val data = (request?.encode() ?: arguments).apply {
                 putString("session", binding.id); putString("backendId", id); putString("execution", backend.name)
+                putInt("hexagonArch", DeviceFacts.hexagonArch)
                 putBundle("settings", settings)
                 if (request == null) putString("request", cancellation?.requestId ?: UUID.randomUUID().toString())
             }

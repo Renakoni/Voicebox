@@ -463,6 +463,14 @@
     <string name="model_reload">Retry loading models</string>
     <string name="model_parts_ready">Installed %1$d/%2$d</string>
     <string name="model_remaining">%1$s to download</string>
+    <string name="model_gpu_runtime_unavailable">GPU cannot run this model</string>
+    <string name="model_recheck_gpu">Retest GPU support</string>
+    <string name="model_rechecking">Testing, please wait…</string>
+    <string name="model_requires_abi">This model requires %1$s.</string>
+    <string name="model_requires_sdk">This model requires Android API %1$d or later. This device runs Android %2$s.</string>
+    <string name="model_requires_vulkan">This model requires a GPU with Vulkan compute support.</string>
+    <string name="model_requires_vulkan_storage16">This model requires Vulkan 1.2 compute with 16-bit storage buffers.</string>
+    <string name="model_gpu_recheck_failed">The GPU check could not finish. Tap to retry.</string>
     <string name="model_device_unsupported">Unsupported on this device</string>
     <string name="model_bridge">Inference bridge</string>
     <string name="model_install_part">Install %1$s</string>

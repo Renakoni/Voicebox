@@ -11,22 +11,30 @@ Java_dev_renakoni_voicebox_core_DeviceFacts_queryHexagonArch(JNIEnv*, jclass) {
     // Qualcomm FastRPC remote.h: query ARCH_VER (6) on CDSP_DOMAIN_ID (3).
     struct { uint32_t domain, attribute, capability; } query{3, 6, 0};
     constexpr uint32_t getDspInfo = 2;
-    const bool ok = control && control(getDspInfo, &query, sizeof(query)) == 0;
+    // FastRPC AEE_EUNSUPPORTED, returned with or without DSP_AEE_EOFFSET.
+    constexpr uint32_t unsupported = 0x14;
+    const uint32_t status = control ? control(getDspInfo, &query, sizeof(query)) : unsupported;
     dlclose(rpc);
+    if (status == unsupported || status == 0x80000400u + unsupported) return 0;
+    if (status != 0) return -1;
     const uint32_t arch = query.capability & 0xff;
-    return ok && (arch & 15) <= 9 && (arch >> 4) <= 9 ? (arch >> 4) * 10 + (arch & 15) : 0;
+    return (arch & 15) <= 9 && (arch >> 4) <= 9 ? (arch >> 4) * 10 + (arch & 15) : 0;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_dev_renakoni_voicebox_core_DeviceFacts_hasAndroidAccelerator(JNIEnv*, jclass) {
+extern "C" JNIEXPORT jint JNICALL
+Java_dev_renakoni_voicebox_core_DeviceFacts_queryAndroidAccelerator(JNIEnv*, jclass) {
     uint32_t count = 0;
-    if (ANeuralNetworks_getDeviceCount(&count) != ANEURALNETWORKS_NO_ERROR) return JNI_FALSE;
+    if (ANeuralNetworks_getDeviceCount(&count) != ANEURALNETWORKS_NO_ERROR) return -1;
+    int result = 0;
     for (uint32_t i = 0; i < count; ++i) {
         ANeuralNetworksDevice* device = nullptr;
         int32_t type = ANEURALNETWORKS_DEVICE_UNKNOWN;
-        if (ANeuralNetworks_getDevice(i, &device) == ANEURALNETWORKS_NO_ERROR &&
-            ANeuralNetworksDevice_getType(device, &type) == ANEURALNETWORKS_NO_ERROR &&
-            type == ANEURALNETWORKS_DEVICE_ACCELERATOR) return JNI_TRUE;
+        if (ANeuralNetworks_getDevice(i, &device) != ANEURALNETWORKS_NO_ERROR ||
+            ANeuralNetworksDevice_getType(device, &type) != ANEURALNETWORKS_NO_ERROR) {
+            result = -1;
+        } else if (type == ANEURALNETWORKS_DEVICE_ACCELERATOR) {
+            return 1;
+        }
     }
-    return JNI_FALSE;
+    return result;
 }
