@@ -161,11 +161,9 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var output by mutableStateOf(store.output?.takeIf { File(it.path).isFile }); private set
     var preview by mutableStateOf(PreviewState()); private set
     internal var streamPreview by mutableStateOf<StreamPlayback?>(null); private set
-    private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
-    internal fun gpuRejected(id: String) = bridgeStates?.get(id) == BridgeInstallState.CURRENT &&
-        probes[id]?.contains(ExecutionBackend.WEBGPU) == false
+    private var backendModes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
-        model.executionModes intersect probes[model.ref.backendId].orEmpty()
+        model.executionModes intersect backendModes[model.ref.backendId].orEmpty()
     }.orEmpty()
     var gpuAvailable by mutableStateOf(false); private set
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
@@ -241,7 +239,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             accelerationUpdates?.cancel()
             accelerationUpdates = viewModelScope.launch {
                 backendService.backendCapabilities.collect {
-                    probes = it
+                    backendModes = it
                     syncDefaults()
                 }
             }
@@ -267,7 +265,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             officialDownload = OfficialDownloadState()
             service = null
             connected = false
-            probes = emptyMap()
+            backendModes = emptyMap()
             pendingRequest = null
             cancelling = false
             state = BackendServiceState()
@@ -275,13 +273,11 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    internal suspend fun readDeviceAccelerator() {
-        if (deviceNpuAvailable == null) deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasDeviceAccelerator }
-    }
-
     init {
         viewModelScope.launch {
-            gpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute }
+            val (gpu, npu) = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute to DeviceFacts.hasDeviceAccelerator }
+            gpuAvailable = gpu
+            deviceNpuAvailable = npu
         }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
@@ -703,6 +699,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 saveLatestOutput(result.outputFile.absolutePath, name, request.synthesisText, result.audioDurationMs)
             } else {
                 if (request.context.streamDirectory != null) streamAudio.stop()
+                if (result == InferResult.BackendUnavailable) generationError = UiText(R.string.model_device_unsupported)
                 if (result is InferResult.Error && request.context.cancellationReason == null) {
                     Log.e("VoiceStudio", result.message)
                     when (result.code) {

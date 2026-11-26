@@ -67,6 +67,7 @@ class BackendWorkerService : Service() {
         try {
             val work = File(cacheDir, "bridge-workers/${data.getString("session")}")
             val backend = provider ?: run {
+                DeviceFacts.workerHexagonArch = data.getInt("hexagonArch")
                 val archive = BridgePackages(this).get(data.getString("backendId")!!)
                 val installed = requireNotNull(archive.active) { "Backend is unavailable" }
                 work.mkdirs()

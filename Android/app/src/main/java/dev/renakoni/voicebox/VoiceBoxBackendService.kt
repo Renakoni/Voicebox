@@ -9,6 +9,7 @@ import dev.renakoni.voicebox.bridge.LibraryAction
 import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.OfficialVoice
 
+import dev.renakoni.voicebox.core.i18n.LocalizedFailure
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.UiLanguageContext
 import dev.renakoni.voicebox.core.i18n.checkUi
@@ -285,17 +286,11 @@ class VoiceBoxBackendService : Service() {
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
 
     private fun refreshBackendModes(provider: InstalledBackend) {
-        enabledBackends.value += provider.id to provider.executionModes()
-    }
-
-    private fun requireGpu(id: String) {
-        checkUi(ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty()) {
-            UiText(R.string.model_device_unsupported)
-        }
+        enabledBackends.value += provider.id to provider.candidateModes
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context, progress ->
-        requireGpu(voice.ref.backendId)
+        checkUi(app.bridgePackages.get(voice.ref.backendId).installed) { UiText(R.string.shared_resources_missing) }
         if (voice.ref.backendId == QwenModelPackage.BACKEND) {
             app.qwenModelPackage.install(QwenModelPackage.TALKER, context::checkCancelled) { percent ->
                 progress(UiText.literal(voice.name), percent)
@@ -339,7 +334,6 @@ class VoiceBoxBackendService : Service() {
                 provider.invalidateMetadata()
                 refreshBackendModes(provider)
             }
-            if (!codecOnly || archive.installed) requireGpu(id)
             if (part != BRIDGE_PART && id == QwenModelPackage.BACKEND) {
                 require(part == null || part == QwenModelPackage.CODEC)
                 app.qwenModelPackage.install(QwenModelPackage.CODEC, context::checkCancelled) { percent ->
@@ -403,7 +397,6 @@ class VoiceBoxBackendService : Service() {
         if (!archive.installed) return false
         val target = OfficialDownloadState(voice = MingModelPackage.modelRef)
         return downloadOnWorker(target) { context, progress ->
-            requireGpu(MingModelPackage.BACKEND)
             app.mingModelPackage.install(MingModelPackage.OFFICIAL, context::checkCancelled) { percent ->
                 progress(UiText(R.string.ming_official_weights), percent)
             }
@@ -502,19 +495,31 @@ class VoiceBoxBackendService : Service() {
         return true
     }
 
+    private class UnsupportedBackend : BackendFailure("BACKEND_UNAVAILABLE", "Backend unavailable"), LocalizedFailure {
+        override val text = UiText(R.string.model_device_unsupported)
+    }
+
     private fun runSynthesis(
         backend: ExecutionBackend,
         request: GenerationRequest,
         onComplete: ((InferResult) -> Unit)? = null,
     ) {
         var runtime: BackendRuntime? = null
+        var measuredModes: Set<ExecutionBackend>? = null
         val startedAtMs = SystemClock.elapsedRealtime()
         val context = request.context
         Log.i(TIMING_LOG_TAG, "request_id: ${context.requestId}")
         Log.i(TIMING_LOG_TAG, "generation_epoch: ${context.generationEpoch}")
         try {
-            context.checkCancelled()
-            val activeRuntime = selectWorkerRuntime(request.characterModel, backend)
+            val provider = modelRepository.provider(request.characterModel)
+            val activeRuntime = context.run {
+                selectWorkerRuntime(provider, backend) {
+                    val modes = provider.executionModes()
+                    measuredModes = modes
+                    if (backend !in modes) throw UnsupportedBackend()
+                    provider.createRuntime(backend)
+                }
+            }
             runtime = activeRuntime
             val result = withActiveGenerationResources {
                 context.run {
@@ -604,8 +609,10 @@ class VoiceBoxBackendService : Service() {
                 message = if (cancelled) getString(R.string.generation_cancelled)
                     else error.userMessage(resources) ?: getString(R.string.generation_failed),
             )
-            onComplete?.invoke(InferResult.Error(error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName, errorCode))
+            onComplete?.invoke(if (!cancelled && error is UnsupportedBackend) InferResult.BackendUnavailable
+                else InferResult.Error(error.userMessage(resources) ?: error.message ?: error.javaClass.simpleName, errorCode))
         } finally {
+            measuredModes?.let { enabledBackends.value += request.characterModel.ref.backendId to it }
             Log.i(TIMING_LOG_TAG, "request_total_ms=${SystemClock.elapsedRealtime() - startedAtMs} ms")
         }
     }
@@ -720,7 +727,8 @@ class VoiceBoxBackendService : Service() {
 
     private fun scheduleWarmup(defaults: ActiveDefaults) {
         if (destroyed) return
-        if (!modelRepository.provider(defaults.model.backendId).supportsWarmup) return
+        val provider = modelRepository.provider(defaults.model.backendId)
+        if (!provider.supportsWarmup) return
         val key = defaults.warmupKey
         synchronized(warmupLock) {
             if (completedWarmupKey == key || queuedWarmupKey == key) return
@@ -730,6 +738,7 @@ class VoiceBoxBackendService : Service() {
             worker.execute {
                 try {
                     if (destroyed || activeDefaults?.warmupKey != key) return@execute
+                    val prepared = provider.createWarmupRuntime(key.backend) ?: return@execute
                     val model = modelRepository.discoverCharacterModels()
                         .firstOrNull { it.ref == key.model }
                         ?: return@execute
@@ -739,7 +748,7 @@ class VoiceBoxBackendService : Service() {
                     if (destroyed || activeDefaults?.warmupKey != key) return@execute
                     withActiveGenerationResources {
                         request.context.run {
-                            selectWorkerRuntime(model, key.backend).warmup(request)
+                            selectWorkerRuntime(provider, key.backend) { prepared }.warmup(request)
                         }
                     }
                     synchronized(warmupLock) {
@@ -765,11 +774,10 @@ class VoiceBoxBackendService : Service() {
         }
     }
 
-    private fun selectWorkerRuntime(model: CharacterModel, backend: ExecutionBackend): BackendRuntime {
-        val provider = modelRepository.provider(model)
+    private fun selectWorkerRuntime(provider: InstalledBackend, backend: ExecutionBackend, create: () -> BackendRuntime): BackendRuntime {
         workerRuntime?.let { if (runtimeOwner == provider.id && it.backend == backend) return it }
         closeWorkerRuntime()
-        return provider.createRuntime(backend).also { workerRuntime = it; runtimeOwner = provider.id }
+        return create().also { workerRuntime = it; runtimeOwner = provider.id }
     }
 
     private fun closeWorkerRuntime() {

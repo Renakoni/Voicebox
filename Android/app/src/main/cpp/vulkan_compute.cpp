@@ -3,7 +3,15 @@
 #include <algorithm>
 #include <vector>
 
-static int computeLevel(VkPhysicalDevice gpu, uint32_t api) {
+// A driver or allocation failure must not permanently disable downloads on this system image.
+static bool succeeded(VkResult result, bool& conclusive) {
+    if (result == VK_SUCCESS) return true;
+    if (result != VK_ERROR_INCOMPATIBLE_DRIVER && result != VK_ERROR_FEATURE_NOT_PRESENT &&
+        result != VK_ERROR_EXTENSION_NOT_PRESENT) conclusive = false;
+    return false;
+}
+
+static int computeLevel(VkPhysicalDevice gpu, uint32_t api, bool& conclusive) {
     VkPhysicalDeviceProperties properties;
     vkGetPhysicalDeviceProperties(gpu, &properties);
     if (properties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU &&
@@ -37,7 +45,7 @@ static int computeLevel(VkPhysicalDevice gpu, uint32_t api) {
             info.pNext = &requested;
             info.enabledExtensionCount = 1;
             info.ppEnabledExtensionNames = &extension;
-            if (vkCreateDevice(gpu, &info, nullptr, &device) == VK_SUCCESS) {
+            if (succeeded(vkCreateDevice(gpu, &info, nullptr, &device), conclusive)) {
                 vkDestroyDevice(device, nullptr);
                 return 2;
             }
@@ -45,7 +53,7 @@ static int computeLevel(VkPhysicalDevice gpu, uint32_t api) {
             info.enabledExtensionCount = 0;
             info.ppEnabledExtensionNames = nullptr;
         }
-        if (!level && vkCreateDevice(gpu, &info, nullptr, &device) == VK_SUCCESS) {
+        if (!level && succeeded(vkCreateDevice(gpu, &info, nullptr, &device), conclusive)) {
             vkDestroyDevice(device, nullptr);
             level = 1;
             if (!storage.storageBuffer16BitAccess) break;
@@ -54,27 +62,35 @@ static int computeLevel(VkPhysicalDevice gpu, uint32_t api) {
     return level;
 }
 
-extern "C" JNIEXPORT jint JNICALL
-Java_dev_renakoni_voicebox_core_DeviceFacts_queryVulkanCompute(JNIEnv*, jclass) {
+static int queryVulkanCompute(bool& conclusive) {
     auto version = reinterpret_cast<PFN_vkEnumerateInstanceVersion>(
         vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceVersion"));
     uint32_t api = VK_API_VERSION_1_0;
-    if (version && version(&api) != VK_SUCCESS) return 0;
+    if (version && !succeeded(version(&api), conclusive)) return 0;
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO};
     app.apiVersion = std::min(api, VK_API_VERSION_1_2);
     VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     info.pApplicationInfo = &app;
     VkInstance instance;
-    if (vkCreateInstance(&info, nullptr, &instance) != VK_SUCCESS) return 0;
+    if (!succeeded(vkCreateInstance(&info, nullptr, &instance), conclusive)) return 0;
     uint32_t count = 0;
     int level = 0;
-    if (vkEnumeratePhysicalDevices(instance, &count, nullptr) == VK_SUCCESS && count) {
+    if (succeeded(vkEnumeratePhysicalDevices(instance, &count, nullptr), conclusive) && count) {
         std::vector<VkPhysicalDevice> devices(count);
-        if (vkEnumeratePhysicalDevices(instance, &count, devices.data()) == VK_SUCCESS) {
+        if (succeeded(vkEnumeratePhysicalDevices(instance, &count, devices.data()), conclusive)) {
             for (uint32_t i = 0; i < count && level < 2; ++i)
-                level = std::max(level, computeLevel(devices[i], app.apiVersion));
+                level = std::max(level, computeLevel(devices[i], app.apiVersion, conclusive));
         }
     }
     vkDestroyInstance(instance, nullptr);
+    return level;
+}
+
+extern "C" JNIEXPORT jint JNICALL
+Java_dev_renakoni_voicebox_core_DeviceFacts_queryVulkanCompute(JNIEnv* env, jclass, jbooleanArray cacheable) {
+    bool conclusive = true;
+    const int level = queryVulkanCompute(conclusive);
+    const jboolean complete = conclusive || level == 2;
+    env->SetBooleanArrayRegion(cacheable, 0, 1, &complete);
     return level;
 }
