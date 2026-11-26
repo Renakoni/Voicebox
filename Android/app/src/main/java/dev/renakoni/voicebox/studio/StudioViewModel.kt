@@ -7,6 +7,7 @@ import dev.renakoni.voicebox.bridge.ReferenceExample
 import dev.renakoni.voicebox.bridge.ReferenceInput
 import dev.renakoni.voicebox.VoiceCheckpointSource
 import dev.renakoni.voicebox.ImportedVoice
+import dev.renakoni.voicebox.core.BridgePackage
 import dev.renakoni.voicebox.core.BridgeInstallState
 import dev.renakoni.voicebox.core.OfficialDownloadState
 import dev.renakoni.voicebox.VoiceBoxApplication
@@ -167,6 +168,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }.orEmpty()
     var gpuAvailable by mutableStateOf(false); private set
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
+    var recheckingModel by mutableStateOf<String?>(null); private set
     val deviceFacts = DeviceFacts.read(app)
     var deviceNpuAvailable by mutableStateOf<Boolean?>(null); private set
     private var auxiliaryLimits by mutableStateOf(emptyMap<ModelRef, Int>())
@@ -207,6 +209,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     val busy get() = state.busy || pendingRequest != null || importing ||
         (officialDownload.requestId != null && !officialDownload.finished) || streamPreview != null
     val backend get() = if (gpuEnabled && ExecutionBackend.WEBGPU in availableBackends) ExecutionBackend.WEBGPU else ExecutionBackend.CPU
+    val selectedRuntimeUnsupported get() = selectedVoice?.model?.let { backendModes[it.backendId]?.isEmpty() } == true &&
+        runtimeReady
     val canGenerate get() = connected && !loading && !busy && !fileBusy && text.isNotBlank() && runtimeReady && availableBackends.isNotEmpty()
 
     private val listener = BackendServiceListener { next ->
@@ -401,6 +405,33 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         if (busy || fileBusy) return
         if (service?.downloadOfficialModel(official) != true) notify(UiText(R.string.engine_busy))
     }
+    internal fun recheckDownloadSupport(archive: BridgePackage) {
+        val backendService = service ?: return
+        if (recheckingModel != null || loading || busy || fileBusy) return
+        val spec = archive.spec
+        recheckingModel = spec.id
+        viewModelScope.launch {
+            try {
+                val check = backendService.recheckDeviceGpu().await()
+                gpuAvailable = DeviceFacts.hasVulkanCompute
+                if (check.changed) refreshResources()
+                if (!archive.supported) notify(when {
+                    deviceFacts.abi != spec.abi -> UiText(R.string.model_requires_abi, spec.abi)
+                    !archive.compatiblePlatform -> UiText(R.string.model_requires_sdk, spec.minSdk, android.os.Build.VERSION.RELEASE)
+                    !check.conclusive -> UiText(R.string.model_gpu_recheck_failed)
+                    spec.requiresVulkan12Storage16 -> UiText(R.string.model_requires_vulkan_storage16)
+                    else -> UiText(R.string.model_requires_vulkan)
+                })
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                Log.w("VoiceStudio", "Could not recheck GPU capability", error)
+                notify(UiText(R.string.model_gpu_recheck_failed))
+            } finally {
+                recheckingModel = null
+            }
+        }
+    }
+
     fun installModelParts(id: String, part: String?) {
         if (busy || fileBusy) return
         if (service?.installModelParts(id, part) != true) notify(UiText(R.string.engine_busy))

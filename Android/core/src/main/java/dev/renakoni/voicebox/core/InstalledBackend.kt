@@ -88,9 +88,12 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     }
 
     private fun npuCacheKey(): String {
-        val directory = externalNpuRuntime ?: return archive.spec.revision
+        val revision = archive.spec.revision
+        // The Qwen HTP bridge chooses its library from the architecture reported by FastRPC.
+        if (id == "qwen3") return "$revision/${DeviceFacts.hexagonArch}"
+        val directory = externalNpuRuntime ?: return revision
         val libraries = directory.listFiles().orEmpty().filter { it.isFile && it.extension == "so" }.sortedBy { it.name }
-        return archive.spec.revision + libraries.joinToString("\n") { "${it.name}:${it.length()}:${it.lastModified()}" }
+        return revision + libraries.joinToString("\n", prefix = "\n") { "${it.name}:${it.length()}:${it.lastModified()}" }
     }
 
     private fun probeNpu(key: String, options: Bundle): Boolean = try {

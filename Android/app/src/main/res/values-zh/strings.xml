@@ -452,6 +452,14 @@
     <string name="model_reload">重新读取模型</string>
     <string name="model_parts_ready">已安装 %1$d / %2$d 项</string>
     <string name="model_remaining">待下载 %1$s</string>
+    <string name="model_gpu_runtime_unavailable">GPU 无法运行此模型</string>
+    <string name="model_recheck_gpu">重新测试 GPU 支持</string>
+    <string name="model_rechecking">测试中，请稍后…</string>
+    <string name="model_requires_abi">此模型需要 %1$s 架构。</string>
+    <string name="model_requires_sdk">此模型需要 Android API %1$d 或更高版本。当前设备运行 Android %2$s。</string>
+    <string name="model_requires_vulkan">此模型需要支持 Vulkan 计算的 GPU。</string>
+    <string name="model_requires_vulkan_storage16">此模型需要 Vulkan 1.2 计算和 16 位存储缓冲区支持。</string>
+    <string name="model_gpu_recheck_failed">未能完成 GPU 测试，请点击重试。</string>
     <string name="model_device_unsupported">本设备不支持</string>
     <string name="model_bridge">推理桥接</string>
     <string name="model_install_part">安装%1$s</string>

@@ -19,7 +19,7 @@ class VoiceBoxApplication : Application() {
         super.onCreate()
         DeviceFacts.initialize(this)
         if (Application.getProcessName() == packageName) {
-            CoroutineScope(Dispatchers.IO).launch { DeviceFacts.hasVulkanCompute }
+            CoroutineScope(Dispatchers.IO).launch { DeviceFacts.preload() }
         }
     }
 

@@ -1,5 +1,6 @@
 package dev.renakoni.voicebox
 
+import dev.renakoni.voicebox.core.DeviceFacts
 import dev.renakoni.voicebox.core.InstalledBackend
 import dev.renakoni.voicebox.core.GenerationRequestGate
 
@@ -53,6 +54,8 @@ import dev.renakoni.voicebox.bridge.ModelRef
 import dev.renakoni.voicebox.bridge.BackendFailure
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -66,7 +69,7 @@ class VoiceBoxBackendService : Service() {
     private val generationGate = GenerationRequestGate()
     private val officialDownloadState = MutableStateFlow(OfficialDownloadState())
     val officialDownload = officialDownloadState.asStateFlow()
-    internal val catalogReady = kotlinx.coroutines.CompletableDeferred<Unit>()
+    internal val catalogReady = CompletableDeferred<Unit>()
     @Volatile private var destroyed = false
     @Volatile private var warmupContext: GenerationContext? = null
 
@@ -284,6 +287,24 @@ class VoiceBoxBackendService : Service() {
     }
 
     fun cancelGeneration(requestId: String): Boolean = generationGate.cancel(requestId, "CANCELLED")
+
+    private var pendingGpuCheck: CompletableDeferred<DeviceFacts.GpuRecheck>? = null
+
+    @Synchronized internal fun recheckDeviceGpu(): Deferred<DeviceFacts.GpuRecheck> {
+        pendingGpuCheck?.takeIf { it.isActive }?.let { return it }
+        val result = CompletableDeferred<DeviceFacts.GpuRecheck>()
+        pendingGpuCheck = result
+        worker.execute {
+            try {
+                val check = DeviceFacts.recheckVulkan()
+                if (check.changed && !destroyed) modelRepository.providers.forEach(::refreshBackendModes)
+                result.complete(check)
+            } catch (error: Exception) {
+                result.completeExceptionally(error)
+            }
+        }
+        return result
+    }
 
     private fun refreshBackendModes(provider: InstalledBackend) {
         enabledBackends.value += provider.id to provider.candidateModes
