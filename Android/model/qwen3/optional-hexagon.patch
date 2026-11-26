@@ -33,16 +33,16 @@ diff --git a/tools/build_android_htp.sh b/tools/build_android_htp.sh
 diff --git a/native/qwen3_jni.cpp b/native/qwen3_jni.cpp
 --- a/native/qwen3_jni.cpp
 +++ b/native/qwen3_jni.cpp
-@@ -2,6 +2,9 @@
- #include "qwen.h"
- #ifdef GGML_USE_VULKAN
- #include "ggml-vulkan.h"
-+#endif
-+#ifdef GGML_USE_HEXAGON
-+#include "ggml-hexagon.h"
- #endif
+@@ -6,6 +6,9 @@
  
  #include <android/log.h>
+ #include <jni.h>
++#ifdef GGML_USE_HEXAGON
++#include "ggml-hexagon.h"
++#endif
+ 
+ #include <atomic>
+ #include <cstdlib>
 @@ -204,3 +207,23 @@
          return false;
      }

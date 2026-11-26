@@ -6,16 +6,16 @@
   "abi": "arm64-v8a",
   "minAppVersionCode": 13,
   "sourceCommit": "2edb35f87b709a070b2d5379f77e5c52a1daa585",
-  "adapterSourceSha256": "80f61740bd0b5ee55460bb6802937119a3579d030a28eea267bba72f0432e6ef",
+  "adapterSourceSha256": "e250ae1adbfd89e33d524898b900e1b618ec25b33ee959c0549c1d51a90d1c19",
   "format": 2,
   "displayName": "Qwen3-TTS-0.6B",
   "version": "4",
-  "revision": "8968225227bd989457f6fd33e1dac060f0f46e1c45b4da9c57b89c06bf509851",
+  "revision": "8e731e198b387e85e8ce2e057e5656955122dfd90b626d661a3202f0ea451713",
   "parts": [
     {
       "url": "https://github.com/Renakoni/Voicebox/releases/download/qwen3-runtime-v4/qwen3-backend-v4-arm64-v8a.zip",
-      "bytes": 13578703,
-      "sha256": "8968225227bd989457f6fd33e1dac060f0f46e1c45b4da9c57b89c06bf509851"
+      "bytes": 13578702,
+      "sha256": "8e731e198b387e85e8ce2e057e5656955122dfd90b626d661a3202f0ea451713"
     }
   ],
   "files": {
