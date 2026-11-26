@@ -251,7 +251,8 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
     val downloading = status?.running == true
     val selected = voice != null && voice.id == vm.selectedId
     val name = model.displayName(resources)
-    val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
+    val unsupported = qwen && vm.qwenGpuRejected
+    val enabled = !unsupported && !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
     VoiceTile(shape, selected, enabled = installed && enabled,
         onClick = {
             if (qwen && !ready) vm.tab = StudioTab.MODELS
@@ -262,7 +263,8 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
         onLongClickLabel = resources.getString(R.string.edit_named_voice, name),
         avatar = { RingedAvatar(name, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            OfficialWeightAction(name, installed, enabled, status, { vm.downloadOfficial(model) }, vm::cancelOfficialDownload) {
+            if (unsupported) StatusTag(resources.getString(R.string.model_device_unsupported))
+            else OfficialWeightAction(name, installed, enabled, status, { vm.downloadOfficial(model) }, vm::cancelOfficialDownload) {
                 vm.removeOfficialWeights(model)
             }
         }) {

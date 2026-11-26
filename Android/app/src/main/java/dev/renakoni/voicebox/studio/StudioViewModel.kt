@@ -163,6 +163,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var preview by mutableStateOf(PreviewState()); private set
     internal var streamPreview by mutableStateOf<StreamPlayback?>(null); private set
     private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
+    internal val qwenGpuRejected get() = bridgeStates?.get(QwenModelPackage.BACKEND) == BridgeInstallState.CURRENT &&
+        probes[QwenModelPackage.BACKEND]?.contains(ExecutionBackend.WEBGPU) == false
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
         model.executionModes intersect probes[model.ref.backendId].orEmpty()
     }.orEmpty()

@@ -7,6 +7,7 @@ import android.view.textclassifier.TextClassificationManager
 import android.view.textclassifier.TextLanguage
 import com.qwen3.android.Engine
 import dev.renakoni.voicebox.bridge.*
+import dev.renakoni.voicebox.core.DeviceFacts
 import dev.renakoni.voicebox.core.MediaAudioDecoder
 import dev.renakoni.voicebox.core.OutputStorage
 import dev.renakoni.voicebox.core.WavFileWriter
@@ -27,13 +28,13 @@ internal class QwenRuntime(private val context: Context, private val directory: 
     private var activeTalker: File? = null
     private val gpu = backend == ExecutionBackend.WEBGPU
     private val codecDevice = if (!gpu) "" else if (allowNpu) "Vulkan0+HTP0" else "Vulkan0"
-    override val runtimeLabel = if (!gpu) "CPU" else if (allowNpu) "CPU + Vulkan + Hexagon v75" else "CPU + Vulkan"
+    override val runtimeLabel = if (!gpu) "CPU" else if (allowNpu) "CPU + Vulkan + Hexagon v${DeviceFacts.hexagonArch}" else "CPU + Vulkan"
 
     private fun open(talker: File) {
         if (handle != 0L && activeTalker == talker) return
         close()
         val library = if (gpu) {
-            QwenDevices.configure(context, directory)
+            QwenDevices.configure(context, directory, allowNpu)
             QwenDevices.acceleratedLibrary(directory)
         } else File(directory, "cpu/libqwen3_jni.so")
         System.load(library.absolutePath)

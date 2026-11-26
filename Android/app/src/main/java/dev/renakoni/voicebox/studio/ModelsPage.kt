@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import dev.renakoni.voicebox.MingModelPackage
+import dev.renakoni.voicebox.QwenModelPackage
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.core.BridgeInstallState
@@ -71,7 +72,9 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val spec = archive.spec
     val name = spec.displayName
     val colors = MaterialTheme.colorScheme
-    if (!archive.supported && !vm.modelPreview) {
+    val states = vm.bridgeStates
+    if (states != null && !vm.modelPreview && (!archive.supported ||
+            (spec.id == QwenModelPackage.BACKEND && vm.qwenGpuRejected))) {
         StudioCard(Modifier.fillMaxWidth()) {
             Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { heading() }
                 .heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 14.dp),
@@ -88,7 +91,6 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     }
     val resources = LocalResources.current
     val context = LocalContext.current
-    val states = vm.bridgeStates
     val bridgeState = states?.get(spec.id)
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
     val ming = spec.id == MingModelPackage.BACKEND

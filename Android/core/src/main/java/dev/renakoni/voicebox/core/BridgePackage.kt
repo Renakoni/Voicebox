@@ -95,7 +95,7 @@ class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
 ) {
-    val supported get() = spec.abi == abi
+    val supported get() = spec.abi == abi && (spec.id != "qwen3" || DeviceFacts.qwenGpuAvailable)
     val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")

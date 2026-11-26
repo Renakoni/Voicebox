@@ -288,9 +288,16 @@ class VoiceBoxBackendService : Service() {
         enabledBackends.value += provider.id to provider.executionModes()
     }
 
+    private fun requireQwenGpu() {
+        check(ExecutionBackend.WEBGPU in enabledBackends.value[QwenModelPackage.BACKEND].orEmpty()) {
+            getString(R.string.model_device_unsupported)
+        }
+    }
+
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context, progress ->
         if (voice.ref.backendId == QwenModelPackage.BACKEND) {
             require(app.bridgePackages.get(QwenModelPackage.BACKEND).installed)
+            requireQwenGpu()
             app.qwenModelPackage.install(QwenModelPackage.TALKER, context::checkCancelled) { percent ->
                 progress(UiText.literal(voice.name), percent)
             }
@@ -335,6 +342,7 @@ class VoiceBoxBackendService : Service() {
             }
             if (part != BRIDGE_PART && id == QwenModelPackage.BACKEND) {
                 require(part == null || part == QwenModelPackage.CODEC)
+                if (archive.installed) requireQwenGpu()
                 app.qwenModelPackage.install(QwenModelPackage.CODEC, context::checkCancelled) { percent ->
                     progress(UiText(R.string.qwen_audio_codec), percent)
                 }

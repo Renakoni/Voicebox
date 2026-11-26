@@ -50,7 +50,7 @@ private class QwenProvider(private val context: Context, private val directory: 
     override fun executionModes() = if (devices and 1 != 0) ExecutionBackend.entries.toSet() else setOf(ExecutionBackend.CPU)
     override fun accelerationInfo() = AccelerationInfo(available = devices and 2 != 0)
     override fun createRuntime(execution: ExecutionBackend) =
-        QwenRuntime(context, directory, work, resources, model.ref, imported, execution, allowNpu && QwenDevices.v75)
+        QwenRuntime(context, directory, work, resources, model.ref, imported, execution, allowNpu)
     override fun validateOptions(options: Map<String, String>): Map<String, String> {
         QwenSynthesisOptions(options)
         return options

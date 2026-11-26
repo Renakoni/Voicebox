@@ -16,5 +16,5 @@ internal object DeviceNpu {
     // The SM8650 Hexagon is reachable through QNN even on ROMs whose NNAPI
     // device list contains only the reference CPU.
     fun isSupported(device: DeviceFacts) =
-        device.soc.equals("SM8650", ignoreCase = true) || androidAccelerator
+        device.soc.equals("SM8650", ignoreCase = true) || androidAccelerator || DeviceFacts.hexagonArch >= 73
 }

@@ -21,7 +21,7 @@ MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so
 MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
                 "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
                 "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
-QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_probe.so", "libqwen3_checkpoint.so"}
+QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_checkpoint.so"}
 
 
 def require(condition, message):
@@ -86,7 +86,7 @@ def verify_package(spec, data):
         elif backend == "qwen3":
             require(abi == "arm64-v8a", "Expected Qwen ARM64 package")
             libs = QWEN_LIBS
-            dsp = {"accelerated/libggml-htp-v75.so"}
+            dsp = {f"accelerated/libggml-htp-v{arch}.so" for arch in (73, 75, 79, 81, 85)}
             assets = {"assets/qwen-vk2-1124406273-2150531084.bin",
                       "assets/checkpoint-layout.json", "assets/checkpoint-metadata.bin"} | {
                 f"licenses/{name}-LICENSE.txt" for name in ("qwentts", "ggml", "Qwen3-TTS", "VoiceBox")}
