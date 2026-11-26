@@ -28,7 +28,8 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
         if (binding.dead) close() else call(WorkerProtocol.TRIM, null, null)
     }
 
-    fun probe(): Bundle = call(WorkerProtocol.PROBE, null, null)
+    fun probe(npu: Boolean = false): Bundle = call(WorkerProtocol.PROBE, null, null,
+        Bundle().apply { putBoolean("npu", npu) })
 
     fun operate(action: LibraryAction, arguments: Bundle, context: GenerationContext, progress: (String, Int?) -> Unit): Bundle =
         call(WorkerProtocol.LIBRARY, null, object : BackendRuntimeCallbacks {

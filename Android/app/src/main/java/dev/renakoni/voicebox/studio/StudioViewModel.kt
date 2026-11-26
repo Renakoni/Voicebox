@@ -39,7 +39,6 @@ import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.AppSettingsRepository
 import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
-import dev.renakoni.voicebox.DeviceNpu
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.ReferenceAudioPicker
 import dev.renakoni.voicebox.api.ActiveDefaults
@@ -163,10 +162,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var preview by mutableStateOf(PreviewState()); private set
     internal var streamPreview by mutableStateOf<StreamPlayback?>(null); private set
     private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
+    internal fun gpuRejected(id: String) = bridgeStates?.get(id) == BridgeInstallState.CURRENT &&
+        probes[id]?.contains(ExecutionBackend.WEBGPU) == false
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
         model.executionModes intersect probes[model.ref.backendId].orEmpty()
     }.orEmpty()
-    val gpuAvailable get() = probes.values.any { ExecutionBackend.WEBGPU in it }
+    var gpuAvailable by mutableStateOf(false); private set
     var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
     val deviceFacts = DeviceFacts.read(app)
     var deviceNpuAvailable by mutableStateOf<Boolean?>(null); private set
@@ -274,9 +275,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    internal suspend fun readDeviceAccelerator() {
+        if (deviceNpuAvailable == null) deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasDeviceAccelerator }
+    }
+
     init {
         viewModelScope.launch {
-            deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceNpu.isSupported(deviceFacts) }
+            gpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute }
         }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
@@ -302,17 +307,15 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                 val data = withContext(Dispatchers.IO) {
                     val states = backendPackages.associate { it.spec.id to it.installState }
                     val providers = modelsRepository.providers.filter { states[it.id] == BridgeInstallState.CURRENT }
-                    val qwenAvailable = backendPackages.any { it.spec.id == QwenModelPackage.BACKEND && (it.installable || modelPreview) }
-                    val qwenWeights = if (states[QwenModelPackage.BACKEND] == BridgeInstallState.CURRENT)
-                        app.qwenModelPackage.pack(QwenModelPackage.TALKER) { ensureActive() } else null
+                    val qwenWeights = app.qwenModelPackage.pack(QwenModelPackage.TALKER) { ensureActive() }
                     val catalog = providers.flatMap { it.officialVoices() }
                     val ming = app.mingModelPackage
                     val mingWeights = if (states[MingModelPackage.BACKEND] == BridgeInstallState.CURRENT || modelPreview) ming.officialPack() else null
-                    val codec = if (qwenAvailable) app.qwenModelPackage.pack(QwenModelPackage.CODEC) { ensureActive() } else null
-                    val discovered = app.installedVoiceModels(providers, mingWeights?.installed == true, qwenWeights?.installed == true)
+                    val codec = app.qwenModelPackage.pack(QwenModelPackage.CODEC) { ensureActive() }
+                    val discovered = app.installedVoiceModels(providers, mingWeights?.installed == true, qwenWeights.installed)
                     val inputs = discovered.associate { it.ref to modelsRepository.provider(it).referenceInput(it) }
                     val packs = providers.associate { provider -> provider.id to provider.resourcePacks { ensureActive() } }.toMutableMap()
-                    if (codec != null) packs[QwenModelPackage.BACKEND] = listOf(codec)
+                    packs[QwenModelPackage.BACKEND] = listOf(codec)
                     val ready = discovered.map { it.ref }.filter { ref ->
                         packs.getValue(ref.backendId).all { it.installed || (it.variants.isNotEmpty() && ref.variant !in it.variants) }
                     }.toSet()

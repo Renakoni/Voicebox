@@ -8,6 +8,21 @@ import java.io.File
 data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: String, val model: String,
     val fingerprint: String, val abi: String) {
     companion object {
+        @JvmStatic private external fun queryHexagonArch(): Int
+        @JvmStatic private external fun hasAndroidAccelerator(): Boolean
+        @JvmStatic private external fun queryVulkanCompute(): Int
+        private val probeLoaded by lazy {
+            try {
+                System.loadLibrary("voicebox_device_npu")
+                true
+            } catch (_: UnsatisfiedLinkError) { false }
+        }
+        val hexagonArch by lazy { if (probeLoaded) queryHexagonArch() else 0 }
+        val hasDeviceAccelerator by lazy { probeLoaded && (hasAndroidAccelerator() || hexagonArch > 0) }
+        private val vulkanCompute by lazy { if (probeLoaded) queryVulkanCompute() else 0 }
+        val hasVulkanCompute get() = vulkanCompute != 0
+        val hasVulkan12Storage16 get() = vulkanCompute == 2
+
         fun read(context: Context): DeviceFacts {
             val abi = when (File(context.applicationInfo.nativeLibraryDir).name) {
                 "arm64" -> "arm64-v8a"

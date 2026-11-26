@@ -173,22 +173,25 @@ private fun MingOfficialVoiceRow(vm: StudioViewModel, pack: ResourcePack, voice:
     val colors = MaterialTheme.colorScheme
     val title = vm.mingName
     val weightTitle = resources.getString(R.string.ming_official_weights)
+    val unsupported = vm.gpuRejected(MingModelPackage.BACKEND)
     val status = vm.officialDownload.takeIf { it.voice == MingModelPackage.modelRef }
     val downloading = status?.running == true
     val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
     val installed = pack.installed || vm.modelPreview
     val selected = voice != null && vm.selectedId == voice.id && vm.creationSettings.preset != null
-    VoiceTile(shape, selected, enabled = enabled && installed,
+    VoiceTile(shape, selected, enabled = enabled && installed && !unsupported,
         onClick = { if (voice == null) vm.tab = StudioTab.MODELS else browse() },
         avatar = { RingedAvatar(title, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload) {
+            if (unsupported && !installed) StatusTag(resources.getString(R.string.model_device_unsupported))
+            else OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload) {
                 vm.removeModelPart(MingModelPackage.BACKEND, MingModelPackage.OFFICIAL)
             }
         }) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = if (installed) colors.onSurface else colors.onSurfaceVariant)
         val error = status?.error
         val detail = when {
+            unsupported -> if (installed) resources.getString(R.string.model_device_unsupported) else null
             downloading -> weightTitle + (status.percent?.let { " · $it%" } ?: "")
             !installed && error != null -> error.resolve(resources)
             !installed -> resources.getString(R.string.ming_official_weights_download,
@@ -251,8 +254,9 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
     val downloading = status?.running == true
     val selected = voice != null && voice.id == vm.selectedId
     val name = model.displayName(resources)
+    val unsupported = vm.gpuRejected(model.ref.backendId)
     val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
-    VoiceTile(shape, selected, enabled = installed && enabled,
+    VoiceTile(shape, selected, enabled = installed && enabled && !unsupported,
         onClick = {
             if (qwen && !ready) vm.tab = StudioTab.MODELS
             else if (voice != null) { vm.select(voice); vm.tab = StudioTab.CREATE }
@@ -262,7 +266,8 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
         onLongClickLabel = resources.getString(R.string.edit_named_voice, name),
         avatar = { RingedAvatar(name, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            OfficialWeightAction(name, installed, enabled, status, { vm.downloadOfficial(model) }, vm::cancelOfficialDownload) {
+            if (unsupported && !installed) StatusTag(resources.getString(R.string.model_device_unsupported))
+            else OfficialWeightAction(name, installed, enabled, status, { vm.downloadOfficial(model) }, vm::cancelOfficialDownload) {
                 vm.removeOfficialWeights(model)
             }
         }) {
@@ -270,6 +275,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
             color = if (installed) colors.onSurface else colors.onSurfaceVariant)
         val detail = when {
             downloading -> status.label?.resolve(resources).orEmpty() + (status.percent?.let { " $it%" } ?: "")
+            unsupported -> if (installed) resources.getString(R.string.model_device_unsupported) else null
             !ready && error != null -> error.resolve(resources)
             !installed && weightPack != null -> resources.getString(R.string.ming_official_weights_download,
                 Formatter.formatShortFileSize(LocalContext.current, weightPack.remainingBytes))

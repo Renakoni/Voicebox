@@ -21,10 +21,14 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     private val settings: () -> Bundle = { Bundle() }) : BackendProvider, VoiceLibrary {
     override val id get() = archive.spec.id
     private var cached: BackendProvider? = null
-    @Synchronized fun invalidateMetadata() { cached = null }
+    @Synchronized fun invalidateMetadata() {
+        cached = null
+        npuAvailable = null
+    }
     @Synchronized private fun metadata(): BackendProvider? {
         cached?.let { return it }
         val installed = archive.active ?: return null
+        if (!archive.supported) return null
         return installed.openProvider(context, context.cacheDir, settings()).also { cached = it }
     }
     override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
@@ -60,21 +64,25 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
         validateOptions((metadata() as? SynthesisSettingsProvider)?.mergeSynthesisOptions(defaults, overrides)
             ?: (defaults + overrides))
 
-    private var npuAvailable = false
+    private var npuAvailable: Boolean? = null
     override fun executionModes(): Set<ExecutionBackend> {
-        if (!archive.installed) {
-            npuAvailable = false
-            return emptySet()
-        }
+        if (!archive.installed) return emptySet()
         return try {
-            val result = WorkerRuntime(context, id, ExecutionBackend.CPU, settings(), false).probe()
-            npuAvailable = result.getBoolean("npu")
-            result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
+            val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe()
+            val modes = result.getStringArrayList("modes").orEmpty().map(ExecutionBackend::valueOf).toSet()
+            if (ExecutionBackend.WEBGPU in modes) modes else emptySet()
         } catch (error: Exception) {
-            android.util.Log.w("VoiceBoxWorker", "Acceleration probe failed for $id", error)
-            npuAvailable = false
-            setOf(ExecutionBackend.CPU)
+            android.util.Log.w("VoiceBoxWorker", "GPU probe failed for $id", error)
+            emptySet()
         }
+    }
+
+    private fun probeNpu(): Boolean = npuAvailable ?: try {
+        WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe(npu = true)
+            .getBoolean("npu").also { npuAvailable = it }
+    } catch (error: Exception) {
+        android.util.Log.w("VoiceBoxWorker", "NPU probe failed for $id", error)
+        false
     }
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext,
@@ -84,6 +92,6 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     override fun validateOptions(options: Map<String, String>) = requireNotNull(metadata()).validateOptions(options)
     override fun createRuntime(execution: ExecutionBackend): BackendRuntime =
         WorkerRuntime(context, id, execution, settings().apply {
-            putBoolean("allowNpu", getBoolean("allowNpu") && npuAvailable)
+            putBoolean("allowNpu", execution == ExecutionBackend.WEBGPU && getBoolean("allowNpu") && probeNpu())
         }, retain = true)
 }

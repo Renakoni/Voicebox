@@ -19,12 +19,13 @@ import java.io.File
 
 class GptProvider(
     private val context: Context,
+    bridgeRevision: String,
     private val t2sThreads: Int,
     private val vocoderThreads: Int,
     private val allowNpu: Boolean,
 ) : BackendProvider, dev.renakoni.voicebox.bridge.VoiceLibrary by GptLibrary(context) {
     override val id = "gptsovits"
-    private val deviceAcceleration = DeviceAcceleration(context)
+    private val deviceAcceleration = DeviceAcceleration(context, bridgeRevision)
     override val capabilities = BackendCapabilities(
         listOf("zh", "ja", "en"),
         setOf(VoiceImport.CHECKPOINT_PAIR, VoiceImport.RUNTIME_ARCHIVE),

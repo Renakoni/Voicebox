@@ -21,7 +21,7 @@ MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so
 MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
                 "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
                 "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
-QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_probe.so", "libqwen3_checkpoint.so"}
+QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_checkpoint.so"}
 
 
 def require(condition, message):
@@ -86,9 +86,8 @@ def verify_package(spec, data):
         elif backend == "qwen3":
             require(abi == "arm64-v8a", "Expected Qwen ARM64 package")
             libs = QWEN_LIBS
-            dsp = {"accelerated/libggml-htp-v75.so"}
-            assets = {"assets/qwen-vk2-1124406273-2150531084.bin",
-                      "assets/checkpoint-layout.json", "assets/checkpoint-metadata.bin"} | {
+            dsp = {f"accelerated/libggml-htp-v{arch}.so" for arch in (73, 75, 79, 81, 85)}
+            assets = {"assets/checkpoint-layout.json", "assets/checkpoint-metadata.bin"} | {
                 f"licenses/{name}-LICENSE.txt" for name in ("qwentts", "ggml", "Qwen3-TTS", "VoiceBox")}
         else:
             require(abi == "arm64-v8a", "Expected Ming ARM64 package")
@@ -135,8 +134,8 @@ def main():
                     original = "L" + line.split(" -> ", 1)[0].replace(".", "/") + ";"
                     require(not original.startswith(MODEL_CLASSES), "Host R8 mapped a backend class: " + original)
         native = {Path(n).name for n in app.namelist() if n.startswith("lib/")}
-        require(not (native & ((GPT_LIBS - {"libc++_shared.so"}) | {Path(n).name for n in QWEN_LIBS} | {"libggml-htp-v75.so"})
-                     or any(n.startswith("libming-") for n in native)),
+        require(not (native & ((GPT_LIBS - {"libc++_shared.so"}) | {Path(n).name for n in QWEN_LIBS})
+                     or any(n.startswith(("libming-", "libggml-htp-")) for n in native)),
                 "Host includes backend native code")
         require(not any(entry.filename.startswith("assets/backend-packages/") for entry in members),
                 "Host bundles bridge packages")

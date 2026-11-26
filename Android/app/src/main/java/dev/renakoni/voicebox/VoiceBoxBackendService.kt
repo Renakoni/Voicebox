@@ -11,6 +11,7 @@ import dev.renakoni.voicebox.bridge.OfficialVoice
 
 import dev.renakoni.voicebox.core.i18n.UiText
 import dev.renakoni.voicebox.core.i18n.UiLanguageContext
+import dev.renakoni.voicebox.core.i18n.checkUi
 import dev.renakoni.voicebox.core.i18n.userMessage
 import dev.renakoni.voicebox.core.i18n.userText
 
@@ -220,11 +221,10 @@ class VoiceBoxBackendService : Service() {
     fun currentState(): BackendServiceState = state
 
     private fun supportedBackends(model: CharacterModel) =
-        model.executionModes intersect (enabledBackends.value[model.ref.backendId] ?: setOf(ExecutionBackend.CPU))
+        model.executionModes intersect enabledBackends.value[model.ref.backendId].orEmpty()
 
     fun setActiveDefaults(defaults: ActiveDefaults?, warmup: Boolean = true) {
         val supportedDefaults = defaults?.takeIf { it.backend in enabledBackends.value[it.model.backendId].orEmpty() }
-            ?: defaults?.copy(backend = ExecutionBackend.CPU)
         val previous = activeDefaults
         if (previous != null && previous.warmupKey != supportedDefaults?.warmupKey) {
             generationGate.invalidate("VOICE_CHANGED")
@@ -288,9 +288,15 @@ class VoiceBoxBackendService : Service() {
         enabledBackends.value += provider.id to provider.executionModes()
     }
 
+    private fun requireGpu(id: String) {
+        checkUi(ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty()) {
+            UiText(R.string.model_device_unsupported)
+        }
+    }
+
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context, progress ->
+        requireGpu(voice.ref.backendId)
         if (voice.ref.backendId == QwenModelPackage.BACKEND) {
-            require(app.bridgePackages.get(QwenModelPackage.BACKEND).installed)
             app.qwenModelPackage.install(QwenModelPackage.TALKER, context::checkCancelled) { percent ->
                 progress(UiText.literal(voice.name), percent)
             }
@@ -333,6 +339,7 @@ class VoiceBoxBackendService : Service() {
                 provider.invalidateMetadata()
                 refreshBackendModes(provider)
             }
+            if (!codecOnly || archive.installed) requireGpu(id)
             if (part != BRIDGE_PART && id == QwenModelPackage.BACKEND) {
                 require(part == null || part == QwenModelPackage.CODEC)
                 app.qwenModelPackage.install(QwenModelPackage.CODEC, context::checkCancelled) { percent ->
@@ -340,6 +347,7 @@ class VoiceBoxBackendService : Service() {
                 }
             } else if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
                 val model = app.mingModelPackage
+                require(part == null || part in model.modelParts)
                 val parts = part?.let(::listOf) ?: model.modelParts
                 parts.forEach { component ->
                     val label = UiText(MingModelPackage.partTitle(component))
@@ -370,7 +378,7 @@ class VoiceBoxBackendService : Service() {
                     refreshBackendModes(provider)
                 }
             } else if (id == QwenModelPackage.BACKEND) {
-                require(part == QwenModelPackage.CODEC)
+                require(part == QwenModelPackage.CODEC || part == QwenModelPackage.TALKER)
                 app.qwenModelPackage.uninstall(part)
             } else if (id == MingModelPackage.BACKEND) {
                 app.mingModelPackage.uninstall(part)
@@ -395,6 +403,7 @@ class VoiceBoxBackendService : Service() {
         if (!archive.installed) return false
         val target = OfficialDownloadState(voice = MingModelPackage.modelRef)
         return downloadOnWorker(target) { context, progress ->
+            requireGpu(MingModelPackage.BACKEND)
             app.mingModelPackage.install(MingModelPackage.OFFICIAL, context::checkCancelled) { percent ->
                 progress(UiText(R.string.ming_official_weights), percent)
             }

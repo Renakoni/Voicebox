@@ -1,0 +1,69 @@
+diff --git a/third_party/qwentts/ggml/src/ggml-backend-reg.cpp b/third_party/qwentts/ggml/src/ggml-backend-reg.cpp
+--- a/third_party/qwentts/ggml/src/ggml-backend-reg.cpp
++++ b/third_party/qwentts/ggml/src/ggml-backend-reg.cpp
+@@ -151,7 +151,9 @@
+         register_backend(ggml_backend_zendnn_reg());
+ #endif
+ #ifdef GGML_USE_HEXAGON
+-        register_backend(ggml_backend_hexagon_reg());
++        if (getenv("GGML_ENABLE_HEXAGON") != nullptr) {
++            register_backend(ggml_backend_hexagon_reg());
++        }
+ #endif
+ #ifdef GGML_USE_CANN
+         register_backend(ggml_backend_cann_reg());
+diff --git a/tools/build_android_htp.sh b/tools/build_android_htp.sh
+--- a/tools/build_android_htp.sh
++++ b/tools/build_android_htp.sh
+@@ -13,11 +13,11 @@
+ cmake -S "$root/native" -B "$build" -G Ninja \
+     -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
+     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 -DANDROID_STL=c++_static \
+-    -DCMAKE_BUILD_TYPE=Release -DGGML_CPU_ARM_ARCH=armv8.6-a \
++    -DCMAKE_BUILD_TYPE=Release -DGGML_CPU_ARM_ARCH=armv8-a \
+     -DGGML_HEXAGON=ON -DPREBUILT_LIB_DIR=android_aarch64 \
+     -DHEXAGON_SDK_ROOT="$HEXAGON_SDK_ROOT" -DHEXAGON_TOOLS_ROOT="$HEXAGON_TOOLS_ROOT" \
+     -DGGML_VULKAN=ON -DVulkan_LIBRARY="$vulkan" -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR" \
+     -DSPIRV-Headers_DIR="$SPIRV_HEADERS_DIR"
+-cmake --build "$build" --parallel 8 --target htp-v75 qwen3_jni qwen-tts qwen-codec
++cmake --build "$build" --parallel 8 --target htp-v73 htp-v75 htp-v79 htp-v81 htp-v85 qwen3_jni
+ mkdir -p "$build/jni/arm64-v8a"
+-cp "$build/libqwen3_jni.so" "$build/ggml/src/ggml-hexagon/libggml-htp-v75.so" "$build/jni/arm64-v8a/"
++cp "$build/libqwen3_jni.so" "$build"/ggml/src/ggml-hexagon/libggml-htp-v{73,75,79,81,85}.so "$build/jni/arm64-v8a/"
+diff --git a/native/qwen3_jni.cpp b/native/qwen3_jni.cpp
+--- a/native/qwen3_jni.cpp
++++ b/native/qwen3_jni.cpp
+@@ -6,6 +6,9 @@
+ 
+ #include <android/log.h>
+ #include <jni.h>
++#ifdef GGML_USE_HEXAGON
++#include "ggml-hexagon.h"
++#endif
+ 
+ #include <atomic>
+ #include <cstdlib>
+@@ -204,3 +207,23 @@
+         return false;
+     }
+ }
++
++#ifdef GGML_USE_HEXAGON
++extern "C" JNIEXPORT jboolean JNICALL
++Java_dev_renakoni_voicebox_model_qwen3_QwenDevices_probe(JNIEnv *, jclass, jboolean htp) {
++    try {
++        if (htp) {
++            auto reg = ggml_backend_hexagon_reg();
++            if (!reg || !ggml_backend_reg_dev_count(reg)) return false;
++            ggml_backend_register(reg);
++        }
++        auto backend = ggml_backend_init_by_name(htp ? "HTP0" : "Vulkan0", nullptr);
++        if (!backend) return false;
++        ggml_backend_free(backend);
++        return true;
++    } catch (const std::exception &e) {
++        __android_log_write(ANDROID_LOG_WARN, "QwenWorker", e.what());
++        return false;
++    }
++}
++#endif

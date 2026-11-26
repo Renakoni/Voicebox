@@ -5,31 +5,31 @@
   "minAppVersionCode": 11,
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "adapterSourceSha256": "73c936fbcd330bf860cc80b3b4e4972845c3212f40880308c439ee08a51dfe7c",
+  "adapterSourceSha256": "e519da86725f448caa4bb02270068831498efca5e32aea8151b8c9686817129d",
   "sourceCommit": "7bba07df02d05aadafb0f2886faf98d6b5ceadfc",
   "format": 2,
   "displayName": "Ming-TTS 0.5B",
-  "version": "5",
-  "revision": "0d619b4244030877a39d4c64bd37f7c43bf452661827811e8845c1f5de6bd5c8",
+  "version": "6",
+  "revision": "4e6dc930663809a6fd8d00281d981918d7666f6ff7373ef5c6857befc3e02656",
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v5/ming-backend-v5-arm64-v8a.zip",
-      "bytes": 86931329,
-      "sha256": "0d619b4244030877a39d4c64bd37f7c43bf452661827811e8845c1f5de6bd5c8"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/ming-runtime-v6/ming-backend-v6-arm64-v8a.zip",
+      "bytes": 86930279,
+      "sha256": "4e6dc930663809a6fd8d00281d981918d7666f6ff7373ef5c6857befc3e02656"
     }
   ],
   "files": {
     "provider-probe.onnx": 234,
     "bridge.json": 301,
-    "tasks.jar": 81780,
+    "tasks.jar": 80740,
     "libonnxruntime.so": 29151192,
-    "libming-synthesize.so": 9335840,
-    "libming-reference.so": 10000200,
-    "libming-ort.so": 2568192,
-    "libming-gpu-probe.so": 2229824,
+    "libming-synthesize.so": 9330088,
+    "libming-reference.so": 10000232,
+    "libming-ort.so": 2568224,
+    "libming-gpu-probe.so": 2229848,
     "libming-mmla-neon.so": 1990168,
     "libming-mmla-bf16.so": 3308488,
-    "libming-htp.so": 794144,
+    "libming-htp.so": 794160,
     "qnn/libonnxruntime-qnn.so": 21105856,
     "licenses/Qualcomm-LICENSE.pdf": 147577,
     "licenses/Qualcomm-NOTICE.txt": 129238,
@@ -52,7 +52,7 @@
     "licenses/ONNXRuntime-NOTICE.txt": 331175,
     "licenses/Khronos-OpenCL-LICENSE.txt": 11358,
     "licenses/Ming-THIRD-PARTY.txt": 2072,
-    "licenses/Voicebox-LICENSE.txt": 34020,
+    "licenses/Voicebox-LICENSE.txt": 34255,
     "licenses/pocketfft-LICENSE.txt": 1974
   }
 }

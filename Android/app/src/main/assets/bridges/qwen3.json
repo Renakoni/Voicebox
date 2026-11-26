@@ -4,36 +4,39 @@
   "entry": "dev.renakoni.voicebox.model.qwen3.QwenEntry",
   "code": "tasks.jar",
   "abi": "arm64-v8a",
-  "minAppVersionCode": 12,
+  "minAppVersionCode": 13,
   "sourceCommit": "2edb35f87b709a070b2d5379f77e5c52a1daa585",
-  "adapterSourceSha256": "2e761536536a1d18ef3567bb0361b8d920b0f7d7e6569983c9c80b3af5877acf",
-  "nativeRelease": "qwen3-android-0.2.0-htp-v75-debug.apk",
+  "adapterSourceSha256": "77a28e26514f30ad20c8cbf1b95bc836b13a2cdabb54001bc6faba74b9cae4e5",
   "format": 2,
   "displayName": "Qwen3-TTS-0.6B",
-  "version": "3",
-  "revision": "2d4a78d803c83b0edd5de1bf5684bb9f4bc94a5fbd24c1d4aac900a7cafbd201",
+  "version": "5",
+  "revision": "9f7f1211ff94659ec30a8512b960a860a623339bc28a5fa30ba18840409ff23c",
+  "minSdk": 31,
+  "requiresVulkan12Storage16": true,
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/qwen3-runtime-v3/qwen3-backend-v3-arm64-v8a.zip",
-      "bytes": 11153006,
-      "sha256": "2d4a78d803c83b0edd5de1bf5684bb9f4bc94a5fbd24c1d4aac900a7cafbd201"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/qwen3-runtime-v5/qwen3-backend-v5-arm64-v8a.zip",
+      "bytes": 13264271,
+      "sha256": "9f7f1211ff94659ec30a8512b960a860a623339bc28a5fa30ba18840409ff23c"
     }
   ],
   "files": {
-    "accelerated/libggml-htp-v75.so": 974248,
-    "accelerated/libqwen3_jni.so": 23642480,
+    "accelerated/libggml-htp-v73.so": 970152,
+    "accelerated/libggml-htp-v75.so": 970152,
+    "accelerated/libggml-htp-v79.so": 990728,
+    "accelerated/libggml-htp-v81.so": 1003080,
+    "accelerated/libggml-htp-v85.so": 1003080,
+    "accelerated/libqwen3_jni.so": 23606360,
     "assets/checkpoint-layout.json": 66183,
     "assets/checkpoint-metadata.bin": 5922511,
-    "assets/qwen-vk2-1124406273-2150531084.bin": 315456,
-    "bridge.json": 382,
+    "bridge.json": 322,
     "cpu/libqwen3_jni.so": 2353496,
     "libqwen3_checkpoint.so": 53136,
-    "libqwen3_probe.so": 6104,
     "licenses/Qwen3-TTS-LICENSE.txt": 11544,
-    "licenses/VoiceBox-LICENSE.txt": 34020,
+    "licenses/VoiceBox-LICENSE.txt": 34255,
     "licenses/ggml-LICENSE.txt": 1099,
     "licenses/qwentts-LICENSE.txt": 1087,
-    "tasks.jar": 38176
+    "tasks.jar": 37258
   },
   "initialResourcePacks": [
     {

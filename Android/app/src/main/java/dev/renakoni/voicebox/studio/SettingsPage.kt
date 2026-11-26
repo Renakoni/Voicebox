@@ -32,6 +32,7 @@ import dev.renakoni.voicebox.core.i18n.UiText
 
 @Composable
 internal fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openProject: () -> Unit, modifier: Modifier) {
+    LaunchedEffect(vm) { vm.readDeviceAccelerator() }
     val resources = LocalResources.current
     Column(modifier.fillMaxHeight()) {
         PageHeader(stringResource(R.string.settings))

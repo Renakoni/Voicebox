@@ -19,6 +19,8 @@ class BridgePackageSpec(json: JSONObject) {
     val id = json.getString("id")
     val displayName = json.optString("displayName", id)
     val minAppVersionCode = if (json.has("minAppVersionCode")) json.getLong("minAppVersionCode") else 1L
+    val minSdk = json.optInt("minSdk")
+    val requiresVulkan12Storage16 = json.optBoolean("requiresVulkan12Storage16")
     val revision = json.getString("revision")
     val abi = json.getString("abi")
     val entry = json.getString("entry")
@@ -89,26 +91,32 @@ class BridgePackages(private val context: Context) {
 
 data class InstalledBridge(val spec: BridgePackageSpec, val directory: File)
 
-enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, CURRENT }
+enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, CURRENT, INCOMPATIBLE }
 
 class BridgePackage(
     private val root: File, val spec: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
 ) {
-    val supported get() = spec.abi == abi
+    private val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
+    val supported get() = compatiblePlatform &&
+        (if (spec.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute)
     val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
-    val active get() = installedDirectory()?.takeIf { it.parentFile?.name == spec.revision }?.let { InstalledBridge(spec, it) }
-    val installState get() = when (installedDirectory()?.parentFile?.name) {
-        null -> BridgeInstallState.MISSING
-        spec.revision -> BridgeInstallState.CURRENT
-        else -> BridgeInstallState.UPDATE_REQUIRED
-    }
+    val active get() = installedDirectory()?.takeIf { compatiblePlatform && spec.minAppVersionCode <= appVersion && it.parentFile?.name == spec.revision }
+        ?.let { InstalledBridge(spec, it) }
+    val installState get() = installedDirectory()?.let {
+        when {
+            !supported -> BridgeInstallState.INCOMPATIBLE
+            spec.minAppVersionCode > appVersion -> BridgeInstallState.UPDATE_REQUIRED
+            it.parentFile?.name == spec.revision -> BridgeInstallState.CURRENT
+            else -> BridgeInstallState.UPDATE_REQUIRED
+        }
+    } ?: BridgeInstallState.MISSING
     val installed get() = installState == BridgeInstallState.CURRENT
 
     private fun installedDirectory(): File? {
-        if (!installable || !receipt.isFile) return null
+        if (!receipt.isFile) return null
         return runCatching {
             val json = JSONObject(receipt.readText())
             val revision = json.getString("revision")

@@ -24,7 +24,6 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
@@ -39,6 +38,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import dev.renakoni.voicebox.MingModelPackage
+import dev.renakoni.voicebox.QwenModelPackage
 import dev.renakoni.voicebox.R
 import dev.renakoni.voicebox.VoiceBoxBackendService
 import dev.renakoni.voicebox.core.BridgeInstallState
@@ -71,29 +71,19 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val spec = archive.spec
     val name = spec.displayName
     val colors = MaterialTheme.colorScheme
-    if (!archive.supported && !vm.modelPreview) {
-        StudioCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) { heading() }
-                .heightIn(min = 72.dp).padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                GlyphTile(Modifier.alpha(.5f)) {
-                    Icon(painterResource(R.drawable.ic_models), null, Modifier.size(20.dp))
-                }
-                Text(name, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                StatusTag(stringResource(R.string.model_device_unsupported))
-            }
-        }
-        return
-    }
+    val states = vm.bridgeStates
     val resources = LocalResources.current
     val context = LocalContext.current
-    val states = vm.bridgeStates
     val bridgeState = states?.get(spec.id)
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
     val ming = spec.id == MingModelPackage.BACKEND
-    val packs = vm.resourcePacks[spec.id] ?: spec.initialResourcePacks
-    val partsInstalled = listOf(bridgeReady) + packs.map { it.installed }
+    val qwen = spec.id == QwenModelPackage.BACKEND
+    val unsupported = states != null && !vm.modelPreview &&
+        (!archive.supported || vm.gpuRejected(spec.id))
+    val storedBridge = bridgeReady || bridgeState == BridgeInstallState.INCOMPATIBLE
+    val packs = (vm.resourcePacks[spec.id] ?: spec.initialResourcePacks) +
+        listOfNotNull(vm.qwenVoiceWeights?.takeIf { qwen && !bridgeReady && unsupported && it.installed })
+    val partsInstalled = listOf(storedBridge) + packs.map { it.installed }
     val ready = partsInstalled.count { it }
     val total = partsInstalled.size
     val remaining = packs.sumOf { it.remainingBytes } + if (bridgeReady) 0L else spec.downloadBytes
@@ -102,7 +92,9 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     var expanded by rememberSaveable(spec.id) { mutableStateOf(false) }
     val expansion = stringResource(if (expanded) R.string.expanded else R.string.collapsed)
     val complete = ready == total
+    val canExpand = !unsupported || ready > 0
     val status = when {
+        unsupported -> stringResource(R.string.model_device_unsupported)
         states == null || download?.running == true -> null
         expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         complete -> stringResource(R.string.backend_installed)
@@ -110,7 +102,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, tween(220), label = "chevron")
     StudioCard(Modifier.fillMaxWidth()) {
-        Row(Modifier.fillMaxWidth().clickable(role = Role.Button) { expanded = !expanded }
+        Row(Modifier.fillMaxWidth().clickable(enabled = canExpand, role = Role.Button) { expanded = !expanded }
             .semantics { stateDescription = expansion }
             .heightIn(min = 72.dp).padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -122,14 +114,14 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (status != null) Row(verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (complete) Box(Modifier.size(6.dp).clip(CircleShape).background(colors.primary))
+                    if (complete && !unsupported) Box(Modifier.size(6.dp).clip(CircleShape).background(colors.primary))
                     Text(status, style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = Tabular),
                         color = colors.onSurfaceVariant)
                 }
             }
-            Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp).rotate(chevron), tint = colors.onSurfaceVariant)
+            if (canExpand) Icon(Icons.Default.KeyboardArrowDown, null, Modifier.size(20.dp).rotate(chevron), tint = colors.onSurfaceVariant)
         }
-        if (states != null && download?.running != true && total > 1) {
+        if (!unsupported && states != null && download?.running != true && total > 1) {
             SegmentMeter(partsInstalled, Modifier.padding(horizontal = 16.dp).padding(bottom = 14.dp))
         }
         if (download?.running == true) {
@@ -160,19 +152,19 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
             Text(it.resolve(resources), Modifier.padding(horizontal = 16.dp).padding(bottom = 12.dp),
                 style = MaterialTheme.typography.bodySmall, color = colors.error)
         }
-        AnimatedVisibility(expanded && states != null,
+        AnimatedVisibility(expanded && canExpand && states != null,
             enter = expandVertically(tween(220)) + fadeIn(tween(180)),
             exit = shrinkVertically(tween(200)) + fadeOut(tween(120))) {
             Column {
                 HorizontalDivider(color = colors.outlineVariant.copy(alpha = .6f))
                 Column(Modifier.padding(vertical = 4.dp)) {
-                    ModelPart(stringResource(R.string.model_bridge),
-                        spec.downloadBytes, bridgeReady,
-                        enabled && (bridgeReady || archive.installable),
+                    if (!unsupported || storedBridge) ModelPart(stringResource(R.string.model_bridge),
+                        spec.downloadBytes, storedBridge,
+                        enabled && (storedBridge || archive.installable),
                         updateRequired = bridgeState == BridgeInstallState.UPDATE_REQUIRED,
                         remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
                         install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
-                    packs.forEach { pack ->
+                    packs.filter { !unsupported || it.installed }.forEach { pack ->
                         key(pack.id) {
                             val title = if (ming) stringResource(MingModelPackage.partTitle(pack.id))
                                 else UiText(pack.titleKey).resolve(resources)
@@ -184,7 +176,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 }
             }
         }
-        if (states != null && !complete && (archive.installable || vm.modelPreview) &&
+        if (!unsupported && states != null && !complete && (archive.installable || vm.modelPreview) &&
             download?.running != true) {
             StudioButton({ vm.installModelParts(spec.id, null) },
                 enabled = enabled, style = StudioButtonStyle.Secondary,
