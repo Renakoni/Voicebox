@@ -28,11 +28,8 @@ internal class MingModelPackage(context: Context) {
         }
     }
 
-    fun modelParts(htpAvailable: Boolean) = if (htpAvailable) listOf(CLONE, HTP) else listOf(CLONE)
-
-    fun modelPacks(htpAvailable: Boolean) = listOf(pack(CLONE), pack(HTP)).filter {
-        it.id != HTP || htpAvailable || it.installed
-    }
+    val modelParts = listOf(CLONE, HTP)
+    fun modelPacks() = modelParts.map(::pack)
     fun officialPack() = pack(OFFICIAL)
 
     private fun pack(part: String): ResourcePack {

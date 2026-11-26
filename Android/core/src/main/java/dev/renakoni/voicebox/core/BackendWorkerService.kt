@@ -83,16 +83,11 @@ class BackendWorkerService : Service() {
             }
             when (what) {
                 WorkerProtocol.PROBE -> {
-                    val modes = runCatching { backend.executionModes() }.getOrElse {
-                        Log.w("VoiceBoxWorker", "Execution mode probe failed for ${backend.id}", it)
-                        setOf(ExecutionBackend.CPU)
+                    if (data.getBoolean("npu")) {
+                        result.putBoolean("npu", backend.accelerationInfo()?.available == true)
+                    } else {
+                        result.putStringArrayList("modes", ArrayList(backend.executionModes().map { it.name }))
                     }
-                    result.putStringArrayList("modes", ArrayList(modes.map { it.name }))
-                    val npu = ExecutionBackend.WEBGPU in modes && runCatching { backend.accelerationInfo()?.available == true }.getOrElse {
-                        Log.w("VoiceBoxWorker", "NPU probe failed for ${backend.id}", it)
-                        false
-                    }
-                    result.putBoolean("npu", npu)
                 }
                 WorkerProtocol.LIBRARY -> {
                     val library = backend as VoiceLibrary

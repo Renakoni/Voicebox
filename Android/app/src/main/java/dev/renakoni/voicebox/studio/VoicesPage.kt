@@ -173,22 +173,25 @@ private fun MingOfficialVoiceRow(vm: StudioViewModel, pack: ResourcePack, voice:
     val colors = MaterialTheme.colorScheme
     val title = vm.mingName
     val weightTitle = resources.getString(R.string.ming_official_weights)
+    val unsupported = vm.gpuRejected(MingModelPackage.BACKEND)
     val status = vm.officialDownload.takeIf { it.voice == MingModelPackage.modelRef }
     val downloading = status?.running == true
     val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
     val installed = pack.installed || vm.modelPreview
     val selected = voice != null && vm.selectedId == voice.id && vm.creationSettings.preset != null
-    VoiceTile(shape, selected, enabled = enabled && installed,
+    VoiceTile(shape, selected, enabled = enabled && installed && !unsupported,
         onClick = { if (voice == null) vm.tab = StudioTab.MODELS else browse() },
         avatar = { RingedAvatar(title, voice?.avatarPath.orEmpty(), selected, dim = !installed) },
         trailing = {
-            OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload) {
+            if (unsupported && !installed) StatusTag(resources.getString(R.string.model_device_unsupported))
+            else OfficialWeightAction(weightTitle, installed, enabled, status, vm::downloadMingVoices, vm::cancelOfficialDownload) {
                 vm.removeModelPart(MingModelPackage.BACKEND, MingModelPackage.OFFICIAL)
             }
         }) {
         Text(title, style = MaterialTheme.typography.titleMedium, color = if (installed) colors.onSurface else colors.onSurfaceVariant)
         val error = status?.error
         val detail = when {
+            unsupported -> if (installed) resources.getString(R.string.model_device_unsupported) else null
             downloading -> weightTitle + (status.percent?.let { " · $it%" } ?: "")
             !installed && error != null -> error.resolve(resources)
             !installed -> resources.getString(R.string.ming_official_weights_download,
@@ -251,7 +254,7 @@ private fun OfficialVoiceRow(vm: StudioViewModel, model: OfficialVoice, shape: S
     val downloading = status?.running == true
     val selected = voice != null && voice.id == vm.selectedId
     val name = model.displayName(resources)
-    val unsupported = qwen && vm.qwenGpuRejected
+    val unsupported = vm.gpuRejected(model.ref.backendId)
     val enabled = !vm.modelPreview && vm.connected && !vm.loading && !vm.busy && !vm.fileBusy
     VoiceTile(shape, selected, enabled = installed && enabled && !unsupported,
         onClick = {

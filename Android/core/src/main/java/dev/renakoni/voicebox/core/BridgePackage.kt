@@ -98,7 +98,8 @@ class BridgePackage(
     private val imports: File? = null,
 ) {
     private val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
-    val supported get() = compatiblePlatform && (!spec.requiresVulkan12Storage16 || DeviceFacts.hasVulkan12Storage16)
+    val supported get() = compatiblePlatform &&
+        (if (spec.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute)
     val installable get() = supported && spec.minAppVersionCode <= appVersion
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
@@ -106,7 +107,8 @@ class BridgePackage(
         ?.let { InstalledBridge(spec, it) }
     val installState get() = installedDirectory()?.let {
         when {
-            !installable -> BridgeInstallState.INCOMPATIBLE
+            !supported -> BridgeInstallState.INCOMPATIBLE
+            spec.minAppVersionCode > appVersion -> BridgeInstallState.UPDATE_REQUIRED
             it.parentFile?.name == spec.revision -> BridgeInstallState.CURRENT
             else -> BridgeInstallState.UPDATE_REQUIRED
         }

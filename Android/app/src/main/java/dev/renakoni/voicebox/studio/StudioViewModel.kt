@@ -162,8 +162,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     var preview by mutableStateOf(PreviewState()); private set
     internal var streamPreview by mutableStateOf<StreamPlayback?>(null); private set
     private var probes by mutableStateOf(emptyMap<String, Set<ExecutionBackend>>())
-    internal val qwenGpuRejected get() = bridgeStates?.get(QwenModelPackage.BACKEND) == BridgeInstallState.CURRENT &&
-        probes[QwenModelPackage.BACKEND]?.contains(ExecutionBackend.WEBGPU) == false
+    internal fun gpuRejected(id: String) = bridgeStates?.get(id) == BridgeInstallState.CURRENT &&
+        probes[id]?.contains(ExecutionBackend.WEBGPU) == false
     private val availableBackends get() = selectedVoice?.let(::modelFor)?.let { model ->
         model.executionModes intersect probes[model.ref.backendId].orEmpty()
     }.orEmpty()
@@ -275,10 +275,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    internal suspend fun readDeviceAccelerator() {
+        if (deviceNpuAvailable == null) deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasDeviceAccelerator }
+    }
+
     init {
         viewModelScope.launch {
             gpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute }
-            deviceNpuAvailable = withContext(Dispatchers.IO) { DeviceFacts.hasDeviceAccelerator }
         }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
@@ -332,9 +335,8 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
                     }
                     val auxiliary = discovered.filter { modelsRepository.provider(it).supportsAuxiliaryReferences(it) }.associate { it.ref to it.maxAuxiliaryReferences }
                     val presets = discovered.associate { it.ref to modelsRepository.provider(it).voicePresets(it) }
-                    val mingPacks = ming.modelPacks(modelPreview || modelsRepository.provider(MingModelPackage.BACKEND).npuAvailable)
                     ResourcesSnapshot(discovered, voices, ready, catalog, auxiliary, states,
-                        providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to mingPacks),
+                        providers.associate { it.id to it.capabilities }, packs + (MingModelPackage.BACKEND to ming.modelPacks()),
                         presets, inputs, mingWeights, qwenWeights)
                 }
                 models = data.models

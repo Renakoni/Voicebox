@@ -288,16 +288,15 @@ class VoiceBoxBackendService : Service() {
         enabledBackends.value += provider.id to provider.executionModes()
     }
 
-    private fun requireQwenGpu() {
-        check(ExecutionBackend.WEBGPU in enabledBackends.value[QwenModelPackage.BACKEND].orEmpty()) {
+    private fun requireGpu(id: String) {
+        check(ExecutionBackend.WEBGPU in enabledBackends.value[id].orEmpty()) {
             getString(R.string.model_device_unsupported)
         }
     }
 
     fun downloadOfficialModel(voice: OfficialVoice): Boolean = downloadOnWorker(OfficialDownloadState(voice = voice.ref)) { context, progress ->
+        requireGpu(voice.ref.backendId)
         if (voice.ref.backendId == QwenModelPackage.BACKEND) {
-            require(app.bridgePackages.get(QwenModelPackage.BACKEND).installed)
-            requireQwenGpu()
             app.qwenModelPackage.install(QwenModelPackage.TALKER, context::checkCancelled) { percent ->
                 progress(UiText.literal(voice.name), percent)
             }
@@ -340,17 +339,16 @@ class VoiceBoxBackendService : Service() {
                 provider.invalidateMetadata()
                 refreshBackendModes(provider)
             }
+            if (!codecOnly || archive.installed) requireGpu(id)
             if (part != BRIDGE_PART && id == QwenModelPackage.BACKEND) {
                 require(part == null || part == QwenModelPackage.CODEC)
-                if (archive.installed) requireQwenGpu()
                 app.qwenModelPackage.install(QwenModelPackage.CODEC, context::checkCancelled) { percent ->
                     progress(UiText(R.string.qwen_audio_codec), percent)
                 }
             } else if (part != BRIDGE_PART && id == MingModelPackage.BACKEND) {
                 val model = app.mingModelPackage
-                val supported = model.modelParts(provider.npuAvailable)
-                require(part == null || part in supported)
-                val parts = part?.let(::listOf) ?: supported
+                require(part == null || part in model.modelParts)
+                val parts = part?.let(::listOf) ?: model.modelParts
                 parts.forEach { component ->
                     val label = UiText(MingModelPackage.partTitle(component))
                     model.install(component, context::checkCancelled) { percent ->
@@ -405,6 +403,7 @@ class VoiceBoxBackendService : Service() {
         if (!archive.installed) return false
         val target = OfficialDownloadState(voice = MingModelPackage.modelRef)
         return downloadOnWorker(target) { context, progress ->
+            requireGpu(MingModelPackage.BACKEND)
             app.mingModelPackage.install(MingModelPackage.OFFICIAL, context::checkCancelled) { percent ->
                 progress(UiText(R.string.ming_official_weights), percent)
             }

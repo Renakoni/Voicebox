@@ -78,7 +78,8 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
     val ming = spec.id == MingModelPackage.BACKEND
     val qwen = spec.id == QwenModelPackage.BACKEND
-    val unsupported = states != null && !vm.modelPreview && (!archive.supported || bridgeState == BridgeInstallState.INCOMPATIBLE || (qwen && vm.qwenGpuRejected))
+    val unsupported = states != null && !vm.modelPreview &&
+        (!archive.supported || vm.gpuRejected(spec.id))
     val storedBridge = bridgeReady || bridgeState == BridgeInstallState.INCOMPATIBLE
     val packs = (vm.resourcePacks[spec.id] ?: spec.initialResourcePacks) +
         listOfNotNull(vm.qwenVoiceWeights?.takeIf { qwen && !bridgeReady && unsupported && it.installed })

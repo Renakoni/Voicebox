@@ -20,6 +20,7 @@ internal object QwenDevices {
         val arch = DeviceFacts.hexagonArch
         if (arch < 73 || !File(directory, "accelerated/libggml-htp-v${arch}.so").isFile) return false
         configureHtp(directory)
+        System.load(acceleratedLibrary(directory).absolutePath)
         return probe(true)
     }
 
