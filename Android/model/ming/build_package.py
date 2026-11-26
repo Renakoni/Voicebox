@@ -14,7 +14,7 @@ import tempfile
 import zipfile
 
 ROOT = Path(__file__).resolve().parent
-VERSION = '4'
+VERSION = '5'
 ABI = 'arm64-v8a'
 PROBE = ROOT.parent / 'gptsovits/src/main/assets/device-acceleration/probe.onnx'
 QNN_LIBRARIES = ('libQnnHtp.so', 'libQnnHtpPrepare.so', 'libQnnSystem.so')
