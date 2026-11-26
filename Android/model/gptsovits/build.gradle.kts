@@ -68,7 +68,6 @@ abstract class BundleGptBridge @Inject constructor(private val exec: ExecOperati
     @get:Input abstract val buildTools: Property<String>
     @get:Input abstract val abi: Property<String>
     @get:Input abstract val commit: Property<String>
-    @get:Input abstract val releaseUrl: Property<String>
     @get:Internal abstract val sdk: DirectoryProperty
     @get:OutputDirectory abstract val output: DirectoryProperty
 
@@ -76,8 +75,7 @@ abstract class BundleGptBridge @Inject constructor(private val exec: ExecOperati
         exec.exec {
             commandLine("python", packer.get().asFile, "--aar", component.get().asFile, "--runtime", ort.singleFile,
                 "--zip4j", zip.singleFile, "--sdk", sdk.get().asFile, "--build-tools", buildTools.get(), "--output", output.get().asFile,
-                "--platform", platform.get().asFile, "--audit", audit.get().asFile, "--abi", abi.get(), "--commit", commit.get(),
-                "--release-url", releaseUrl.get())
+                "--platform", platform.get().asFile, "--audit", audit.get().asFile, "--abi", abi.get(), "--commit", commit.get())
         }
     }
 }
@@ -94,7 +92,6 @@ androidComponents.onVariants { variant ->
         buildTools.set(android.buildToolsVersion)
         abi.set(if (variant.name == "debug") providers.gradleProperty("voiceboxAbi").getOrElse("arm64-v8a") else "arm64-v8a")
         commit.set(providers.exec { commandLine("git", "rev-parse", "HEAD") }.standardOutput.asText.map { it.trim() })
-        releaseUrl.set("https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v5")
         output.set(layout.buildDirectory.dir("outputs/bridge/${variant.name}"))
     }
 }

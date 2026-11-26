@@ -11,12 +11,14 @@ param(
 # ORT v1.27.0, arm64 Android API 30. The Java/JNI binding is reused from
 # the matching official AAR; this builds its C API runtime replacement.
 $ErrorActionPreference = 'Stop'
+# The reverse check returns nonzero on a fresh checkout. Handle native exit codes below.
+$PSNativeCommandUseErrorActionPreference = $false
 $SourceDir = (Resolve-Path -LiteralPath $SourceDir).Path
 $BuildEnv = (Resolve-Path -LiteralPath $BuildEnv).Path
 $Protoc = (Resolve-Path -LiteralPath $Protoc).Path
 $BuildDir = [IO.Path]::GetFullPath($BuildDir)
 $adrenoPatch = (Resolve-Path -LiteralPath "$PSScriptRoot/../Android/model/gptsovits/patches/onnxruntime-1.27-webgpu-adreno660.patch").Path
-& git -C $SourceDir apply --reverse --check $adrenoPatch 2>$null
+& git -C $SourceDir apply --quiet --reverse --check $adrenoPatch
 if ($LASTEXITCODE -ne 0) {
     & git -C $SourceDir apply $adrenoPatch
     if ($LASTEXITCODE -ne 0) { throw "Could not apply the Adreno 660 WebGPU fix to $SourceDir." }

@@ -9,6 +9,8 @@ import subprocess
 import tempfile
 import zipfile
 
+VERSION = '5'
+
 
 def digest(path):
     with path.open('rb') as source:
@@ -29,7 +31,7 @@ def main():
     parser.add_argument('--build-tools', required=True)
     parser.add_argument('--abi', required=True, choices=('arm64-v8a', 'x86_64'))
     parser.add_argument('--commit', required=True)
-    parser.add_argument('--release-url', required=True)
+    parser.add_argument('--release-url', default=f'https://github.com/Renakoni/Voicebox/releases/download/gptsovits-runtime-v{VERSION}')
     args = parser.parse_args()
     if not args.release_url.startswith('https://'):
         parser.error('The release URL must use HTTPS')
@@ -87,7 +89,7 @@ def main():
                 files = {entry.filename: entry.file_size for entry in archive.infolist()}
         sha = digest(package)
         catalog = dict(manifest, format=2, displayName='GPT-SoVITS', initialResourcePacks=resource_packs,
-                       revision=sha, version='5', files=files, parts=[
+                       revision=sha, version=VERSION, files=files, parts=[
             dict(url=args.release_url.rstrip('/') + '/' + package.name, bytes=package.stat().st_size, sha256=sha)])
         catalog_file = work / 'gptsovits.json'
         catalog_file.write_text(json.dumps(catalog, indent=2) + '\n', encoding='utf-8')
