@@ -9,7 +9,18 @@ class AppSettingsRepository(
         SharedPreferencesStorage(
             context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE),
         ),
-    )
+    ) {
+        if (storage.getString(KEY_ACCELERATION_MODE, "").isEmpty()) {
+            val studio = context.getSharedPreferences("voice_studio", Context.MODE_PRIVATE)
+            accelerationMode = when {
+                !studio.getBoolean("gpu", true) -> AccelerationMode.OFF
+                storage.getBoolean("device_acceleration", true) -> AccelerationMode.GPU_NPU
+                else -> AccelerationMode.GPU
+            }
+        }
+    }
+
+    enum class AccelerationMode { OFF, GPU, GPU_NPU }
 
     enum class ThemeMode(
         val storageValue: String,
@@ -42,9 +53,9 @@ class AppSettingsRepository(
             storage.putBoolean(KEY_API_ENABLED, value)
         }
 
-    var deviceAccelerationEnabled: Boolean
-        get() = storage.getBoolean("device_acceleration", true)
-        set(value) { storage.putBoolean("device_acceleration", value) }
+    var accelerationMode: AccelerationMode
+        get() = AccelerationMode.valueOf(storage.getString(KEY_ACCELERATION_MODE, AccelerationMode.GPU_NPU.name))
+        set(value) { storage.putString(KEY_ACCELERATION_MODE, value.name) }
 
     var apiPort: Int
         get() = storage.getInt(KEY_API_PORT, DEFAULT_API_PORT).coerceIn(MIN_API_PORT, MAX_API_PORT)
@@ -94,6 +105,7 @@ class AppSettingsRepository(
 
     companion object {
         private const val PREFERENCES_NAME = "voicebox_settings"
+        private const val KEY_ACCELERATION_MODE = "acceleration_mode"
         private const val KEY_THEME_MODE = "theme_mode"
         private const val KEY_API_ENABLED = "api_enabled"
         private const val KEY_API_PORT = "api_port"

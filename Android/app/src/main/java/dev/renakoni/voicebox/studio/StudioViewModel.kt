@@ -38,6 +38,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.AppSettingsRepository
+import dev.renakoni.voicebox.AppSettingsRepository.AccelerationMode
 import dev.renakoni.voicebox.BackendServiceListener
 import dev.renakoni.voicebox.BackendServiceState
 import dev.renakoni.voicebox.VoiceBoxBackendService
@@ -170,10 +171,13 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         model.executionModes intersect backendModes[model.ref.backendId].orEmpty()
     }.orEmpty()
     var gpuAvailable by mutableStateOf(false); private set
-    var gpuEnabled by mutableStateOf(store.gpuEnabled); private set
+    private var accelerationMode by mutableStateOf(settings.accelerationMode)
+    val gpuEnabled get() = accelerationMode != AccelerationMode.OFF
+    val canUseDeviceAcceleration get() = gpuEnabled && gpuAvailable && deviceNpuSupport == DeviceFacts.NpuSupport.AVAILABLE
+    val deviceAccelerationEnabled get() = canUseDeviceAcceleration && accelerationMode == AccelerationMode.GPU_NPU
     var recheckingModel by mutableStateOf<String?>(null); private set
     val deviceFacts = DeviceFacts.read(app)
-    var deviceNpuAvailable by mutableStateOf<Boolean?>(null); private set
+    var deviceNpuSupport by mutableStateOf<DeviceFacts.NpuSupport?>(null); private set
     private var auxiliaryLimits by mutableStateOf(emptyMap<ModelRef, Int>())
     private var auxiliarySelection by mutableStateOf(emptyMap<String, List<String>>())
     val auxiliaryLimit get() = auxiliaryLimits[selectedVoice?.model] ?: 0
@@ -187,7 +191,6 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         syncDefaults()
     }
 
-    var deviceAccelerationEnabled by mutableStateOf(settings.deviceAccelerationEnabled); private set
     var theme by mutableStateOf(settings.themeMode); private set
     var apiEnabled by mutableStateOf(settings.apiEnabled); private set
     var apiPort by mutableStateOf(settings.apiPort.toString()); private set
@@ -283,9 +286,12 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     init {
         checkBridgeOffers()
         viewModelScope.launch {
-            val (gpu, npu) = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute to DeviceFacts.hasDeviceAccelerator }
+            val (gpu, npu) = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute to DeviceFacts.npuSupport }
             gpuAvailable = gpu
-            deviceNpuAvailable = npu
+            deviceNpuSupport = npu
+            if (npu == DeviceFacts.NpuSupport.UNAVAILABLE && accelerationMode == AccelerationMode.GPU_NPU) {
+                updateAccelerationMode(AccelerationMode.GPU)
+            }
         }
         runCatching {
             val intent = VoiceBoxBackendService.serviceIntent(app)
@@ -1008,16 +1014,20 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setGpu(enabled: Boolean) {
-        if (busy) return
-        gpuEnabled = enabled
-        store.gpuEnabled = enabled
-        syncDefaults()
+        if (busy || enabled == gpuEnabled || (enabled && !gpuAvailable)) return
+        updateAccelerationMode(if (enabled) AccelerationMode.GPU else AccelerationMode.OFF)
     }
     fun setDeviceAcceleration(enabled: Boolean) {
-        if (busy) return
-        deviceAccelerationEnabled = enabled
-        settings.deviceAccelerationEnabled = enabled
-        ContextCompat.startForegroundService(app, VoiceBoxBackendService.serviceIntent(app)
+        if (busy || !canUseDeviceAcceleration || enabled == deviceAccelerationEnabled) return
+        updateAccelerationMode(if (enabled) AccelerationMode.GPU_NPU else AccelerationMode.GPU)
+    }
+    private fun updateAccelerationMode(mode: AccelerationMode) {
+        val hadGpu = gpuEnabled
+        val hadNpu = deviceAccelerationEnabled
+        settings.accelerationMode = mode
+        accelerationMode = mode
+        if (hadGpu != gpuEnabled) syncDefaults()
+        if (hadNpu != deviceAccelerationEnabled) ContextCompat.startForegroundService(app, VoiceBoxBackendService.serviceIntent(app)
             .setAction(VoiceBoxBackendService.ACTION_RELOAD_INFERENCE_SETTINGS))
     }
     fun changeTheme(value: AppSettingsRepository.ThemeMode) { theme = value; settings.themeMode = value }

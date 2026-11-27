@@ -107,8 +107,8 @@
     <string name="npu_runtime_missing">NPU acceleration components are missing</string>
     <string name="npu_unavailable">NPU unavailable</string>
     <string name="npu_available">NPU available</string>
-    <string name="npu_device_supported">Device supports NPU</string>
-    <string name="npu_device_unconfirmed">Device NPU support unconfirmed</string>
+    <string name="npu_device_supported">NPU supported</string>
+    <string name="npu_device_unsupported">NPU not supported</string>
     <string name="model_v5_dev_unsupported">V5 Dev · Unsupported</string>
     <string name="model_v5_pending">V5 · To be confirmed on import</string>
     <string name="model_lora_unsupported">LoRA · Unsupported</string>

@@ -9,6 +9,15 @@ import java.io.File
 data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: String, val model: String,
     val fingerprint: String, val abi: String) {
     data class GpuRecheck(val changed: Boolean, val conclusive: Boolean)
+    enum class NpuSupport { AVAILABLE, UNAVAILABLE, UNKNOWN;
+        companion object {
+            internal fun fromProbe(hexagon: Int, accelerator: Int) = when {
+                hexagon > 0 || accelerator > 0 -> AVAILABLE
+                hexagon == 0 && accelerator == 0 -> UNAVAILABLE
+                else -> UNKNOWN
+            }
+        }
+    }
 
     companion object {
         @JvmStatic private external fun queryHexagonArch(): Int
@@ -54,7 +63,7 @@ data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: 
         private fun measureVulkan(previous: Vulkan): Vulkan {
             val cacheable = BooleanArray(1)
             val measured = try {
-                System.loadLibrary("voicebox_device_npu")
+                System.loadLibrary("voicebox_device_gpu")
                 queryVulkanCompute(cacheable)
             } catch (error: LinkageError) {
                 android.util.Log.w("VoiceBoxProbe", "Could not load device GPU probe", error)
@@ -81,7 +90,8 @@ data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: 
         }
 
         val hexagonArch get() = workerHexagonArch ?: npu.value.hexagon
-        val hasDeviceAccelerator get() = npu.value.accelerator > 0
+        val npuSupport get() = npu.value.let { NpuSupport.fromProbe(it.hexagon, it.accelerator) }
+        val hasDeviceAccelerator get() = npuSupport == NpuSupport.AVAILABLE
         internal val vulkanLevel get() = workerVulkanLevel ?: vulkan.value.level
         val hasVulkanCompute get() = vulkanLevel > 0
         val hasVulkan12Storage16 get() = vulkanLevel == 2

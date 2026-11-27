@@ -10,5 +10,8 @@ add_library(voicebox_silk SHARED qq_silk.cpp ${SILK_SOURCES})
 target_include_directories(voicebox_silk PRIVATE third_party/silk/interface third_party/silk/src)
 target_compile_definitions(voicebox_silk PRIVATE NO_ASM)
 
-add_library(voicebox_device_npu SHARED device_npu.cpp vulkan_compute.cpp)
-target_link_libraries(voicebox_device_npu PRIVATE neuralnetworks dl vulkan)
+add_library(voicebox_device_gpu SHARED vulkan_compute.cpp)
+target_link_libraries(voicebox_device_gpu PRIVATE vulkan)
+
+add_library(voicebox_device_npu SHARED device_npu.cpp)
+target_link_libraries(voicebox_device_npu PRIVATE dl)

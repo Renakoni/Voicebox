@@ -107,8 +107,8 @@
     <string name="npu_runtime_missing">缺少 NPU 加速组件</string>
     <string name="npu_unavailable">NPU 不可用</string>
     <string name="npu_available">NPU 验证通过</string>
-    <string name="npu_device_supported">设备支持 NPU</string>
-    <string name="npu_device_unconfirmed">未确认设备 NPU 支持</string>
+    <string name="npu_device_supported">支持NPU</string>
+    <string name="npu_device_unsupported">不支持NPU</string>
     <string name="model_v5_dev_unsupported">V5 Dev · 暂不支持</string>
     <string name="model_v5_pending">V5 · 导入时确认版本</string>
     <string name="model_lora_unsupported">LoRA · 暂不支持</string>

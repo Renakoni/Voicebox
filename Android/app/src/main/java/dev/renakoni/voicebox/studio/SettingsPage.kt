@@ -1,6 +1,14 @@
 package dev.renakoni.voicebox.studio
 
 import android.os.Build
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +36,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.AppSettingsRepository.ThemeMode
 import dev.renakoni.voicebox.R
+import dev.renakoni.voicebox.core.DeviceFacts.NpuSupport
 import dev.renakoni.voicebox.core.i18n.UiText
 
 @Composable
@@ -51,17 +60,21 @@ internal fun SettingsPage(vm: StudioViewModel, openAbout: () -> Unit, openProjec
                 }
             }
             SettingsGroup(stringResource(R.string.settings_acceleration)) {
-                SettingsSwitch(stringResource(R.string.gpu_acceleration), vm.gpuEnabled && vm.gpuAvailable,
+                val gpuOn = vm.gpuEnabled && vm.gpuAvailable
+                SettingsSwitch(stringResource(R.string.gpu_acceleration), gpuOn,
                     vm::setGpu, enabled = vm.gpuAvailable && !vm.busy)
-                val device = listOf(vm.deviceFacts.soc, vm.deviceFacts.model).firstOrNull { it.isNotBlank() && it != Build.UNKNOWN }
-                val status = stringResource(when (vm.deviceNpuAvailable) {
-                    true -> R.string.npu_device_supported
-                    false -> R.string.npu_device_unconfirmed
-                    null -> R.string.npu_checking
-                })
-                SettingsSwitch(stringResource(R.string.device_acceleration), vm.deviceAccelerationEnabled,
-                    vm::setDeviceAcceleration, enabled = !vm.busy,
-                    detail = listOfNotNull(status, device).joinToString(" · "))
+                AnimatedVisibility(visible = gpuOn,
+                    enter = expandVertically(tween(180, easing = LinearOutSlowInEasing), expandFrom = Alignment.Top) +
+                        fadeIn(tween(150)),
+                    exit = shrinkVertically(tween(130, easing = FastOutLinearInEasing), shrinkTowards = Alignment.Top) +
+                        fadeOut(tween(90))) {
+                    val device = listOf(vm.deviceFacts.soc, vm.deviceFacts.model).firstOrNull { it.isNotBlank() && it != Build.UNKNOWN }
+                    val status = if (vm.deviceNpuSupport == NpuSupport.AVAILABLE) R.string.npu_device_supported
+                        else R.string.npu_device_unsupported
+                    SettingsSwitch(stringResource(R.string.device_acceleration), vm.deviceAccelerationEnabled,
+                        vm::setDeviceAcceleration, enabled = vm.canUseDeviceAcceleration && !vm.busy,
+                        detail = listOfNotNull(stringResource(status), device).joinToString(" · "))
+                }
             }
             SettingsGroup(stringResource(R.string.settings_local_service)) {
                 SettingsSwitch(stringResource(R.string.local_api), vm.apiEnabled, vm::setApi,

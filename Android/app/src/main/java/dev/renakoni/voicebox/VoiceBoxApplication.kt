@@ -34,7 +34,8 @@ class VoiceBoxApplication : Application() {
                 Bundle().apply {
                     putInt("t2sThreads", settings.t2sCpuThreads)
                     putInt("vocoderThreads", settings.vocoderCpuThreads)
-                    putBoolean("allowNpu", settings.deviceAccelerationEnabled)
+                    putBoolean("allowNpu", settings.accelerationMode == AppSettingsRepository.AccelerationMode.GPU_NPU &&
+                        DeviceFacts.hasDeviceAccelerator)
                 }
             }
         })

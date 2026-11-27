@@ -35,9 +35,6 @@ class StudioStore(context: Context) {
     var text: String
         get() = preferences.getString("text", "").orEmpty()
         set(value) { preferences.edit().putString("text", value).apply() }
-    var gpuEnabled: Boolean
-        get() = preferences.getBoolean("gpu", true)
-        set(value) { preferences.edit().putBoolean("gpu", value).apply() }
 
     fun outputLanguage(backendId: String) = preferences.getString("language/$backendId", null)
     fun saveLanguage(backendId: String, language: String) {
