@@ -83,7 +83,7 @@ class BridgePackages(private val context: Context) {
     }
     fun get(id: String) = packages.single { it.spec.id == id }
     private val releases by lazy { BridgeReleases(packages) }
-    fun refreshOffers() = releases.refresh()
+    fun refreshOffers(gpuChanged: Boolean) = releases.refresh(gpuChanged)
 }
 
 data class InstalledBridge(val id: String, val entry: String, val code: String, val directory: File) {
@@ -97,15 +97,15 @@ enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, UPDATE_AVAILABLE, CURR
 class BridgePackage(
     private val root: File, internal val bundled: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
+    private val supportsGpu: (BridgePackageSpec) -> Boolean = {
+        if (it.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute
+    },
 ) {
     @Volatile var spec = bundled
         internal set
     val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
     val supported get() = compatiblePlatform && supportsGpu(spec)
     val installable get() = supported && spec.minAppVersionCode <= appVersion
-
-    private fun supportsGpu(candidate: BridgePackageSpec) =
-        if (candidate.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute
 
     internal fun accepts(candidate: BridgePackageSpec) =
         candidate.matchesHost(bundled, abi, android.os.Build.VERSION.SDK_INT, appVersion) && supportsGpu(candidate)

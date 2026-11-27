@@ -20,6 +20,7 @@ ANDROID = ROOT.parents[1]
 ABI = "arm64-v8a"
 VERSION = "6"
 CONTRACT = 1  # Bump only when this bridge needs a different host interface.
+MIN_APP_VERSION_CODE = 13
 HTP_ARCHES = (73, 75, 79, 81, 85)
 UPSTREAM = "2edb35f87b709a070b2d5379f77e5c52a1daa585"
 WEIGHTS = ("qwen-talker-0.6b-base-Q4_K_M.gguf", "qwen-tokenizer-12hz-F32.gguf")
@@ -130,7 +131,7 @@ def main():
     for path in sorted(sources + list((ROOT / "src").rglob("*.kt")) + list((ROOT / "src").rglob("*.java"))):
         adapter_source.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes().replace(b"\r\n", b"\n"))
     manifest = dict(contract=CONTRACT, id="qwen3", entry="dev.renakoni.voicebox.model.qwen3.QwenEntry", code="tasks.jar",
-                    abi=ABI, minAppVersionCode=13, sourceCommit=UPSTREAM, adapterSourceSha256=adapter_source.hexdigest())
+                    abi=ABI, minAppVersionCode=MIN_APP_VERSION_CODE, sourceCommit=UPSTREAM, adapterSourceSha256=adapter_source.hexdigest())
     files["bridge.json"] = json_bytes(manifest)
     archive = imports / f"qwen3-backend-v{VERSION}-{ABI}.zip"
     write_zip(archive, files)

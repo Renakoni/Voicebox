@@ -88,6 +88,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private val settings = AppSettingsRepository(app)
     val backendPackages = app.bridgePackages.packages.sortedBy { it.spec.displayName }
     var bridgeOffers by mutableStateOf(backendPackages.associate { it.spec.id to it.spec }); private set
+    internal var bridgeOffersReady by mutableStateOf(false); private set
     var bridgeStates by mutableStateOf<Map<String, BridgeInstallState>?>(null); private set
     var resourcePacks by mutableStateOf<Map<String, List<ResourcePack>>>(emptyMap()); private set
     internal var mingVoiceWeights by mutableStateOf<ResourcePack?>(null); private set
@@ -123,6 +124,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     private var accelerationUpdates: Job? = null
     private var downloadUpdates: Job? = null
     private var resourceUpdates: Job? = null
+    private var bridgeOfferCheck: Job? = null
     private var bound = false
     private var pendingRequest by mutableStateOf<GenerationContext?>(null)
     var warmupEnabled = true
@@ -279,6 +281,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     init {
+        checkBridgeOffers()
         viewModelScope.launch {
             val (gpu, npu) = withContext(Dispatchers.IO) { DeviceFacts.hasVulkanCompute to DeviceFacts.hasDeviceAccelerator }
             gpuAvailable = gpu
@@ -300,14 +303,24 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
         val presets: Map<ModelRef, List<SynthesisVoicePreset>>, val referenceInputs: Map<ModelRef, ReferenceInput>,
         val mingVoiceWeights: ResourcePack?, val qwenVoiceWeights: ResourcePack?)
 
-    internal suspend fun refreshBridgeOffers() {
-        withContext(Dispatchers.IO) { app.bridgePackages.refreshOffers() }
-        val offers = backendPackages.associate { it.spec.id to it.spec }
-        if (offers != bridgeOffers) {
-            bridgeOffers = offers
-            refreshResources()
-            resourceUpdates?.join()
-        }
+    internal fun checkBridgeOffers(gpuChanged: Boolean = false): Job {
+        val previous = bridgeOfferCheck
+        if (!gpuChanged && previous?.isActive == true) return previous
+        return viewModelScope.launch {
+            if (gpuChanged) previous?.join()
+            bridgeOffersReady = false
+            withContext(Dispatchers.IO) { app.bridgePackages.refreshOffers(gpuChanged) }
+            val offers = backendPackages.associate { it.spec.id to it.spec }
+            if (gpuChanged || offers != bridgeOffers) {
+                bridgeOffers = offers
+                // The first service snapshot picks up offers that arrived during startup.
+                if (connected && resourceUpdates != null) {
+                    refreshResources()
+                    resourceUpdates?.join()
+                }
+            }
+            bridgeOffersReady = true
+        }.also { bridgeOfferCheck = it }
     }
 
     internal fun refreshResources() {
@@ -425,7 +438,7 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val check = backendService.recheckDeviceGpu().await()
                 gpuAvailable = DeviceFacts.hasVulkanCompute
-                if (check.changed) refreshResources()
+                if (check.changed) checkBridgeOffers(gpuChanged = true).join()
                 if (!archive.supported) notify(when {
                     deviceFacts.abi != spec.abi -> UiText(R.string.model_requires_abi, spec.abi)
                     !archive.compatiblePlatform -> UiText(R.string.model_requires_sdk, spec.minSdk, android.os.Build.VERSION.RELEASE)

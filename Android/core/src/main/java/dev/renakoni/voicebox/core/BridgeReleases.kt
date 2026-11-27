@@ -7,16 +7,16 @@ import org.json.JSONObject
 internal class BridgeReleases(private val packages: List<BridgePackage>) {
     private var lastCheck: Long? = null
 
-    @Synchronized fun refresh() {
+    @Synchronized fun refresh(gpuChanged: Boolean) {
         val now = SystemClock.elapsedRealtime()
-        if (lastCheck?.let { now - it < 5 * 60_000 } == true) return
-        lastCheck = now
+        if (!gpuChanged && lastCheck?.let { now - it < 5 * 60_000 } == true) return
         val releases = try {
             GitHubReleases.published()
         } catch (error: Exception) {
             Log.w("BridgeReleases", "Could not read published releases", error)
             return
         }
+        lastCheck = now
         for (archive in packages) {
             val selected = latestCompatibleBridge(archive.bundled, releases, archive::accepts, GitHubReleases::text)
                 ?: archive.bundled

@@ -54,11 +54,7 @@ private val PartActionWidth = 40.dp
 
 @Composable
 internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
-    var offersReady by remember(vm) { mutableStateOf(false) }
-    LaunchedEffect(vm) {
-        vm.refreshBridgeOffers()
-        offersReady = true
-    }
+    LaunchedEffect(vm) { vm.checkBridgeOffers() }
     Column(modifier.fillMaxHeight()) {
         PageHeader(stringResource(R.string.models))
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
@@ -69,7 +65,7 @@ internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
                     Text(stringResource(R.string.model_reload))
                 }
             }
-            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive, offersReady) }
+            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive, vm.bridgeOffersReady) }
         }
     }
 }
