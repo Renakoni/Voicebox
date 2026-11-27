@@ -10,6 +10,7 @@ import tempfile
 import zipfile
 
 VERSION = '6'
+CONTRACT = 1  # Bump only when this bridge needs a different host interface.
 
 
 def digest(path):
@@ -61,7 +62,7 @@ def main():
             adapter = hashlib.sha256()
             for path in (args.aar, args.runtime, args.zip4j, Path(__file__)):
                 adapter.update(bytes.fromhex(digest(path)))
-            manifest = dict(id='gptsovits', contract=1, entry='dev.renakoni.voicebox.model.gptsovits.GptEntry',
+            manifest = dict(id='gptsovits', contract=CONTRACT, entry='dev.renakoni.voicebox.model.gptsovits.GptEntry',
                             abi=args.abi, code='backend.jar', sourceCommit=args.commit,
                             adapterSourceSha256=adapter.hexdigest())
             package = work / ('gptsovits-' + args.abi + '.zip')

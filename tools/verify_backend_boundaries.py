@@ -72,7 +72,7 @@ def definitions(archive):
 
 def verify_package(spec, data):
     backend = spec["id"]
-    require(spec["format"] == 2 and spec["contract"] == 1 and spec["version"] and spec["displayName"],
+    require(spec["format"] == 2 and spec["contract"] > 0 and spec["version"] and spec["displayName"],
             f"{backend}: invalid catalog")
     abi = spec["abi"]
     machine = {"arm64-v8a": 183, "x86_64": 62}[abi]

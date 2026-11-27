@@ -9,12 +9,12 @@ import org.json.JSONObject
 import java.io.File
 
 internal fun InstalledBridge.openProvider(context: Context, work: File, settings: Bundle): BackendProvider {
-    val loader = DexClassLoader(File(directory, spec.code).absolutePath, context.codeCacheDir.absolutePath,
+    val loader = DexClassLoader(File(directory, code).absolutePath, context.codeCacheDir.absolutePath,
         directory.absolutePath, BackendEntry::class.java.classLoader)
-    val entry = loader.loadClass(spec.entry).asSubclass(BackendEntry::class.java)
+    val entry = loader.loadClass(entry).asSubclass(BackendEntry::class.java)
     check(entry.classLoader === loader) { "Backend entry must come from its own package" }
     return entry.getDeclaredConstructor().newInstance().open(BackendAssetContext(context, File(directory, "assets")), directory, work, settings).also {
-        require(it.id == spec.id) { "Backend identity differs from the installed catalog" }
+        require(it.id == id) { "Backend identity differs from the installed catalog" }
     }
 }
 
@@ -69,26 +69,28 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     private val gpuCache by lazy { ProbeCache(context, "$id-gpu") }
     private val npuCache by lazy { ProbeCache(context, "$id-npu") }
 
-    private fun cachedModes() = gpuCache.read(archive.spec.revision) { result ->
+    private fun cachedModes(revision: String) = gpuCache.read(revision) { result ->
         val names = result.getJSONArray("modes")
         (0 until names.length()).map { ExecutionBackend.valueOf(names.getString(it)) }.toSet()
     }
 
     // An untested bridge must accept the first synthesis request so its GPU can be checked.
-    val candidateModes get() = if (archive.installed) cachedModes() ?: ExecutionBackend.entries.toSet() else emptySet()
+    val candidateModes get() = archive.active?.takeIf { archive.supported }?.let {
+        cachedModes(it.revision) ?: ExecutionBackend.entries.toSet()
+    }.orEmpty()
 
     override fun executionModes(): Set<ExecutionBackend> {
-        if (!archive.installed) return emptySet()
-        cachedModes()?.let { return it }
+        val installed = archive.active?.takeIf { archive.supported } ?: return emptySet()
+        cachedModes(installed.revision)?.let { return it }
         val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe()
         val modes = requireNotNull(result.getStringArrayList("modes")).map(ExecutionBackend::valueOf).toSet()
             .takeIf { ExecutionBackend.WEBGPU in it }.orEmpty()
-        gpuCache.write(archive.spec.revision, JSONObject().put("modes", JSONArray(modes.map { it.name })))
+        gpuCache.write(installed.revision, JSONObject().put("modes", JSONArray(modes.map { it.name })))
         return modes
     }
 
     private fun npuCacheKey(): String {
-        val revision = archive.spec.revision
+        val revision = requireNotNull(archive.active).revision
         // The Qwen HTP bridge chooses its library from the architecture reported by FastRPC.
         if (id == "qwen3") return "$revision/${DeviceFacts.hexagonArch}"
         val directory = externalNpuRuntime ?: return revision
@@ -119,7 +121,7 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     }
 
     fun createWarmupRuntime(execution: ExecutionBackend): BackendRuntime? =
-        if (execution in cachedModes().orEmpty()) configuredRuntime(execution, probeIfMissing = false) else null
+        if (execution in archive.active?.let { cachedModes(it.revision) }.orEmpty()) configuredRuntime(execution, probeIfMissing = false) else null
 
     override fun perform(action: LibraryAction, arguments: Bundle, context: GenerationContext,
         progress: (String, Int?) -> Unit): Bundle =

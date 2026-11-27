@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import dev.renakoni.voicebox.BuildConfig
 import dev.renakoni.voicebox.R
 
-internal const val PROJECT_URL = "https://github.com/Renakoni/Voicebox"
+internal const val PROJECT_URL = dev.renakoni.voicebox.core.GitHubReleases.projectUrl
 
 @Composable
 internal fun AboutPage(onBack: () -> Unit, onError: (UiText) -> Unit, openLink: (String) -> Unit, modifier: Modifier = Modifier) {

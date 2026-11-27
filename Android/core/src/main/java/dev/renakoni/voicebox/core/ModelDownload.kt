@@ -43,7 +43,7 @@ fun stageModelFile(source: ModelDownload, target: File, imports: File?, checkCan
     if (local != null && local.isFile && local.length() == source.bytes) {
         checkCancelled()
         prepareDownloadTarget(target, source.bytes)
-        if (local.inputStream().use { copyVerifiedDownload(source, it, target, checkCancelled, progress) }) return
+        if (local.inputStream().use { copyDownload(it, target, source.bytes, source.sha256, checkCancelled, progress) }) return
         // Release the rejected staged copy before checking free space for the online package.
         Files.delete(target.toPath())
     }
@@ -133,7 +133,11 @@ fun downloadModelFile(source: ModelDownload, target: File, checkCancelled: () ->
     for (url in ordered) {
         checkCancelled()
         try {
-            downloadFromUrl(source, url, target, checkCancelled, progress)
+            downloadFromUrl(url, checkCancelled) { input ->
+                requireUi(copyDownload(input, target, source.bytes, source.sha256, checkCancelled, progress)) {
+                    UiText("download_checksum_failed")
+                }
+            }
             return
         } catch (error: Exception) {
             checkCancelled()
@@ -168,8 +172,18 @@ private fun preferredMirror(urls: List<String>, checkCancelled: () -> Unit): Int
     }
 }
 
-private fun downloadFromUrl(source: ModelDownload, url: String, target: File, checkCancelled: () -> Unit,
-    progress: (Int) -> Unit) {
+internal data class BridgePart(val url: String, val bytes: Long)
+
+internal fun stageBridgePart(part: BridgePart, target: File, local: File?, checkCancelled: () -> Unit, progress: (Int) -> Unit) {
+    prepareDownloadTarget(target, part.bytes)
+    fun copy(input: java.io.InputStream) {
+        requireUi(copyDownload(input, target, part.bytes, null, checkCancelled, progress)) { UiText("download_size_mismatch") }
+    }
+    if (local?.isFile == true) local.inputStream().use(::copy)
+    else downloadFromUrl(part.url, checkCancelled, ::copy)
+}
+
+private fun downloadFromUrl(url: String, checkCancelled: () -> Unit, consume: (java.io.InputStream) -> Unit) {
     val request = Request.Builder().url(url).header("User-Agent", "VoiceBox/${BuildConfig.VERSION_NAME}").build()
     val call = downloadClient.newCall(request)
     val headers = CompletableFuture<Response>()
@@ -191,9 +205,7 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
         response.use {
             checkCancelled()
             requireUi(it.code == 200) { UiText("download_service_unavailable") }
-            requireUi(copyVerifiedDownload(source, it.body.byteStream(), target, checkCancelled, progress)) {
-                UiText("download_checksum_failed")
-            }
+            consume(it.body.byteStream())
         }
         complete = true
     } finally {
@@ -202,9 +214,9 @@ private fun downloadFromUrl(source: ModelDownload, url: String, target: File, ch
     }
 }
 
-private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStream, target: File,
+private fun copyDownload(input: java.io.InputStream, target: File, bytes: Long, sha256: String?,
     checkCancelled: () -> Unit, progress: (Int) -> Unit): Boolean {
-    val digest = MessageDigest.getInstance("SHA-256")
+    val digest = sha256?.let { MessageDigest.getInstance("SHA-256") }
     var total = 0L
     var lastPercent = 0
     progress(0)
@@ -215,14 +227,13 @@ private fun copyVerifiedDownload(source: ModelDownload, input: java.io.InputStre
             val count = input.read(buffer)
             if (count < 0) break
             total += count
-            requireUi(total <= source.bytes) { UiText("download_size_mismatch") }
-            digest.update(buffer, 0, count)
+            requireUi(total <= bytes) { UiText("download_size_mismatch") }
+            digest?.update(buffer, 0, count)
             output.write(buffer, 0, count)
-            val percent = (total * 100 / source.bytes).toInt()
+            val percent = (total * 100 / bytes).toInt()
             if (percent != lastPercent) { progress(percent); lastPercent = percent }
         }
     }
     checkCancelled()
-    val hash = digest.digest().toHexString()
-    return total == source.bytes && hash == source.sha256
+    return total == bytes && (digest == null || digest.digest().toHexString() == sha256)
 }

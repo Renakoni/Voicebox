@@ -54,6 +54,11 @@ private val PartActionWidth = 40.dp
 
 @Composable
 internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
+    var offersReady by remember(vm) { mutableStateOf(false) }
+    LaunchedEffect(vm) {
+        vm.refreshBridgeOffers()
+        offersReady = true
+    }
     Column(modifier.fillMaxHeight()) {
         PageHeader(stringResource(R.string.models))
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
@@ -64,14 +69,14 @@ internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
                     Text(stringResource(R.string.model_reload))
                 }
             }
-            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive) }
+            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive, offersReady) }
         }
     }
 }
 
 @Composable
-private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
-    val spec = archive.spec
+private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage, offersReady: Boolean) {
+    val spec = vm.bridgeOffers.getValue(archive.spec.id)
     val name = spec.displayName
     val colors = MaterialTheme.colorScheme
     val states = vm.bridgeStates
@@ -79,6 +84,8 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val context = LocalContext.current
     val bridgeState = states?.get(spec.id)
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
+    val update = offersReady && archive.installable &&
+        (bridgeState == BridgeInstallState.UPDATE_AVAILABLE || bridgeState == BridgeInstallState.UPDATE_REQUIRED)
     val ming = spec.id == MingModelPackage.BACKEND
     val qwen = spec.id == QwenModelPackage.BACKEND
     val rechecking = vm.recheckingModel == spec.id
@@ -162,15 +169,15 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     if (!unsupported || storedBridge) ModelPart(stringResource(R.string.model_bridge),
                         spec.downloadBytes, storedBridge,
-                        enabled && (storedBridge || archive.installable),
-                        updateRequired = bridgeState == BridgeInstallState.UPDATE_REQUIRED,
+                        enabled && (storedBridge || (offersReady && archive.installable)),
+                        updateRequired = update,
                         remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
                         install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
                     packs.filter { !unsupported || it.installed }.forEach { pack ->
                         key(pack.id) {
                             val title = if (ming) stringResource(MingModelPackage.partTitle(pack.id))
                                 else UiText(pack.titleKey).resolve(resources)
-                            ModelPart(title, pack.downloadBytes, pack.installed, enabled,
+                            ModelPart(title, pack.downloadBytes, pack.installed, enabled && (offersReady || pack.installed),
                                 remove = { vm.removeModelPart(spec.id, pack.id) },
                                 install = { vm.installModelParts(spec.id, pack.id) })
                         }
@@ -192,7 +199,7 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
         } else if (states != null && !complete && (archive.installable || vm.modelPreview) &&
             download?.running != true) {
             StudioButton({ vm.installModelParts(spec.id, null) },
-                enabled = enabled, style = StudioButtonStyle.Secondary,
+                enabled = enabled && offersReady, style = StudioButtonStyle.Secondary,
                 modifier = actionModifier) {
                 Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(16.dp))
                 Text(stringResource(R.string.model_download_all))

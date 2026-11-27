@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.renakoni.voicebox.BuildConfig
 import dev.renakoni.voicebox.R
+import dev.renakoni.voicebox.core.GitHubReleases
 import dev.renakoni.voicebox.core.ModelDownload
 import dev.renakoni.voicebox.core.downloadModelFile
 import dev.renakoni.voicebox.core.i18n.UiText
@@ -22,36 +23,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.Properties
 
-internal const val APP_RELEASES_URL = "$PROJECT_URL/releases"
+internal const val APP_RELEASES_URL = GitHubReleases.releasesUrl
 
 internal data class AppUpdate(val version: String, val code: Int, val notesHtml: String?, val apk: ModelDownload) {
     val releaseUrl get() = "$APP_RELEASES_URL/tag/v$version"
 
     companion object {
         fun fetch(): AppUpdate? {
-            val tag = request("$APP_RELEASES_URL/latest", method = "HEAD", followRedirects = false) { connection ->
-                val status = connection.responseCode
-                if (status == HttpURLConnection.HTTP_NOT_FOUND) return@request null
-                check(status in 300..399) { "HTTP $status from ${connection.url.host}" }
-                val location = checkNotNull(connection.getHeaderField("Location"))
-                val releaseUrl = URL(connection.url, location).toExternalForm()
-                if (releaseUrl == APP_RELEASES_URL) null else {
-                    val prefix = "$APP_RELEASES_URL/tag/"
-                    check(releaseUrl.startsWith(prefix)) { "Unexpected latest release URL" }
-                    releaseUrl.removePrefix(prefix)
-                }
-            } ?: return null
+            val tag = GitHubReleases.latestTag() ?: return null
             val candidate = releaseVersion(tag) ?: return null
             val installed = checkNotNull(releaseVersion("v${BuildConfig.VERSION_NAME}"))
             if (compareValuesBy(candidate, installed, { it.first }, { it.second }, { it.third }) <= 0) return null
 
-            val versions = get("https://raw.githubusercontent.com/Renakoni/Voicebox/refs/tags/$tag/Android/gradle.properties")
+            val versions = GitHubReleases.text("https://raw.githubusercontent.com/Renakoni/Voicebox/refs/tags/$tag/Android/gradle.properties")
             val properties = Properties().apply { versions.reader().use(::load) }
             val code = properties.getProperty("voiceboxVersionCode").toInt()
             val version = properties.getProperty("voiceboxVersionName")
@@ -61,14 +49,11 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
             val name = "Voicebox-$version-arm64.apk"
             val assetBase = "$APP_RELEASES_URL/download/$tag"
             val url = "$assetBase/$name"
-            val checksums = get("$assetBase/SHA256SUMS.txt")
+            val checksums = GitHubReleases.text("$assetBase/SHA256SUMS.txt")
             val checksum = Regex("([0-9a-fA-F]{64})[ \\t]+\\*?${Regex.escape(name)}")
             val digest = checksums.lineSequence().mapNotNull { checksum.matchEntire(it.trim()) }
                 .single().groupValues[1].lowercase()
-            val bytes = request(url, method = "HEAD") {
-                checkResponse(it)
-                it.contentLengthLong.also { length -> check(length > 0) { "Missing APK size" } }
-            }
+            val bytes = GitHubReleases.size(url)
             val notes = try {
                 releaseNotes(tag)
             } catch (e: Exception) {
@@ -84,34 +69,8 @@ internal data class AppUpdate(val version: String, val code: Int, val notesHtml:
                 parts[3].toIntOrNull() ?: return null)
         }
 
-        private fun <T> request(url: String, method: String = "GET", followRedirects: Boolean = true,
-            read: (HttpURLConnection) -> T): T {
-            val connection = URL(url).openConnection() as HttpURLConnection
-            try {
-                connection.connectTimeout = 10_000
-                connection.readTimeout = 10_000
-                connection.useCaches = false
-                connection.requestMethod = method
-                connection.instanceFollowRedirects = followRedirects
-                connection.setRequestProperty("User-Agent", "VoiceBox/${BuildConfig.VERSION_NAME}")
-                return read(connection)
-            } finally {
-                connection.disconnect()
-            }
-        }
-
-        private fun get(url: String): String = request(url) {
-            checkResponse(it)
-            it.inputStream.bufferedReader(Charsets.UTF_8).use { reader -> reader.readText() }
-        }
-
-        private fun checkResponse(connection: HttpURLConnection) {
-            val status = connection.responseCode
-            check(status == HttpURLConnection.HTTP_OK) { "HTTP $status from ${connection.url.host}" }
-        }
-
         private fun releaseNotes(tag: String): String? {
-            val parser = Xml.newPullParser().apply { setInput(get("$APP_RELEASES_URL.atom").reader()) }
+            val parser = Xml.newPullParser().apply { setInput(GitHubReleases.text("$APP_RELEASES_URL.atom").reader()) }
             var matchingEntry = false
             while (parser.next() != XmlPullParser.END_DOCUMENT) {
                 if (parser.eventType != XmlPullParser.START_TAG) continue
