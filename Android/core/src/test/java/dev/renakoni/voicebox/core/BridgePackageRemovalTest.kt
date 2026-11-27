@@ -57,6 +57,6 @@ class BridgePackageRemovalTest {
             .put("files", JSONObject().put("bridge.json", 1).put("backend.jar", 1)))
         write("model-runtimes/gptsovits/$revision/installed/backend.jar")
         File(root, "active.json").writeText(JSONObject().put("revision", revision).put("directory", "installed").toString())
-        return BridgePackage(root, spec, "x86_64", 11)
+        return BridgePackage(root, spec, "x86_64", 11) { true }
     }
 }

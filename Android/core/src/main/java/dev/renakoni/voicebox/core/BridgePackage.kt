@@ -97,27 +97,26 @@ enum class BridgeInstallState { MISSING, UPDATE_REQUIRED, UPDATE_AVAILABLE, CURR
 class BridgePackage(
     private val root: File, internal val bundled: BridgePackageSpec, private val abi: String, private val appVersion: Long,
     private val imports: File? = null,
-    private val supportsGpu: (BridgePackageSpec) -> Boolean = {
-        if (it.requiresVulkan12Storage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute
+    private val supportsGpu: (Boolean) -> Boolean = { requiresStorage16 ->
+        if (requiresStorage16) DeviceFacts.hasVulkan12Storage16 else DeviceFacts.hasVulkanCompute
     },
 ) {
     @Volatile var spec = bundled
         internal set
     val compatiblePlatform get() = spec.abi == abi && android.os.Build.VERSION.SDK_INT >= spec.minSdk
-    val supported get() = compatiblePlatform && supportsGpu(spec)
-    val installable get() = supported && spec.minAppVersionCode <= appVersion
+    val supported get() = compatiblePlatform && supportsGpu(spec.requiresVulkan12Storage16)
+    val installable get() = accepts(spec)
 
     internal fun accepts(candidate: BridgePackageSpec) =
-        candidate.matchesHost(bundled, abi, android.os.Build.VERSION.SDK_INT, appVersion) && supportsGpu(candidate)
+        candidate.matchesHost(bundled, abi, android.os.Build.VERSION.SDK_INT, appVersion) && supportsGpu(candidate.requiresVulkan12Storage16)
     private val lockFile = File(root, ".lock")
     private val receipt = File(root, "active.json")
-    private data class Slot(val directory: File, val version: Int, val minSdk: Int) {
+    private data class Slot(val directory: File, val version: Int, val minSdk: Int, val requiresStorage16: Boolean) {
         val revision get() = directory.parentFile!!.name
     }
-    val active get() = installedSlot()?.asActive()
+    val active get() = installedSlot()?.asActive(spec)
 
-    private fun Slot.asActive(): InstalledBridge? {
-        val target = spec
+    private fun Slot.asActive(target: BridgePackageSpec): InstalledBridge? {
         val known = when (revision) {
             target.revision -> target
             bundled.revision -> bundled
@@ -129,20 +128,21 @@ class BridgePackage(
             if (meta.getString("id") != bundled.id || meta.getInt("contract") != bundled.contract ||
                 meta.getString("abi") != abi || meta.optLong("minAppVersionCode", 1) > appVersion ||
                 android.os.Build.VERSION.SDK_INT < (known?.minSdk ?: minSdk) ||
+                !supportsGpu(known?.requiresVulkan12Storage16 ?: requiresStorage16) ||
                 !BridgePackageSpec.safePath(code) || !File(directory, code).isFile) return null
             InstalledBridge(bundled.id, meta.getString("entry"), code, directory)
         }.getOrNull()
     }
-    private fun Slot.upToDate(target: BridgePackageSpec) = revision == target.revision || (version > target.version && asActive() != null)
-
-    val installState get() = installedSlot()?.let {
-        when {
-            !supported -> BridgeInstallState.INCOMPATIBLE
-            it.upToDate(spec) -> BridgeInstallState.CURRENT
-            it.asActive() != null -> BridgeInstallState.UPDATE_AVAILABLE
+    private fun Slot.state(target: BridgePackageSpec): BridgeInstallState {
+        val usable = asActive(target) != null
+        if (usable && (revision == target.revision || version >= target.version)) return BridgeInstallState.CURRENT
+        return when {
+            !accepts(target) -> if (usable) BridgeInstallState.CURRENT else BridgeInstallState.INCOMPATIBLE
+            usable -> BridgeInstallState.UPDATE_AVAILABLE
             else -> BridgeInstallState.UPDATE_REQUIRED
         }
-    } ?: BridgeInstallState.MISSING
+    }
+    val installState get() = installedSlot()?.state(spec) ?: BridgeInstallState.MISSING
     val installed get() = installState.usable
 
     private fun installedSlot(): Slot? {
@@ -154,9 +154,9 @@ class BridgePackage(
             val slot = json.getString("directory")
             require(BridgePackageSpec.safeSegment(slot))
             val directory = File(File(root, revision), slot)
-            // Every activated slot has a manifest, even if a new revision renames its entry archive.
-            val file = if (revision == spec.revision) spec.code else "bridge.json"
-            if (File(directory, file).isFile) Slot(directory, json.optInt("version"), json.optInt("minSdk", bundled.minSdk)) else null
+            if (!directory.isDirectory) return null
+            Slot(directory, json.optInt("version"), json.optInt("minSdk", bundled.minSdk),
+                json.optBoolean("requiresVulkan12Storage16", bundled.requiresVulkan12Storage16))
         }.getOrNull()
     }
 
@@ -165,9 +165,13 @@ class BridgePackage(
         return withInstallLock {
             checkCancelled()
             val spec = this.spec
-            require(accepts(spec)) { "Bridge package is incompatible with this app" }
             val previous = installedSlot()
-            if (previous?.upToDate(spec) == true) return@withInstallLock false
+            when (previous?.state(spec)) {
+                BridgeInstallState.CURRENT -> return@withInstallLock false
+                BridgeInstallState.INCOMPATIBLE -> error("Bridge package is incompatible with this app")
+                null -> require(accepts(spec)) { "Bridge package is incompatible with this app" }
+                else -> Unit
+            }
             clearInstallations(previous?.directory)
             val revisions = File(root, spec.revision)
             require(root.usableSpace > spec.files.values.sum() + spec.parts.maxOf { it.bytes })
@@ -208,9 +212,9 @@ class BridgePackage(
         val root = imports ?: return null
         val name = part.url.substringAfterLast('/')
         val versioned = File(root, "${spec.id}-runtime-v${spec.version}/$name")
-        if (versioned.isFile) return versioned
         // Some releases reuse the same ZIP filename across versions.
-        return File(root, name).takeIf { spec.version == bundled.version || "-v${spec.version}-" in name }
+        val flat = File(root, name).takeIf { spec.version == bundled.version || "-v${spec.version}-" in name }
+        return listOfNotNull(versioned, flat).firstOrNull { it.isFile && it.length() == part.bytes }
     }
 
     fun uninstall() {
@@ -241,7 +245,8 @@ class BridgePackage(
         val pending = File(root, ".active")
         try {
             pending.writeText(JSONObject().put("revision", spec.revision).put("directory", directory.name)
-                .put("version", spec.version).put("minSdk", spec.minSdk).toString())
+                .put("version", spec.version).put("minSdk", spec.minSdk)
+                .put("requiresVulkan12Storage16", spec.requiresVulkan12Storage16).toString())
             Files.move(pending.toPath(), receipt.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
         } finally {
             pending.delete()

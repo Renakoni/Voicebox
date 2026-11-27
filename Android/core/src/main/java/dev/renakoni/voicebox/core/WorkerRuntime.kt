@@ -46,6 +46,7 @@ internal class WorkerRuntime(private val context: Context, private val id: Strin
             val data = (request?.encode() ?: arguments).apply {
                 putString("session", binding.id); putString("backendId", id); putString("execution", backend.name)
                 putInt("hexagonArch", DeviceFacts.hexagonArch)
+                putInt("vulkanLevel", DeviceFacts.vulkanLevel)
                 putBundle("settings", settings)
                 if (request == null) putString("request", cancellation?.requestId ?: UUID.randomUUID().toString())
             }

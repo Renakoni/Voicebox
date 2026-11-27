@@ -30,7 +30,6 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     @Synchronized private fun metadata(): BackendProvider? {
         cached?.let { return it }
         val installed = archive.active ?: return null
-        if (!archive.supported) return null
         return installed.openProvider(context, context.cacheDir, settings()).also { cached = it }
     }
     override val capabilities get() = metadata()?.capabilities ?: BackendCapabilities(emptyList(), emptySet())
@@ -75,12 +74,12 @@ class InstalledBackend(private val context: Context, private val archive: Bridge
     }
 
     // An untested bridge must accept the first synthesis request so its GPU can be checked.
-    val candidateModes get() = archive.active?.takeIf { archive.supported }?.let {
+    val candidateModes get() = archive.active?.let {
         cachedModes(it.revision) ?: ExecutionBackend.entries.toSet()
     }.orEmpty()
 
     override fun executionModes(): Set<ExecutionBackend> {
-        val installed = archive.active?.takeIf { archive.supported } ?: return emptySet()
+        val installed = archive.active ?: return emptySet()
         cachedModes(installed.revision)?.let { return it }
         val result = WorkerRuntime(context, id, ExecutionBackend.WEBGPU, settings(), false).probe()
         val modes = requireNotNull(result.getStringArrayList("modes")).map(ExecutionBackend::valueOf).toSet()

@@ -179,7 +179,7 @@ internal fun stageBridgePart(part: BridgePart, target: File, local: File?, check
     fun copy(input: java.io.InputStream) {
         requireUi(copyDownload(input, target, part.bytes, null, checkCancelled, progress)) { UiText("download_size_mismatch") }
     }
-    if (local?.isFile == true) local.inputStream().use(::copy)
+    if (local != null) local.inputStream().use(::copy)
     else downloadFromUrl(part.url, checkCancelled, ::copy)
 }
 

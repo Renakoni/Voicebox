@@ -432,14 +432,14 @@ class StudioViewModel(application: Application) : AndroidViewModel(application) 
     internal fun recheckDownloadSupport(archive: BridgePackage) {
         val backendService = service ?: return
         if (recheckingModel != null || loading || busy || fileBusy) return
-        val spec = archive.spec
-        recheckingModel = spec.id
+        recheckingModel = archive.spec.id
         viewModelScope.launch {
             try {
                 val check = backendService.recheckDeviceGpu().await()
                 gpuAvailable = DeviceFacts.hasVulkanCompute
                 if (check.changed) checkBridgeOffers(gpuChanged = true).join()
-                if (!archive.supported) notify(when {
+                val spec = archive.spec
+                if (!archive.supported && !archive.installed) notify(when {
                     deviceFacts.abi != spec.abi -> UiText(R.string.model_requires_abi, spec.abi)
                     !archive.compatiblePlatform -> UiText(R.string.model_requires_sdk, spec.minSdk, android.os.Build.VERSION.RELEASE)
                     !check.conclusive -> UiText(R.string.model_gpu_recheck_failed)

@@ -21,6 +21,7 @@ data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: 
         @Volatile private lateinit var vulkan: Lazy<Vulkan>
         private lateinit var npu: Lazy<Npu>
         internal var workerHexagonArch: Int? = null
+        internal var workerVulkanLevel: Int? = null
 
         fun initialize(context: Context) {
             gpuCache = lazy { ProbeCache(context, "device-gpu") }
@@ -81,8 +82,9 @@ data class DeviceFacts(val manufacturer: String, val soc: String, val hardware: 
 
         val hexagonArch get() = workerHexagonArch ?: npu.value.hexagon
         val hasDeviceAccelerator get() = npu.value.accelerator > 0
-        val hasVulkanCompute get() = vulkan.value.level > 0
-        val hasVulkan12Storage16 get() = vulkan.value.level == 2
+        internal val vulkanLevel get() = workerVulkanLevel ?: vulkan.value.level
+        val hasVulkanCompute get() = vulkanLevel > 0
+        val hasVulkan12Storage16 get() = vulkanLevel == 2
 
         fun read(context: Context): DeviceFacts {
             val abi = when (File(context.applicationInfo.nativeLibraryDir).name) {
