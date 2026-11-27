@@ -21,7 +21,8 @@ MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so
 MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
                 "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
                 "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
-QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_checkpoint.so"}
+QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "accelerated/int8mm/libqwen3_jni.so",
+             "libqwen3_cpu_features.so", "libqwen3_checkpoint.so"}
 
 
 def require(condition, message):
@@ -71,7 +72,7 @@ def definitions(archive):
 
 def verify_package(spec, data):
     backend = spec["id"]
-    require(spec["format"] == 2 and spec["contract"] == 1 and spec["version"] and spec["displayName"],
+    require(spec["format"] == 2 and spec["contract"] > 0 and spec["version"] and spec["displayName"],
             f"{backend}: invalid catalog")
     abi = spec["abi"]
     machine = {"arm64-v8a": 183, "x86_64": 62}[abi]

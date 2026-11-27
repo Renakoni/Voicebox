@@ -54,6 +54,7 @@ private val PartActionWidth = 40.dp
 
 @Composable
 internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
+    LaunchedEffect(vm) { vm.checkBridgeOffers() }
     Column(modifier.fillMaxHeight()) {
         PageHeader(stringResource(R.string.models))
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)
@@ -64,14 +65,14 @@ internal fun ModelsPage(vm: StudioViewModel, modifier: Modifier) {
                     Text(stringResource(R.string.model_reload))
                 }
             }
-            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive) }
+            vm.backendPackages.forEach { archive -> ModelFamily(vm, archive, vm.bridgeOffersReady) }
         }
     }
 }
 
 @Composable
-private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
-    val spec = archive.spec
+private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage, offersReady: Boolean) {
+    val spec = vm.bridgeOffers.getValue(archive.spec.id)
     val name = spec.displayName
     val colors = MaterialTheme.colorScheme
     val states = vm.bridgeStates
@@ -79,11 +80,14 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val context = LocalContext.current
     val bridgeState = states?.get(spec.id)
     val bridgeReady = bridgeState == BridgeInstallState.CURRENT
+    val canDownload = bridgeReady || archive.installable
+    val update = offersReady && canDownload &&
+        (bridgeState == BridgeInstallState.UPDATE_AVAILABLE || bridgeState == BridgeInstallState.UPDATE_REQUIRED)
     val ming = spec.id == MingModelPackage.BACKEND
     val qwen = spec.id == QwenModelPackage.BACKEND
     val rechecking = vm.recheckingModel == spec.id
-    val unsupported = states != null && !vm.modelPreview && !archive.supported
-    val storedBridge = bridgeReady || bridgeState == BridgeInstallState.INCOMPATIBLE
+    val unsupported = states != null && !vm.modelPreview && !canDownload
+    val storedBridge = bridgeState?.usable == true || bridgeState == BridgeInstallState.INCOMPATIBLE
     val packs = (vm.resourcePacks[spec.id] ?: spec.initialResourcePacks) +
         listOfNotNull(vm.qwenVoiceWeights?.takeIf { qwen && !bridgeReady && unsupported && it.installed })
     val partsInstalled = listOf(storedBridge) + packs.map { it.installed }
@@ -98,8 +102,8 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
     val canExpand = !unsupported || ready > 0
     val status = when {
         unsupported || states == null || download?.running == true -> null
-        expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         complete -> stringResource(R.string.backend_installed)
+        expanded && remaining > 0 -> stringResource(R.string.model_remaining, Formatter.formatShortFileSize(context, remaining))
         else -> stringResource(R.string.model_parts_ready, ready, total)
     }
     val chevron by animateFloatAsState(if (expanded) 180f else 0f, tween(220), label = "chevron")
@@ -162,15 +166,15 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 Column(Modifier.padding(vertical = 4.dp)) {
                     if (!unsupported || storedBridge) ModelPart(stringResource(R.string.model_bridge),
                         spec.downloadBytes, storedBridge,
-                        enabled && (storedBridge || archive.installable),
-                        updateRequired = bridgeState == BridgeInstallState.UPDATE_REQUIRED,
+                        enabled && (storedBridge || (offersReady && canDownload)),
+                        updateRequired = update,
                         remove = { vm.removeModelPart(spec.id, VoiceBoxBackendService.BRIDGE_PART) },
                         install = { vm.installModelParts(spec.id, VoiceBoxBackendService.BRIDGE_PART) })
                     packs.filter { !unsupported || it.installed }.forEach { pack ->
                         key(pack.id) {
                             val title = if (ming) stringResource(MingModelPackage.partTitle(pack.id))
                                 else UiText(pack.titleKey).resolve(resources)
-                            ModelPart(title, pack.downloadBytes, pack.installed, enabled,
+                            ModelPart(title, pack.downloadBytes, pack.installed, enabled && (offersReady || pack.installed),
                                 remove = { vm.removeModelPart(spec.id, pack.id) },
                                 install = { vm.installModelParts(spec.id, pack.id) })
                         }
@@ -189,10 +193,10 @@ private fun ModelFamily(vm: StudioViewModel, archive: BridgePackage) {
                 Text(stringResource(if (rechecking) R.string.model_rechecking else R.string.model_device_unsupported),
                     color = colors.onSurfaceVariant)
             }
-        } else if (states != null && !complete && (archive.installable || vm.modelPreview) &&
+        } else if (states != null && !complete && (canDownload || vm.modelPreview) &&
             download?.running != true) {
             StudioButton({ vm.installModelParts(spec.id, null) },
-                enabled = enabled, style = StudioButtonStyle.Secondary,
+                enabled = enabled && offersReady, style = StudioButtonStyle.Secondary,
                 modifier = actionModifier) {
                 Icon(painterResource(R.drawable.ic_model_download), null, Modifier.size(16.dp))
                 Text(stringResource(R.string.model_download_all))
@@ -210,7 +214,7 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
 ) {
     val colors = MaterialTheme.colorScheme
     var confirmRemove by remember { mutableStateOf(false) }
-    val action = if (installed) Modifier else Modifier.clickable(enabled = enabled, role = Role.Button,
+    val action = if (installed && !updateRequired) Modifier else Modifier.clickable(enabled = enabled, role = Role.Button,
         onClickLabel = stringResource(if (updateRequired) R.string.model_update_part else R.string.model_install_part, title), onClick = install)
     val endPadding = 16.dp - (PartActionWidth - PartMarkSize) / 2
     Row(Modifier.fillMaxWidth().then(action).heightIn(min = 56.dp)
@@ -223,21 +227,22 @@ private fun ModelPart(title: String, bytes: Long, installed: Boolean, enabled: B
                 style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = Tabular),
                 color = if (installed) colors.onSurfaceVariant else muted)
         }
-        if (installed) {
-            IconButton(onClick = { confirmRemove = true }, enabled = enabled, modifier = Modifier.size(PartActionWidth)) {
-                val tint = if (enabled) colors.error else colors.error.copy(alpha = .38f)
-                Box(Modifier.size(PartMarkSize).clip(CircleShape).background(tint.copy(alpha = .14f)),
-                    contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Close, stringResource(R.string.model_remove_part, title), Modifier.size(15.dp), tint = tint)
-                }
-            }
-        } else {
+        if (!installed || updateRequired) {
             Box(Modifier.width(PartActionWidth), contentAlignment = Alignment.Center) {
                 Box(Modifier.size(PartMarkSize).border(1.dp, colors.outline.copy(alpha = if (enabled) .55f else .25f), CircleShape),
                     contentAlignment = Alignment.Center) {
                     Icon(painterResource(if (updateRequired) R.drawable.ic_model_update else R.drawable.ic_model_download),
                         null, Modifier.size(14.dp),
                         tint = if (enabled) colors.onSurface else colors.onSurface.copy(alpha = .38f))
+                }
+            }
+        }
+        if (installed) {
+            IconButton(onClick = { confirmRemove = true }, enabled = enabled, modifier = Modifier.size(PartActionWidth)) {
+                val tint = if (enabled) colors.error else colors.error.copy(alpha = .38f)
+                Box(Modifier.size(PartMarkSize).clip(CircleShape).background(tint.copy(alpha = .14f)),
+                    contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Close, stringResource(R.string.model_remove_part, title), Modifier.size(15.dp), tint = tint)
                 }
             }
         }

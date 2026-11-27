@@ -6,21 +6,22 @@
   "abi": "arm64-v8a",
   "minAppVersionCode": 13,
   "sourceCommit": "2edb35f87b709a070b2d5379f77e5c52a1daa585",
-  "adapterSourceSha256": "77a28e26514f30ad20c8cbf1b95bc836b13a2cdabb54001bc6faba74b9cae4e5",
+  "adapterSourceSha256": "b0ccde14a3db62a4faed114ff009674d70d38abbf2171ab439421da509bba9ea",
   "format": 2,
   "displayName": "Qwen3-TTS-0.6B",
-  "version": "5",
-  "revision": "9f7f1211ff94659ec30a8512b960a860a623339bc28a5fa30ba18840409ff23c",
+  "version": "6",
+  "revision": "d146b7b9f52c92c983d62a6333151625c5f18964d35c0744a023598ed94bd949",
   "minSdk": 31,
   "requiresVulkan12Storage16": true,
   "parts": [
     {
-      "url": "https://github.com/Renakoni/Voicebox/releases/download/qwen3-runtime-v5/qwen3-backend-v5-arm64-v8a.zip",
-      "bytes": 13264271,
-      "sha256": "9f7f1211ff94659ec30a8512b960a860a623339bc28a5fa30ba18840409ff23c"
+      "url": "https://github.com/Renakoni/Voicebox/releases/download/qwen3-runtime-v6/qwen3-backend-v6-arm64-v8a.zip",
+      "bytes": 20716184,
+      "sha256": "d146b7b9f52c92c983d62a6333151625c5f18964d35c0744a023598ed94bd949"
     }
   ],
   "files": {
+    "accelerated/int8mm/libqwen3_jni.so": 23642200,
     "accelerated/libggml-htp-v73.so": 970152,
     "accelerated/libggml-htp-v75.so": 970152,
     "accelerated/libggml-htp-v79.so": 990728,
@@ -32,11 +33,12 @@
     "bridge.json": 322,
     "cpu/libqwen3_jni.so": 2353496,
     "libqwen3_checkpoint.so": 53136,
+    "libqwen3_cpu_features.so": 4080,
     "licenses/Qwen3-TTS-LICENSE.txt": 11544,
     "licenses/VoiceBox-LICENSE.txt": 34255,
     "licenses/ggml-LICENSE.txt": 1099,
     "licenses/qwentts-LICENSE.txt": 1087,
-    "tasks.jar": 37258
+    "tasks.jar": 37641
   },
   "initialResourcePacks": [
     {

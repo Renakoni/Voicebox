@@ -343,7 +343,7 @@ class VoiceBoxBackendService : Service() {
     /** A null part installs the complete family. The bridge can also be installed independently. */
     fun installModelParts(id: String, part: String?): Boolean {
         val archive = app.bridgePackages.packages.singleOrNull { it.spec.id == id } ?: return false
-        if (!archive.installable) return false
+        if (!archive.installable && !archive.installed) return false
         val target = OfficialDownloadState(packageId = id)
         return downloadOnWorker(target) { context, progress ->
             val provider = modelRepository.provider(id)
