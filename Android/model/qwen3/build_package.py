@@ -18,7 +18,7 @@ from checkpoint_layout import checkpoint_assets
 ROOT = Path(__file__).resolve().parent
 ANDROID = ROOT.parents[1]
 ABI = "arm64-v8a"
-VERSION = "5"
+VERSION = "6"
 HTP_ARCHES = (73, 75, 79, 81, 85)
 UPSTREAM = "2edb35f87b709a070b2d5379f77e5c52a1daa585"
 WEIGHTS = ("qwen-talker-0.6b-base-Q4_K_M.gguf", "qwen-tokenizer-12hz-F32.gguf")
@@ -87,14 +87,17 @@ def main():
             "-Wl,-z,max-page-size=16384", f"-Wl,--version-script={exports}", "-I", native / "src",
             "-I", native / "ggml/include", temp / "qwen3_jni.cpp", ROOT / "checkpoint_rows.cpp",
             build / "libqwen3_jni.so", "-llog", "-o", temp / "libqwen3_checkpoint.so")
-        files = {name: (temp / name).read_bytes() for name in ("tasks.jar", "libqwen3_checkpoint.so")}
+        run(llvm / "clang.exe", "--target=aarch64-linux-android30", "-shared", "-fPIC", "-Os",
+            "-Wl,-z,max-page-size=16384", "-Wl,-s", ROOT / "cpu_features.c", "-o", temp / "libqwen3_cpu_features.so")
+        files = {name: (temp / name).read_bytes() for name in ("tasks.jar", "libqwen3_checkpoint.so", "libqwen3_cpu_features.so")}
         files["cpu/libqwen3_jni.so"] = (temp / "libqwen3_jni.so").read_bytes()
         gpu = temp / "accelerated.so"
-        run(llvm / "llvm-strip.exe", "--strip-unneeded", args.accelerated_dir / "libqwen3_jni.so", "-o", gpu)
-        symbols = subprocess.check_output([llvm / "llvm-nm.exe", "--dynamic", "--defined-only", gpu])
-        if b"Java_dev_renakoni_voicebox_model_qwen3_QwenDevices_probe" not in symbols.split():
-            raise ValueError("Build the accelerated runtime with optional-hexagon.patch")
-        files["accelerated/libqwen3_jni.so"] = gpu.read_bytes()
+        for library in ("libqwen3_jni.so", "int8mm/libqwen3_jni.so"):
+            run(llvm / "llvm-strip.exe", "--strip-unneeded", args.accelerated_dir / library, "-o", gpu)
+            symbols = subprocess.check_output([llvm / "llvm-nm.exe", "--dynamic", "--defined-only", gpu])
+            if b"Java_dev_renakoni_voicebox_model_qwen3_QwenDevices_probe" not in symbols.split():
+                raise ValueError("Build the accelerated runtime with optional-hexagon.patch")
+            files["accelerated/" + library] = gpu.read_bytes()
     for arch in HTP_ARCHES:
         name = f"libggml-htp-v{arch}.so"
         data = (args.accelerated_dir / name).read_bytes()
@@ -122,7 +125,7 @@ def main():
     (imports.parent / "qwen3-models.json").write_bytes(weights_catalog)
     adapter_source = hashlib.sha256()
     sources = [ROOT / name for name in ("build_package.py", "build.gradle.kts", "checkpoint_layout.py",
-                                         "checkpoint_rows.cpp", "synthesis.patch", "optional-hexagon.patch")]
+                                         "checkpoint_rows.cpp", "cpu_features.c", "synthesis.patch", "optional-hexagon.patch")]
     for path in sorted(sources + list((ROOT / "src").rglob("*.kt")) + list((ROOT / "src").rglob("*.java"))):
         adapter_source.update(path.relative_to(ROOT).as_posix().encode() + b"\0" + path.read_bytes().replace(b"\r\n", b"\n"))
     manifest = dict(contract=1, id="qwen3", entry="dev.renakoni.voicebox.model.qwen3.QwenEntry", code="tasks.jar",

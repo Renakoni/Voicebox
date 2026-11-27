@@ -7,8 +7,14 @@ import java.io.File
 
 internal object QwenDevices {
     @JvmStatic private external fun probe(htp: Boolean): Boolean
+    @JvmStatic private external fun hasInt8Kernels(): Boolean
 
-    fun acceleratedLibrary(directory: File) = File(directory, "accelerated/libqwen3_jni.so")
+    private val kernelDirectory by lazy { if (hasInt8Kernels()) "accelerated/int8mm" else "accelerated" }
+
+    fun acceleratedLibrary(directory: File): File {
+        System.load(File(directory, "libqwen3_cpu_features.so").absolutePath)
+        return File(directory, "$kernelDirectory/libqwen3_jni.so")
+    }
 
     fun hasGpu(context: Context, directory: File): Boolean {
         configure(context, directory, false)

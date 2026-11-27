@@ -21,7 +21,8 @@ MING_LIBS = {"libonnxruntime.so", "libming-synthesize.so", "libming-reference.so
 MING_NOTICES = {"Qualcomm-LICENSE.pdf", "Qualcomm-NOTICE.txt", "ONNXRuntime-LICENSE.txt",
                 "ONNXRuntime-NOTICE.txt", "Khronos-OpenCL-LICENSE.txt", "Ming-THIRD-PARTY.txt",
                 "Voicebox-LICENSE.txt", "pocketfft-LICENSE.txt"}
-QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "libqwen3_checkpoint.so"}
+QWEN_LIBS = {"cpu/libqwen3_jni.so", "accelerated/libqwen3_jni.so", "accelerated/int8mm/libqwen3_jni.so",
+             "libqwen3_cpu_features.so", "libqwen3_checkpoint.so"}
 
 
 def require(condition, message):

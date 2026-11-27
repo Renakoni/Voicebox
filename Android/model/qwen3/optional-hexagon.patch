@@ -15,12 +15,12 @@ diff --git a/third_party/qwentts/ggml/src/ggml-backend-reg.cpp b/third_party/qwe
 diff --git a/tools/build_android_htp.sh b/tools/build_android_htp.sh
 --- a/tools/build_android_htp.sh
 +++ b/tools/build_android_htp.sh
-@@ -13,11 +13,11 @@
+@@ -13,11 +13,17 @@
  cmake -S "$root/native" -B "$build" -G Ninja \
      -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake" \
      -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-31 -DANDROID_STL=c++_static \
 -    -DCMAKE_BUILD_TYPE=Release -DGGML_CPU_ARM_ARCH=armv8.6-a \
-+    -DCMAKE_BUILD_TYPE=Release -DGGML_CPU_ARM_ARCH=armv8-a \
++    -DCMAKE_BUILD_TYPE=Release -DGGML_CPU_ARM_ARCH=armv8-a -U HAVE_DOTPROD -U HAVE_MATMUL_INT8 \
      -DGGML_HEXAGON=ON -DPREBUILT_LIB_DIR=android_aarch64 \
      -DHEXAGON_SDK_ROOT="$HEXAGON_SDK_ROOT" -DHEXAGON_TOOLS_ROOT="$HEXAGON_TOOLS_ROOT" \
      -DGGML_VULKAN=ON -DVulkan_LIBRARY="$vulkan" -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS_DIR" \
@@ -30,6 +30,12 @@ diff --git a/tools/build_android_htp.sh b/tools/build_android_htp.sh
  mkdir -p "$build/jni/arm64-v8a"
 -cp "$build/libqwen3_jni.so" "$build/ggml/src/ggml-hexagon/libggml-htp-v75.so" "$build/jni/arm64-v8a/"
 +cp "$build/libqwen3_jni.so" "$build"/ggml/src/ggml-hexagon/libggml-htp-v{73,75,79,81,85}.so "$build/jni/arm64-v8a/"
++# Only the ggml CPU target changes. Reuse the Vulkan shaders and DSP libraries.
++cmake -S "$root/native" -B "$build" -DGGML_CPU_ARM_ARCH=armv8-a+dotprod+i8mm \
++    -U HAVE_DOTPROD -U HAVE_MATMUL_INT8
++cmake --build "$build" --parallel 8 --target qwen3_jni
++mkdir -p "$build/jni/arm64-v8a/int8mm"
++cp "$build/libqwen3_jni.so" "$build/jni/arm64-v8a/int8mm/"
 diff --git a/native/qwen3_jni.cpp b/native/qwen3_jni.cpp
 --- a/native/qwen3_jni.cpp
 +++ b/native/qwen3_jni.cpp
