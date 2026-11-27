@@ -19,9 +19,9 @@
   <img src="https://img.shields.io/badge/ABI-arm64--v8a-655D57?style=flat-square" alt="ARM64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-6E665F?style=flat-square" alt="AGPL-3.0 License"></a>
   <br>
-  <img src="https://img.shields.io/badge/Runtime-ONNX%20Runtime-4B6478?style=flat-square&amp;logo=onnx&amp;logoColor=white" alt="ONNX Runtime">
-  <img src="https://img.shields.io/badge/GPU-WebGPU-4D6D73?style=flat-square&amp;logo=webgpu&amp;logoColor=white" alt="WebGPU">
-  <img src="https://img.shields.io/badge/NPU-Qualcomm%20QNN-5C5675?style=flat-square&amp;logo=qualcomm&amp;logoColor=white" alt="Qualcomm QNN">
+  <img src="https://img.shields.io/badge/Runtime-ONNX%20Runtime%20%C2%B7%20ggml-4B6478?style=flat-square&amp;logo=onnx&amp;logoColor=white" alt="ONNX Runtime and ggml">
+  <img src="https://img.shields.io/badge/GPU-WebGPU%20%C2%B7%20Vulkan-4D6D73?style=flat-square&amp;logo=webgpu&amp;logoColor=white" alt="WebGPU and Vulkan">
+  <img src="https://img.shields.io/badge/NPU-Qualcomm%20QNN%20%C2%B7%20Hexagon-5C5675?style=flat-square&amp;logo=qualcomm&amp;logoColor=white" alt="Qualcomm QNN and Hexagon">
 </p>
 
 <p align="center">
@@ -50,8 +50,8 @@ Voicebox uses a modular backend architecture. Each model runtime and resource pa
 |---|---|---|
 | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | ✅ Supported | V2 Pro, V2 Pro Plus, and V5 Turbo; cross-lingual cloning and on-device `.ckpt` / `.pth` conversion |
 | [Ming-TTS 0.5B](https://github.com/inclusionAI/Ming-3.0-tts) | ✅ Supported | 93 built-in official voices, single-clip cloning, emotion and dialect controls, reading instructions, and streaming playback |
+| [Qwen3-TTS-0.6B](https://github.com/QwenLM/Qwen3-TTS) | ✅ Supported | Official `0.6B-Base` Q4_K_M weights, 10 languages, zero-shot cloning and direct speech, streaming playback, and on-device `.safetensors` conversion |
 | [CosyVoice3-0.5B-2512](https://github.com/FunAudioLLM/CosyVoice) | 🔧 Inference Ready | Mobile inference verified; app integration pending |
-| [Qwen3-TTS-0.6B-Base](https://github.com/QwenLM/Qwen3-TTS) | 🔧 Inference Ready | Mobile inference verified; app integration pending |
 | [IndexTTS-2.5](https://github.com/index-tts/index-tts) | 🗺️ Planned | Planned for mobile support |
 | [Fish Audio S1-mini](https://github.com/fishaudio/fish-speech) | 🗺️ Planned | Planned for mobile support |
 | [OmniVoice](https://github.com/k2-fsa/OmniVoice) | 🗺️ Planned | Planned for mobile support |
@@ -59,21 +59,21 @@ Voicebox uses a modular backend architecture. Each model runtime and resource pa
 ## Features
 
 - **On-demand model packs**: The app and inference backends are decoupled. Download, verify, or uninstall individual model runtimes and packs on demand inside the app without bloating the APK.
-- **Offline inference with hardware acceleration**: Everything runs locally once models are ready, with no network calls or cloud GPUs. Built for GPU-accelerated mobile devices, with additional Qualcomm QNN NPU hybrid acceleration on compatible Snapdragon phones.
-- **Zero-shot cloning and expressive controls**: GPT-SoVITS supports cross-lingual voice transfer and direct on-device import of native `.ckpt` and `.pth` checkpoints; Ming-TTS 0.5B includes 93 official voices, single-clip cloning, speed/pitch/volume controls, emotions, dialects, natural-language reading instructions, and real-time streaming playback.
+- **Offline inference with hardware acceleration**: Everything runs locally once models are ready, with no network calls or cloud GPUs. Built for GPU-accelerated mobile devices (WebGPU / Vulkan), with additional Qualcomm NPU hybrid acceleration (QNN / Hexagon HTP) on compatible Snapdragon phones.
+- **Zero-shot cloning and expressive controls**: GPT-SoVITS supports cross-lingual voice transfer and direct on-device import of native `.ckpt` and `.pth` checkpoints; Ming-TTS 0.5B includes 93 official voices, single-clip cloning, speed/pitch/volume controls, emotions, dialects, natural-language reading instructions, and real-time streaming playback; Qwen3-TTS-0.6B adds 10-language synthesis, zero-shot cloning and reference-free speech, streaming playback, Talker/Subtalker sampling controls, and on-device `.safetensors` checkpoint conversion.
 - **Native QQ voice messages**: Send generated audio directly as native, tap-to-play QQ voice messages rather than audio attachments. [Watch QQ demo](https://github.com/Renakoni/Voicebox/blob/main/.github/assets/demo-qq.mp4)
 - **Local HTTP API**: Lightweight `127.0.0.1` server for audiobook readers, Tasker, or other clients, with desktop access supported via ADB port forwarding.
 - **Verified in-app updates**: Check GitHub for new releases inside the app, with automatic verification of file size, SHA-256, package name, and version.
 
 ## Getting Started
 
-Download **Voicebox 1.2.0** from [Releases](https://github.com/Renakoni/Voicebox/releases/latest) (requires an ARM64 device running Android 11 or later).
+Download **Voicebox 1.2.3** from [Releases](https://github.com/Renakoni/Voicebox/releases/latest) (requires an ARM64 device running Android 11 or later; Qwen3-TTS-0.6B requires Android 12+ and Vulkan 1.2 with 16-bit storage buffers).
 
 > [!WARNING]
-> 1.2.0 is a breaking release and cannot be installed over earlier versions. Uninstall any previous version before installing 1.2.0 (future releases will update in place).
+> Versions 1.2.0 and later cannot be installed over releases prior to 1.2.0. If you are upgrading from an older pre-1.2.0 build, uninstall it first (1.2.0+ releases update in place).
 
-1. **Install models**: Open **Models** and install **GPT-SoVITS** or **Ming-TTS 0.5B** as needed.
-2. **Set up voices**: Open **Voices** to pick an official voice, or record/import a reference clip with its transcript to clone a voice. For GPT-SoVITS, you can also import local `.ckpt` and `.pth` weights directly.
+1. **Install models**: Open **Models** and install **GPT-SoVITS**, **Ming-TTS 0.5B**, or **Qwen3-TTS-0.6B** as needed.
+2. **Set up voices**: Open **Voices** to pick an official voice, or record/import a reference clip with its transcript to clone a voice. You can also import local `.ckpt` / `.pth` weights for GPT-SoVITS, or `.safetensors` + `config.json` checkpoints for Qwen3-TTS-0.6B.
 3. **Create and export**: Open **Create**, pick a voice and adjust your settings, enter text, and generate. Play, save, share, or send the result to QQ.
 
 <details>
@@ -89,7 +89,7 @@ Each message must be shorter than 60 seconds.
 
 ## Performance and Quality
 
-All mobile benchmarks were measured on a **Xiaomi 14 (Snapdragon 8 Gen 3, 16 GB RAM)** using the same Chinese short sentence (~3.5–4 s) and long passage (~19–22 s), with official weights or fixed presets and seeds. Once models and caches were warm, each configuration and length ran **10 times** at normal ambient temperature with no thermal throttling; values are reported as **mean ± standard deviation**.
+All mobile benchmarks were measured on a **Xiaomi 14 (Snapdragon 8 Gen 3, 16 GB RAM)** using the same Chinese short sentence (~3.5–4.5 s) and long passage (~19–24 s), with official weights or fixed presets and seeds. Once models and caches were warm, each configuration and length ran **10 times** at normal ambient temperature with no thermal throttling; values are reported as **mean ± standard deviation**.
 
 | Model | Execution Path | Short RTF | Long RTF | ASR Agreement |
 |---|---|---:|---:|---:|
@@ -99,10 +99,12 @@ All mobile benchmarks were measured on a **Xiaomi 14 (Snapdragon 8 Gen 3, 16 GB 
 | GPT-SoVITS V5 Turbo | GPU + NPU | 1.313 | 0.954 | 99.62% |
 | Ming-TTS 0.5B | GPU | 1.821 | 1.055 | 100.00% / 100.00% |
 | Ming-TTS 0.5B | GPU + NPU | 1.599 | 0.574 | 100.00% / 99.89% |
+| Qwen3-TTS-0.6B | GPU | 1.105 | 0.781 | 100.00% / 100.00% |
+| Qwen3-TTS-0.6B | GPU + NPU | 0.991 | 0.707 | 100.00% / 100.00% |
 
 - **RTF (Real-Time Factor)**: Inference time ÷ audio duration. Values below `1.0` run faster than real-time playback.
-- **ASR agreement**: Transcribed offline with SenseVoice and scored after stripping punctuation as `(1 − character edit distance ÷ reference length) × 100%`. For Ming-TTS 0.5B, values show short / long results respectively.
-- **Execution paths**: GPU runs on CPU + WebGPU; GPU + NPU adds Qualcomm QNN heterogeneous acceleration.
+- **ASR agreement**: Transcribed offline with SenseVoice and scored after stripping punctuation as `(1 − character edit distance ÷ reference length) × 100%`. For Ming-TTS 0.5B and Qwen3-TTS-0.6B, values show short / long results respectively.
+- **Execution paths**: GPU runs on CPU + WebGPU (GPT-SoVITS / Ming-TTS) or CPU + Vulkan (Qwen3-TTS); GPU + NPU adds Qualcomm QNN or Hexagon HTP heterogeneous acceleration.
 
 <details>
 <summary><strong>GPT-SoVITS detailed benchmarks</strong></summary>
@@ -153,6 +155,25 @@ Repeated runs used the official Chinese preset `灵小柔`, outputting 44.1 kHz 
 
 </details>
 
+<details>
+<summary><strong>Qwen3-TTS-0.6B detailed benchmarks</strong></summary>
+
+Measured on Voicebox 1.2.3 with the official Qwen3 runtime v6 and `Qwen3-TTS-0.6B-Base Q4_K_M` weights in the foreground (screen on), performing ICL voice cloning with the same 4.325 s Chinese reference clip (`seed 42`, sampling enabled), outputting 24 kHz mono float32 WAV.
+
+| Execution Path | Passage | Audio Length (s) | End-to-End Time (s) | Core Inference (s) | First PCM (s) | Inference RTF | ASR Agreement |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GPU | Short | 4.48 ± 0.00 | 5.03 ± 0.03 | 4.95 ± 0.03 | 1.50 ± 0.01 | 1.105 ± 0.006 | 100.00% |
+| GPU | Long | 22.00 ± 0.00 | 17.31 ± 0.17 | 17.19 ± 0.18 | 1.50 ± 0.01 | 0.781 ± 0.008 | 100.00% |
+| GPU + NPU | Short | 4.24 ± 0.00 | 4.26 ± 0.07 | 4.20 ± 0.07 | 1.48 ± 0.01 | 0.991 ± 0.017 | 100.00% |
+| GPU + NPU | Long | 23.68 ± 0.00 | 16.85 ± 0.62 | 16.74 ± 0.62 | 1.48 ± 0.01 | 0.707 ± 0.026 | 100.00% |
+
+- **Backend and NPU speedup**: Talker runs on 4 CPU threads (`int8mm` kernel), the codec runs on Vulkan (`Vulkan0`), and GPU + NPU offloads DAC layers to Hexagon v75 (`HTP0`). Enabling NPU lowers short-sentence RTF from `1.105` to `0.991` (faster than real time) and long-passage RTF by **9.5%** (`0.781 → 0.707`).
+- **v6 runtime improvement**: Compared with Voicebox 1.2.2 / Qwen3 runtime v5 on the same device and inputs, v6 cuts inference RTF by **11.2%** (GPU short), **9.6%** (GPU long), **14.9%** (GPU + NPU short), and **15.5%** (GPU + NPU long), with 10/10 bit-exact sample parity against v5 across all four configurations.
+- **Cold start and direct synthesis**: In single-run short-sentence checks, fresh-process first cloning (reusing disk cache) takes `10.89 s` (`1.148 s` load, `4.946 s` first PCM, RTF `1.889`) on GPU and `7.87 s` (`1.067 s` load, `3.559 s` first PCM, RTF `1.498`) on GPU + NPU. Warm reference-free synthesis starts streaming in `0.320 s` / `0.307 s` with total time `4.61 s` / `3.76 s` and RTF `0.799` / `0.651` (GPU / GPU + NPU).
+- **Additional checks**: Across all 44 generated clips (40 warm + 4 single-run checks), SenseVoice ASR edit distance was `0` (`100.00%` agreement), peak amplitude stayed at `0.5474` with `0` clipped samples, and skin temperature remained `31.8–43.7 °C` with Android thermal status `0`.
+
+</details>
+
 ## Building from Source
 
 Requires JDK 21, Android SDK 37 (with NDK and CMake), and Python 3.12+.
@@ -173,7 +194,7 @@ cd Voicebox/Android
 
 Special thanks to the open-source projects and authors behind Voicebox:
 
-- Models and inference: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS), [Ming-3.0-tts](https://github.com/inclusionAI/Ming-3.0-tts), [Genie-TTS](https://github.com/High-Logic/Genie-TTS), [RinStel Android](https://github.com/RinStel/Genie-TTS-Android), and [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp).
+- Models and inference: [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS), [Ming-3.0-tts](https://github.com/inclusionAI/Ming-3.0-tts), [Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS), [ggml](https://github.com/ggml-org/ggml), [Genie-TTS](https://github.com/High-Logic/Genie-TTS), [RinStel Android](https://github.com/RinStel/Genie-TTS-Android), and [gsv.cpp](https://github.com/KakaruHayate/gsv.cpp).
 - UI and component references: [Microsoft Fluent UI Android](https://github.com/microsoft/fluentui-android) and [NextVol](licenses/NextVol-Apache-2.0.txt).
 - The Roxy voice in the demo video comes from [Shinowing](https://github.com/Shinowing)'s [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model). Thank you for sharing it.
 

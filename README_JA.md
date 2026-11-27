@@ -19,9 +19,9 @@
   <img src="https://img.shields.io/badge/ABI-arm64--v8a-655D57?style=flat-square" alt="ARM64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-6E665F?style=flat-square" alt="AGPL-3.0 ライセンス"></a>
   <br>
-  <img src="https://img.shields.io/badge/Runtime-ONNX%20Runtime-4B6478?style=flat-square&amp;logo=onnx&amp;logoColor=white" alt="ONNX Runtime">
-  <img src="https://img.shields.io/badge/GPU-WebGPU-4D6D73?style=flat-square&amp;logo=webgpu&amp;logoColor=white" alt="WebGPU">
-  <img src="https://img.shields.io/badge/NPU-Qualcomm%20QNN-5C5675?style=flat-square&amp;logo=qualcomm&amp;logoColor=white" alt="Qualcomm QNN">
+  <img src="https://img.shields.io/badge/Runtime-ONNX%20Runtime%20%C2%B7%20ggml-4B6478?style=flat-square&amp;logo=onnx&amp;logoColor=white" alt="ONNX Runtime・ggml">
+  <img src="https://img.shields.io/badge/GPU-WebGPU%20%C2%B7%20Vulkan-4D6D73?style=flat-square&amp;logo=webgpu&amp;logoColor=white" alt="WebGPU・Vulkan">
+  <img src="https://img.shields.io/badge/NPU-Qualcomm%20QNN%20%C2%B7%20Hexagon-5C5675?style=flat-square&amp;logo=qualcomm&amp;logoColor=white" alt="Qualcomm QNN・Hexagon">
 </p>
 
 <p align="center">
@@ -50,8 +50,8 @@ Voicebox はプラグイン式の推論バックエンド設計を採用して�
 |---|---|---|
 | [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) | ✅ 対応済み | V2 Pro / V2 Pro Plus / V5 Turbo 対応、クロスリンガル合成、`.ckpt`・`.pth` 重みの端末内変換 |
 | [Ming-TTS 0.5B](https://github.com/inclusionAI/Ming-3.0-tts) | ✅ 対応済み | 93 種類の公式ボイス内蔵、1 音声でのクローン、感情・方言制御、読み上げ指示、ストリーミング再生 |
+| [Qwen3-TTS-0.6B](https://github.com/QwenLM/Qwen3-TTS) | ✅ 対応済み | 公式 `0.6B-Base` Q4_K_M 重み、10 言語対応、ゼロショットクローンと直接読み上げ、ストリーミング再生、`.safetensors` 重みの端末内変換 |
 | [CosyVoice3-0.5B-2512](https://github.com/FunAudioLLM/CosyVoice) | 🔧 推論実装済み | モバイル推論の動作を確認済み。アプリへの組み込みを準備中 |
-| [Qwen3-TTS-0.6B-Base](https://github.com/QwenLM/Qwen3-TTS) | 🔧 推論実装済み | モバイル推論の動作を確認済み。アプリへの組み込みを準備中 |
 | [IndexTTS-2.5](https://github.com/index-tts/index-tts) | 🗺️ 対応予定 | 対応を計画中 |
 | [Fish Audio S1-mini](https://github.com/fishaudio/fish-speech) | 🗺️ 対応予定 | 対応を計画中 |
 | [OmniVoice](https://github.com/k2-fsa/OmniVoice) | 🗺️ 対応予定 | 対応を計画中 |
@@ -59,21 +59,21 @@ Voicebox はプラグイン式の推論バックエンド設計を採用して�
 ## 主な機能
 
 - **マルチモデルのオンデマンド拡張**：アプリ本体と推論バックエンドを分離し、必要なモデルのランタイムとデータだけをアプリ内で導入・検証・削除できるため、APK の肥大化を防げます。
-- **完全オフライン・ハードウェア加速**：モデルの準備後はネット接続もクラウド GPU も不要で、すべて端末内で完結します。GPU 加速対応のモバイル端末を前提に設計しており、対応する Snapdragon 端末では Qualcomm QNN による NPU ハイブリッド加速も利用できます。
-- **ゼロショットクローンと多彩な表現制御**：GPT-SoVITS ではクロスリンガル合成や学習済み `.ckpt`・`.pth` ファイルの直接インポートに対応。Ming-TTS 0.5B では 93 種類の公式ボイスに加え、1 本の参照音声からのクローン、話速・音高・音量の調整、感情・方言の指定、自然言語による読み上げ指示、生成しながらのストリーミング再生が可能です。
+- **完全オフライン・ハードウェア加速**：モデルの準備後はネット接続もクラウド GPU も不要で、すべて端末内で完結します。GPU 加速（WebGPU / Vulkan）対応のモバイル端末を前提に設計しており、対応する Snapdragon 端末では Qualcomm QNN / Hexagon HTP による NPU ハイブリッド加速も利用できます。
+- **ゼロショットクローンと多彩な表現制御**：GPT-SoVITS ではクロスリンガル合成や学習済み `.ckpt`・`.pth` ファイルの直接インポートに対応。Ming-TTS 0.5B では 93 種類の公式ボイスに加え、1 本の参照音声からのクローン、話速・音高・音量の調整、感情・方言の指定、自然言語による読み上げ指示、生成しながらのストリーミング再生が可能です。Qwen3-TTS-0.6B では 10 言語対応、ゼロショットクローンと参照なし直接読み上げ、ストリーミング再生、Talker / Subtalker サンプリング設定、`.safetensors` 重みの端末内変換に対応しています。
 - **QQ ネイティブボイスメッセージ送信**：生成した音声を添付ファイルではなく、タップしてそのまま再生できる QQ の正規ボイスメッセージとして送信できます。[QQ 送信デモを見る](https://github.com/Renakoni/Voicebox/blob/main/.github/assets/demo-qq.mp4)
 - **ローカル HTTP API**：軽量な `127.0.0.1` HTTP サーバーを内蔵。朗読アプリや Tasker などの外部クライアントから呼び出せるほか、ADB ポート転送を使えば PC からも利用できます。
 - **アプリ内アップデート検証**：GitHub の最新リリースをアプリ内から確認でき、ダウンロード後はファイルサイズ・SHA-256・パッケージ名とバージョンを自動で検証します。
 
 ## 使い方
 
-[Releases](https://github.com/Renakoni/Voicebox/releases/latest) から **Voicebox 1.2.0** をダウンロードします（Android 11 以降の ARM64 端末が必要です）。
+[Releases](https://github.com/Renakoni/Voicebox/releases/latest) から **Voicebox 1.2.3** をダウンロードします（Android 11 以降の ARM64 端末が必要です。Qwen3-TTS-0.6B の利用には Android 12 以降と Vulkan 1.2 / 16-bit ストレージバッファ対応 GPU が必要です）。
 
 > [!WARNING]
-> 1.2.0 は破壊的変更を含むリリースであり、旧バージョンへの上書きインストールはできません。以前のバージョンをお使いの場合は、一度アンインストールしてから 1.2.0 を導入してください（今後のバージョンはそのまま更新可能です）。
+> 1.2.0 以降のバージョンは、1.2.0 より前の旧バージョンへの上書きインストールができません。旧バージョンをお使いの場合は、一度アンインストールしてから導入してください（1.2.0 以降からはそのまま更新可能です）。
 
-1. **モデルを導入**：アプリ内の **Models** 画面から、使いたい **GPT-SoVITS** または **Ming-TTS 0.5B** をインストールします。
-2. **ボイスを準備**：**Voices** 画面で公式ボイスを選ぶか、参照音声の録音・読み込みと原稿テキストの入力で声をクローンします。GPT-SoVITS では手元の `.ckpt`・`.pth` 重みを直接インポートすることもできます。
+1. **モデルを導入**：アプリ内の **Models** 画面から、使いたい **GPT-SoVITS**・**Ming-TTS 0.5B**・**Qwen3-TTS-0.6B** をインストールします。
+2. **ボイスを準備**：**Voices** 画面で公式ボイスを選ぶか、参照音声の録音・読み込みと原稿テキストの入力で声をクローンします。GPT-SoVITS では `.ckpt`・`.pth` 重みを、Qwen3-TTS-0.6B では `.safetensors` と `config.json` を直接インポートできます。
 3. **音声を生成・出力**：**Create** 画面でボイスと各種設定を選び、テキストを入力して生成します。完成した音声は再生、保存、共有、QQ への送信が可能です。
 
 <details>
@@ -89,7 +89,7 @@ Voicebox はプラグイン式の推論バックエンド設計を採用して�
 
 ## 性能と品質
 
-スマートフォン側のベンチマークはすべて **Xiaomi 14（Snapdragon 8 Gen 3 / RAM 16 GB）** で実測しました。共通の中国語短文（約 3.5–4 秒）と長文（約 19–22 秒）を用い、公式の重みまたは固定のプリセットと乱数シードを使用。モデル読み込みとキャッシュ準備が完了した常温・サーマルスロットリングなしの状態で、各構成・長さごとに **10 回**ずつ生成し、平均と標本標準偏差を算出しています。
+スマートフォン側のベンチマークはすべて **Xiaomi 14（Snapdragon 8 Gen 3 / RAM 16 GB）** で実測しました。共通の中国語短文（約 3.5–4.5 秒）と長文（約 19–24 秒）を用い、公式の重みまたは固定のプリセットと乱数シードを使用。モデル読み込みとキャッシュ準備が完了した常温・サーマルスロットリングなしの状態で、各構成・長さごとに **10 回**ずつ生成し、平均と標本標準偏差を算出しています。
 
 | モデル | 実行パス | 短文 RTF | 長文 RTF | ASR 一致率 |
 |---|---|---:|---:|---:|
@@ -99,10 +99,12 @@ Voicebox はプラグイン式の推論バックエンド設計を採用して�
 | GPT-SoVITS V5 Turbo | GPU + NPU | 1.313 | 0.954 | 99.62% |
 | Ming-TTS 0.5B | GPU | 1.821 | 1.055 | 100.00% / 100.00% |
 | Ming-TTS 0.5B | GPU + NPU | 1.599 | 0.574 | 100.00% / 99.89% |
+| Qwen3-TTS-0.6B | GPU | 1.105 | 0.781 | 100.00% / 100.00% |
+| Qwen3-TTS-0.6B | GPU + NPU | 0.991 | 0.707 | 100.00% / 100.00% |
 
 - **RTF（Real-Time Factor）**：推論時間 ÷ 音声の長さ。`1.0` 未満であれば実時間の再生スピードより速く生成できています。
-- **ASR 一致率**：オフラインの SenseVoice で文字起こしし、句読点を除いた `(1 − 文字単位の編集距離 ÷ 入力文字数) × 100%` で算出。Ming-TTS 0.5B は短文 / 長文の順に記載しています。
-- **実行パス**：GPU パスは CPU + WebGPU の協調動作、GPU + NPU パスは Qualcomm QNN による NPU ハイブリッド加速を併用します。
+- **ASR 一致率**：オフラインの SenseVoice で文字起こしし、句読点を除いた `(1 − 文字単位の編集距離 ÷ 入力文字数) × 100%` で算出。Ming-TTS 0.5B と Qwen3-TTS-0.6B は短文 / 長文の順に記載しています。
+- **実行パス**：GPU パスは CPU + WebGPU（GPT-SoVITS / Ming-TTS）または CPU + Vulkan（Qwen3-TTS）の協調動作、GPU + NPU パスは Qualcomm QNN または Hexagon HTP による NPU ハイブリッド加速を併用します。
 
 <details>
 <summary><strong>GPT-SoVITS 詳細ベンチマーク</strong></summary>
@@ -153,6 +155,25 @@ Voicebox はプラグイン式の推論バックエンド設計を採用して�
 
 </details>
 
+<details>
+<summary><strong>Qwen3-TTS-0.6B 詳細ベンチマーク</strong></summary>
+
+Voicebox 1.2.3 正式版・公式 Qwen3 ランタイム v6・公式 `Qwen3-TTS-0.6B-Base Q4_K_M` 重みを使用し、フォアグラウンド・画面点灯状態で共通の中国語参照音声（4.325 秒）による ICL 声質クローン（`seed 42`・サンプリング有効）を実施し、24 kHz・モノラル・float32 WAV で出力しました。
+
+| 実行パス | テキスト | 音声長（秒） | リクエスト総時間（秒） | コア推論時間（秒） | 初回 PCM（秒） | 推論 RTF | ASR 一致率 |
+|---|---|---:|---:|---:|---:|---:|---:|
+| GPU | 短文 | 4.48 ± 0.00 | 5.03 ± 0.03 | 4.95 ± 0.03 | 1.50 ± 0.01 | 1.105 ± 0.006 | 100.00% |
+| GPU | 長文 | 22.00 ± 0.00 | 17.31 ± 0.17 | 17.19 ± 0.18 | 1.50 ± 0.01 | 0.781 ± 0.008 | 100.00% |
+| GPU + NPU | 短文 | 4.24 ± 0.00 | 4.26 ± 0.07 | 4.20 ± 0.07 | 1.48 ± 0.01 | 0.991 ± 0.017 | 100.00% |
+| GPU + NPU | 長文 | 23.68 ± 0.00 | 16.85 ± 0.62 | 16.74 ± 0.62 | 1.48 ± 0.01 | 0.707 ± 0.026 | 100.00% |
+
+- **バックエンドと NPU 加速**：Talker は CPU 4 スレッド（`int8mm` カーネル）、codec は Vulkan（`Vulkan0`）で動作し、GPU + NPU パスでは DAC を Hexagon v75（`HTP0`）へオフロードします。NPU 有効化により短文 RTF は `1.105` から `0.991`（リアルタイム超え）へ、長文 RTF は **9.5%**（`0.781 → 0.707`）低下しました。
+- **v6 ランタイムの改善（対 1.2.2 / v5）**：同端末・同入力での比較で、推論 RTF が **11.2%**（GPU 短文）、**9.6%**（GPU 長文）、**14.9%**（GPU + NPU 短文）、**15.5%**（GPU + NPU 長文）改善し、全 4 条件 10/10 で v5 とサンプル単位で完全一致しました。
+- **初回クローンと直接読み上げ**：単発の短文計測では、新規プロセス初回クローン（端末キャッシュ再利用）が GPU で総時間 `10.89` 秒（読み込み `1.148` 秒、初回 PCM `4.946` 秒、RTF `1.889`）、GPU + NPU で `7.87` 秒（読み込み `1.067` 秒、初回 PCM `3.559` 秒、RTF `1.498`）。ウォーム状態の参照なし直接読み上げでは初回 PCM `0.320` 秒 / `0.307` 秒、総時間 `4.61` 秒 / `3.76` 秒、RTF `0.799` / `0.651`（GPU / GPU + NPU）でした。
+- **追加検証**：全 44 件の生成 WAV（ウォーム 40 件 + 追加 4 件）で SenseVoice の文字編集距離はすべて `0`（一致率 `100.00%`）、最大絶対ピークは `0.5474`・クリッピング `0` 件、表面温度は `31.8–43.7 °C`（Android サーマル状態 `0`）でした。
+
+</details>
+
 ## ソースからビルド
 
 JDK 21、Android SDK 37（NDK・CMake を含む）、Python 3.12 以降が必要です。
@@ -173,7 +194,7 @@ cd Voicebox/Android
 
 以下のオープンソースプロジェクトと開発者の皆様に感謝します。
 
-- モデル・推論基盤：[GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)、[Ming-3.0-tts](https://github.com/inclusionAI/Ming-3.0-tts)、[Genie-TTS](https://github.com/High-Logic/Genie-TTS)、[RinStel Android](https://github.com/RinStel/Genie-TTS-Android)、[gsv.cpp](https://github.com/KakaruHayate/gsv.cpp)
+- モデル・推論基盤：[GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS)、[Ming-3.0-tts](https://github.com/inclusionAI/Ming-3.0-tts)、[Qwen3-TTS](https://github.com/QwenLM/Qwen3-TTS)、[ggml](https://github.com/ggml-org/ggml)、[Genie-TTS](https://github.com/High-Logic/Genie-TTS)、[RinStel Android](https://github.com/RinStel/Genie-TTS-Android)、[gsv.cpp](https://github.com/KakaruHayate/gsv.cpp)
 - UI・コンポーネント参考：[Microsoft Fluent UI Android](https://github.com/microsoft/fluentui-android)、[NextVol](licenses/NextVol-Apache-2.0.txt)
 - デモ動画のロキシーの声には、[Shinowing](https://github.com/Shinowing) 氏による [Shinowing_AI_model](https://github.com/Shinowing/Shinowing_AI_model) を使用しました。モデルの公開に感謝します。
 
